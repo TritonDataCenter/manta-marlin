@@ -1,0 +1,11 @@
+{
+	"name": "manta-compute",
+	"description": "SDC Manta Compute Engine",
+	"version": "0.0.1",
+	"author": "Joyent (joyent.com)",
+	"private": true,
+	"dependencies": {
+		"restify": "1.2.0",
+		"bunyan": "0.6.8"
+	}
+}
