@@ -1,0 +1,12 @@
+{
+	"name":		"hyprlofs",
+	"version":	"0.0.1",
+	"description":	"SmartOS hyprlofs bindings",
+	"private":	true,
+	"author":	"Joyent (joyent.com)",
+	"engines":	{ "node": ">=0.6" },
+	"main":		"./build/Release/hyprlofs",
+	"scripts": {
+		"install": "node-waf configure build"
+	}
+}

@@ -22,10 +22,12 @@ JSL_CONF_NODE	 = tools/jsl.node.conf
 JSL_FILES_NODE   = $(JS_FILES)
 JSSTYLE_FILES	 = $(JS_FILES)
 SMF_MANIFESTS_IN = smf/manifests/bapi.xml.in
+REPO_MODULES     = src/node-hyprlofs
 
 include ./tools/mk/Makefile.defs
 include ./tools/mk/Makefile.node.defs
 include ./tools/mk/Makefile.smf.defs
+include ./tools/mk/Makefile.node_deps.defs
 
 #
 # Repo-specific targets
@@ -34,9 +36,12 @@ include ./tools/mk/Makefile.smf.defs
 all: $(SMF_MANIFESTS) deps
 
 .PHONY: deps
-deps: | $(NPM_EXEC)
-	$(NPM) install
+deps: | $(REPO_DEPS) $(NPM_EXEC)
+	$(NPM) --no-rebuild install
 
+DISTCLEAN_FILES += node_modules
+
+include ./tools/mk/Makefile.node_deps.targ
 include ./tools/mk/Makefile.deps
 include ./tools/mk/Makefile.node.targ
 include ./tools/mk/Makefile.smf.targ

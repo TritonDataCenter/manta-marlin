@@ -5,7 +5,13 @@
 	"author": "Joyent (joyent.com)",
 	"private": true,
 	"dependencies": {
-		"restify": "1.2.0",
-		"bunyan": "0.6.8"
-	}
+		"bunyan": "0.6.8",
+		"hyprlofs": "0.0.1",
+		"restify": "1.2.0"
+	},
+	"bundledDependencies": [
+		"bunyan",
+		"hyprlofs",
+		"restify"
+	]
 }

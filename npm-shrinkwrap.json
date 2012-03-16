@@ -2,6 +2,12 @@
   "name": "manta-compute",
   "version": "0.0.1",
   "dependencies": {
+    "bunyan": {
+      "version": "0.6.8"
+    },
+    "hyprlofs": {
+      "version": "0.0.1"
+    },
     "restify": {
       "version": "1.2.0",
       "dependencies": {
@@ -47,9 +53,6 @@
           "version": "1.0.13"
         }
       }
-    },
-    "bunyan": {
-      "version": "0.6.8"
     }
   }
 }
