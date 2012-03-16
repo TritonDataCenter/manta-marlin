@@ -9,4 +9,4 @@ Tickets/bugs: <https://devhub.joyent.com/jira/browse/MANTA>
 
 # Overview
 
-This is a prototype of the Manta Compute Engine.
+This is a prototype of Marlin, the Manta Compute Engine.
