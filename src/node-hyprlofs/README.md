@@ -112,3 +112,11 @@ files (and without the associated race condition).
 
 If the underlying mountpoint is not a mounted hyprlofs filesystem, this call
 will fail.
+
+### `fs.listMappings(callback)`: lists all mappings
+
+Returns (via callback) the list of all mappings on the given mount, in the same
+format as would be passed to addMappings.
+
+If the underlying mountpoint is not a mounted hyprlofs filesystem, this call
+will fail.

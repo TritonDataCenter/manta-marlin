@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/mount.h>
@@ -24,16 +25,17 @@ using namespace node;
 
 /*
  * This flag controls whether to emit debug output to stderr whenever we make a
- * hyprlofs ioctl call.
+ * hyprlofs ioctl call.  It can be overridden on a per-object basis.
  */
-static bool hyfs_debug = false;
+static bool hyprlofs_debug = false;
 
 class HyprlofsFilesystem;
 
 static const char *hyprlofs_cmdname(int);
-static hyprlofs_entries_t *hyfs_entries_populate_add(const Local<Array>&);
-static hyprlofs_entries_t *hyfs_entries_populate_remove(const Local<Array>&);
-static void hyfs_entries_free(hyprlofs_entries_t *);
+static hyprlofs_entries_t *hyprlofs_entries_populate_add(const Local<Array>&);
+static hyprlofs_entries_t *hyprlofs_entries_populate_remove(
+    const Local<Array>&);
+static void hyprlofs_entries_free(hyprlofs_entries_t *);
 
 /*
  * The HyprlofsFilesystem is the nexus of administration.  Users construct an
@@ -45,14 +47,15 @@ public:
 	static void Initialize(Handle<Object> target);
 
 protected:
-	HyprlofsFilesystem(const char *);
+	HyprlofsFilesystem(const char *, bool);
 	~HyprlofsFilesystem();
 
-	void asyncIoctl(int, hyprlofs_entries_t *, Local<Value>);
 	void async(void (*)(eio_req *), Local<Value>);
+	void doIoctl(int, void *);
 
 	static int eioAsyncFini(eio_req *);
 	static void eioIoctlRun(eio_req *);
+	static void eioIoctlGetRun(eio_req *);
 	static void eioMountRun(eio_req *);
 	static void eioUmountRun(eio_req *);
 
@@ -60,8 +63,9 @@ protected:
 	static Handle<Value> Mount(const Arguments&);
 	static Handle<Value> Unmount(const Arguments&);
 	static Handle<Value> AddMappings(const Arguments&);
-	static Handle<Value> RemoveMappings(const Arguments& );
+	static Handle<Value> ListMappings(const Arguments&);
 	static Handle<Value> RemoveAll(const Arguments&);
+	static Handle<Value> RemoveMappings(const Arguments& );
 
 	int argsCheck(const char *, const Arguments&, int);
 
@@ -69,10 +73,43 @@ private:
 	static Persistent<FunctionTemplate> hfs_templ;
 
 	/* immutable state */
+	bool			hfs_debug;		/* debug output */
 	int			hfs_fd;			/* mountpoint fd */
 	char			hfs_label[PATH_MAX];	/* mountpoint path */
 
+	/*
+	 * Several invariants are maintained for these fields:
+	 *
+	 * While an asynchronous task (triggered by a caller invoking one of
+	 * several methods on this object) is pending:
+	 *
+	 *     hfs_pending is true. We will not allow another asynchronous task
+	 *     to be issued while hfs_pending is true.
+	 *
+	 *     hfs_callback refers to the JS callback function to be invoked
+	 *     upon completion of the task.
+	 *
+	 *     hfs_ioctl_cmd refers to the ioctl command if this is an ioctl
+	 *     task or -1 otherwise.
+	 *
+	 * After an asynchronous task completes, hfs_rv and hfs_errno are valid
+	 * until the next asynchronous task is dispatched.
+	 *
+	 * For ioctl tasks, hfs_ioctl_arg is valid from when the task is
+	 * dispatched until it completes.
+	 *
+	 * For the "get" ioctl specifically (which is the only one that returns
+	 * data from the ioctl), hfs_curr_ents and hfs_entv are valid only
+	 * when processing the ioctl completion.
+	 *
+	 * These invariants are mostly maintained by async() (which dispatches
+	 * new tasks) and eioAsyncFini (which handles completion).  Each
+	 * function dispatching an aysnc ioctl takes care of setting ioctl_cmd
+	 * and ioctl_arg first.
+	 */
+
 	/* common async operation state */
+	char			hfs_opname[32];	/* operation name */
 	bool 			hfs_pending;	/* operation outstanding */
 	Persistent<Function>	hfs_callback;	/* user callback */
 	int			hfs_rv;		/* current async rv */
@@ -80,7 +117,11 @@ private:
 
 	/* ioctl-specific operation state */
 	int			hfs_ioctl_cmd;	/* current ioctl cmd */
-	hyprlofs_entries_t	*hfs_ioctl_arg;	/* current ioctl arg */
+	void			*hfs_ioctl_arg;	/* current ioctl arg */
+
+	/* get-specific state */
+	hyprlofs_curr_entries_t	hfs_curr_ents;	/* current mappings */
+	hyprlofs_curr_entry_t	*hfs_entv;
 };
 
 /*
@@ -108,6 +149,8 @@ HyprlofsFilesystem::Initialize(Handle<Object> target)
 	    HyprlofsFilesystem::Unmount);
 	NODE_SET_PROTOTYPE_METHOD(hfs_templ, "addMappings",
 	    HyprlofsFilesystem::AddMappings);
+	NODE_SET_PROTOTYPE_METHOD(hfs_templ, "listMappings",
+	    HyprlofsFilesystem::ListMappings);
 	NODE_SET_PROTOTYPE_METHOD(hfs_templ, "removeMappings",
 	    HyprlofsFilesystem::RemoveMappings);
 	NODE_SET_PROTOTYPE_METHOD(hfs_templ, "removeAll",
@@ -128,6 +171,7 @@ HyprlofsFilesystem::New(const Arguments& args)
 {
 	HandleScope scope;
 	HyprlofsFilesystem *hfs;
+	bool debug = false;
 
 	if (args.Length() < 1 || !args[0]->IsString())
 		return (ThrowException(Exception::Error(String::New(
@@ -135,16 +179,22 @@ HyprlofsFilesystem::New(const Arguments& args)
 
 	String::Utf8Value mountpt(args[0]->ToString());
 
-	hfs = new HyprlofsFilesystem(*mountpt);
+	if (args.Length() > 1)
+		debug = args[1]->BooleanValue();
+
+	hfs = new HyprlofsFilesystem(*mountpt, debug);
 	hfs->Wrap(args.Holder());
 	return (args.This());
 }
 
-HyprlofsFilesystem::HyprlofsFilesystem(const char *label) :
+HyprlofsFilesystem::HyprlofsFilesystem(const char *label, bool debug) :
     node::ObjectWrap(),
     hfs_fd(-1),
+    hfs_debug(debug),
     hfs_pending(false),
-    hfs_ioctl_arg(NULL)
+    hfs_ioctl_cmd(-1),
+    hfs_ioctl_arg(NULL),
+    hfs_entv(NULL)
 {
 	(void) strlcpy(hfs_label, label, sizeof (hfs_label));
 }
@@ -208,12 +258,33 @@ HyprlofsFilesystem::AddMappings(const Arguments& args)
 	if (hfs->argsCheck("addMappings", args, 1) != 0)
 		return (Undefined());
 
-	if ((entrylstp = hyfs_entries_populate_add(
+	if ((entrylstp = hyprlofs_entries_populate_add(
 	    Array::Cast(*args[0]))) == NULL)
 		return (ThrowException(Exception::Error(String::New(
 		    "addMappings: invalid mappings"))));
 
-	hfs->asyncIoctl(HYPRLOFS_ADD_ENTRIES, entrylstp, args[1]);
+	hfs->hfs_ioctl_cmd = HYPRLOFS_ADD_ENTRIES;
+	hfs->hfs_ioctl_arg = entrylstp;
+	hfs->async(eioIoctlRun, args[1]);
+	return (Undefined());
+}
+
+/*
+ * See README.md.
+ */
+Handle<Value>
+HyprlofsFilesystem::ListMappings(const Arguments& args)
+{
+	HandleScope scope;
+	HyprlofsFilesystem *hfs;
+
+	hfs = ObjectWrap::Unwrap<HyprlofsFilesystem>(args.Holder());
+
+	if (hfs->argsCheck("listMappings", args, 0) == 0) {
+		hfs->hfs_ioctl_cmd = HYPRLOFS_GET_ENTRIES;
+		hfs->async(eioIoctlGetRun, args[0]);
+	}
+
 	return (Undefined());
 }
 
@@ -236,12 +307,14 @@ HyprlofsFilesystem::RemoveMappings(const Arguments& args)
 	if (hfs->argsCheck("removeMappings", args, 1) != 0)
 		return (Undefined());
 
-	if ((entrylstp = hyfs_entries_populate_remove(
+	if ((entrylstp = hyprlofs_entries_populate_remove(
 	    Array::Cast(*args[0]))) == NULL)
 		return (ThrowException(Exception::Error(String::New(
 		    "removeMappings: invalid mappings"))));
 
-	hfs->asyncIoctl(HYPRLOFS_RM_ENTRIES, entrylstp, args[1]);
+	hfs->hfs_ioctl_cmd = HYPRLOFS_RM_ENTRIES;
+	hfs->hfs_ioctl_arg = entrylstp;
+	hfs->async(eioIoctlRun, args[1]);
 	return (Undefined());
 }
 
@@ -256,8 +329,10 @@ HyprlofsFilesystem::RemoveAll(const Arguments& args)
 
 	hfs = ObjectWrap::Unwrap<HyprlofsFilesystem>(args.Holder());
 
-	if (hfs->argsCheck("removeAll", args, 0) == 0)
-		hfs->asyncIoctl(HYPRLOFS_RM_ALL, NULL, args[0]);
+	if (hfs->argsCheck("removeAll", args, 0) == 0) {
+		hfs->hfs_ioctl_cmd = HYPRLOFS_RM_ALL;
+		hfs->async(eioIoctlRun, args[0]);
+	}
 
 	return (Undefined());
 }
@@ -316,8 +391,8 @@ void
 HyprlofsFilesystem::eioUmountRun(eio_req *req)
 {
 	HyprlofsFilesystem *hfs = static_cast<HyprlofsFilesystem *>(req->data);
-	if (hyfs_debug)
-		(void) fprintf(stderr, "hyfs umount (%s)\n", hfs->hfs_label);
+	if (hyprlofs_debug || hfs->hfs_debug)
+		(void) fprintf(stderr, "hyprlofs umount %s\n", hfs->hfs_label);
 
 	/*
 	 * We have to close our fd first in order to unmount the filesystem.  It
@@ -331,9 +406,11 @@ HyprlofsFilesystem::eioUmountRun(eio_req *req)
 	hfs->hfs_errno = 0;
 	hfs->hfs_rv = umount(hfs->hfs_label);
 	hfs->hfs_errno = hfs->hfs_rv != 0 ? errno : 0;
+	(void) strlcpy(hfs->hfs_opname, "hyprlofs umount",
+	    sizeof (hfs->hfs_opname));
 
-	if (hyfs_debug)
-		(void) fprintf(stderr, "    hyfs umount (%s) returned %d "
+	if (hyprlofs_debug || hfs->hfs_debug)
+		(void) fprintf(stderr, "    hyprlofs umount (%s) returned %d "
 		    "(error = %s)\n", hfs->hfs_label, hfs->hfs_rv,
 		    strerror(errno));
 }
@@ -347,66 +424,51 @@ HyprlofsFilesystem::eioMountRun(eio_req *req)
 	char optstr[256];
 
 	HyprlofsFilesystem *hfs = static_cast<HyprlofsFilesystem *>(req->data);
-	if (hyfs_debug)
-		(void) fprintf(stderr, "hyfs mount (%s)\n", hfs->hfs_label);
+	if (hyprlofs_debug || hfs->hfs_debug)
+		(void) fprintf(stderr, "hyprlofs mount %s\n", hfs->hfs_label);
 
 	(void) strlcpy(optstr, "ro", sizeof (optstr));
 	hfs->hfs_errno = 0;
 	hfs->hfs_rv = mount("swap", hfs->hfs_label, MS_OPTIONSTR,
 	    "hyprlofs", NULL, 0, optstr, sizeof (optstr));
 	hfs->hfs_errno = hfs->hfs_rv != 0 ? errno : 0;
+	(void) strlcpy(hfs->hfs_opname, "hyprlofs mount",
+	    sizeof (hfs->hfs_opname));
 
-	if (hyfs_debug)
-		(void) fprintf(stderr, "    hyfs mount (%s) returned %d "
+	if (hyprlofs_debug || hfs->hfs_debug)
+		(void) fprintf(stderr, "    hyprlofs mount (%s) returned %d "
 		    "(error = %s, optstr=\"%s\")\n", hfs->hfs_label,
 		    hfs->hfs_rv, strerror(errno), optstr);
 }
 
-/*
- * Invoked from C++ functions running in the event loop (e.g., AddMappings,
- * RemoveMappings, and so on) to invoke a hyprlofs ioctl asynchronously.
- */
 void
-HyprlofsFilesystem::asyncIoctl(int cmd, hyprlofs_entries_t *ioctl_arg,
-    Local<Value> callback)
+HyprlofsFilesystem::doIoctl(int cmd, void *arg)
 {
-	this->hfs_ioctl_cmd = cmd;
-	this->hfs_ioctl_arg = ioctl_arg;
-	this->async(eioIoctlRun, callback);
-}
+	if (this->hfs_fd == -1) {
+		if (hyprlofs_debug || this->hfs_debug)
+			(void) fprintf(stderr, "    hyprlofs open (%s)\n",
+			    this->hfs_label);
 
-/*
- * Invoked outside the event loop (via eio_custom) to actually perform a
- * hyprlofs ioctl.
- */
-void
-HyprlofsFilesystem::eioIoctlRun(eio_req *req)
-{
-	HyprlofsFilesystem *hfs = (HyprlofsFilesystem *)(req->data);
-
-	if (hfs->hfs_fd == -1) {
-		if (hyfs_debug)
-			(void) fprintf(stderr, "    hyfs open (%s)\n",
-			    hfs->hfs_label);
-
-		if ((hfs->hfs_fd = open(hfs->hfs_label, O_RDONLY)) < 0) {
-			hfs->hfs_rv = -1;
-			hfs->hfs_errno = errno;
-			if (hyfs_debug)
-				(void) fprintf(stderr, "    hyfs open (%s) "
-				    "failed: %s\n", hfs->hfs_label,
+		if ((this->hfs_fd = open(this->hfs_label, O_RDONLY)) < 0) {
+			this->hfs_rv = -1;
+			this->hfs_errno = errno;
+			(void) strlcpy(this->hfs_opname, "hyprlofs open",
+			    sizeof (this->hfs_opname));
+			if (hyprlofs_debug || this->hfs_debug)
+				(void) fprintf(stderr, "    hyprlofs open (%s) "
+				    "failed: %s\n", this->hfs_label,
 				    strerror(errno));
 			return;
 		}
 	}
 
-	if (hyfs_debug) {
-		(void) fprintf(stderr, "    hyfs ioctl (%s): %s\n", hfs->hfs_label,
-		    hyprlofs_cmdname(hfs->hfs_ioctl_cmd));
+	if (hyprlofs_debug || this->hfs_debug) {
+		(void) fprintf(stderr, "    hyprlofs ioctl (%s): %s\n",
+		    this->hfs_label, hyprlofs_cmdname(cmd));
 
-		if (hfs->hfs_ioctl_arg != NULL) {
+		if (arg != NULL) {
 			hyprlofs_entries_t *entrylstp =
-			    (hyprlofs_entries_t *)hfs->hfs_ioctl_arg;
+			    (hyprlofs_entries_t *)arg;
 
 			for (int i = 0; i < entrylstp->hle_len; i++) {
 				hyprlofs_entry_t *entryp =
@@ -417,14 +479,80 @@ HyprlofsFilesystem::eioIoctlRun(eio_req *req)
 		}
 	}
 
-	hfs->hfs_errno = 0;
-	hfs->hfs_rv = ioctl(hfs->hfs_fd, hfs->hfs_ioctl_cmd, hfs->hfs_ioctl_arg);
-	hfs->hfs_errno = hfs->hfs_rv != 0 ? errno : 0;
+	this->hfs_errno = 0;
+	this->hfs_rv = ioctl(this->hfs_fd, cmd, arg);
+	this->hfs_errno = this->hfs_rv != 0 ? errno : 0;
+	(void) snprintf(this->hfs_opname, sizeof (this->hfs_opname),
+	    "hyprlofs ioctl %s", hyprlofs_cmdname(cmd));
 
-	if (hyfs_debug)
-		(void) fprintf(stderr, "    hyfs ioctl (%s) returned %d "
-		    "(error = %s)\n", hfs->hfs_label, hfs->hfs_rv,
+	if (hyprlofs_debug || this->hfs_debug)
+		(void) fprintf(stderr, "    hyprlofs ioctl (%s) returned %d "
+		    "(error = %s)\n", this->hfs_label, this->hfs_rv,
 		    strerror(errno));
+}
+
+/*
+ * Invoked outside the event loop (via eio_custom) to actually perform a
+ * hyprlofs ioctl.
+ */
+void
+HyprlofsFilesystem::eioIoctlRun(eio_req *req)
+{
+	HyprlofsFilesystem *hfs = (HyprlofsFilesystem *)(req->data);
+	hfs->doIoctl(hfs->hfs_ioctl_cmd, hfs->hfs_ioctl_arg);
+}
+
+void
+HyprlofsFilesystem::eioIoctlGetRun(eio_req *req)
+{
+	HyprlofsFilesystem *hfs = (HyprlofsFilesystem *)(req->data);
+	hyprlofs_curr_entry_t *entv;
+
+	/*
+	 * The "GET" ioctl is a bit more complex than the others because we're
+	 * retrieving a variable-size amount of data.  We invoke the ioctl
+	 * twice: once to see how many mappings we got, and once to actually
+	 * retrieve them.
+	 */
+	assert(hfs->hfs_ioctl_arg == NULL);
+	assert(hfs->hfs_entv == NULL);
+
+	bzero(&hfs->hfs_curr_ents, sizeof (hfs->hfs_curr_ents));
+	hfs->doIoctl(HYPRLOFS_GET_ENTRIES, &hfs->hfs_curr_ents);
+
+	if (hfs->hfs_rv == 0 || hfs->hfs_errno != E2BIG) {
+		/*
+		 * We either got zero entries, or we got an unexpected error.
+		 * Either way, bail out and let the fini function figure out
+		 * how to express it back to the user.
+		 */
+		return;
+	}
+
+top:
+	if ((hfs->hfs_entv = (hyprlofs_curr_entry_t *)calloc(
+	    sizeof (hyprlofs_curr_entry_t),
+	    hfs->hfs_curr_ents.hce_cnt)) == NULL) {
+		hfs->hfs_errno = ENOMEM;
+		return;
+	}
+
+	hfs->hfs_curr_ents.hce_entries = hfs->hfs_entv;
+	hfs->doIoctl(HYPRLOFS_GET_ENTRIES, &hfs->hfs_curr_ents);
+
+	if (hfs->hfs_rv == 0) {
+		/*
+		 * We're done.  The fini eio callback will convert hfs_entv into
+		 * a JavaScript object and invoke the callback.
+		 */
+		return;
+	}
+
+	free(hfs->hfs_entv);
+	hfs->hfs_curr_ents.hce_entries = hfs->hfs_entv = NULL;
+
+	if (hfs->hfs_errno == E2BIG)
+		goto top;
 }
 
 /*
@@ -436,8 +564,8 @@ int
 HyprlofsFilesystem::eioAsyncFini(eio_req *req)
 {
 	HandleScope scope;
-	char errbuf[128];
 	Local<Function> callback;
+	int cmd;
 
 	HyprlofsFilesystem *hfs = (HyprlofsFilesystem *)req->data;
 
@@ -451,30 +579,50 @@ HyprlofsFilesystem::eioAsyncFini(eio_req *req)
 	 */
 	hfs->hfs_pending = false;
 
-	hyfs_entries_free(hfs->hfs_ioctl_arg);
+	hyprlofs_entries_free((hyprlofs_entries_t *)hfs->hfs_ioctl_arg);
 	hfs->hfs_ioctl_arg = NULL;
+
+	cmd = hfs->hfs_ioctl_cmd;
+	hfs->hfs_ioctl_cmd = -1;
 
 	callback = Local<Function>::New(hfs->hfs_callback);
 	hfs->hfs_callback.Dispose();
 
-	TryCatch try_catch;
+	Handle<Value> argv[2];
+	int argc = 0;
 
-	if (hfs->hfs_rv == 0) {
-		callback->Call(Context::GetCurrent()->Global(), 0, NULL);
-	} else {
-		/* XXX include errno field and cmd/function name? (and add errno to
-		 * open(2) error too) */
-		(void) snprintf(errbuf, sizeof (errbuf), "hyprlofs: %d/%s",
-		    hfs->hfs_errno, strerror(hfs->hfs_errno));
-	
-		Local<Value> argv[1];
-		argv[0] = Exception::Error(String::New(errbuf));
-	
-		callback->Call(Context::GetCurrent()->Global(), 1, argv);
+	if (hfs->hfs_rv != 0) {
+		assert(hfs->hfs_entv == NULL);
+		argv[argc++] = ErrnoException(hfs->hfs_errno, hfs->hfs_opname,
+		    "", hfs->hfs_label);
+	} else if (cmd == HYPRLOFS_GET_ENTRIES) {
+		argv[argc++] = Null();
+
+		Local<Array> rv = Array::New(hfs->hfs_curr_ents.hce_cnt);
+		argv[argc++] = rv;
+
+		/*
+		 * hfs_entv (which is hfs_curr_ents.hce_entries) may be NULL,
+		 * but only if hfs_curr_ents.hce_cnt == 0.
+		 */
+		for (int i = 0; i < hfs->hfs_curr_ents.hce_cnt; i++) {
+			Local<Array> entry = Array::New(2);
+			hyprlofs_curr_entry_t *ent = &hfs->hfs_curr_ents.
+			    hce_entries[i];
+			entry->Set(0, String::New(ent->hce_path));
+			entry->Set(1, String::New(ent->hce_name));
+			rv->Set(i, entry);
+		}
+
+		free(hfs->hfs_entv);
+		hfs->hfs_curr_ents.hce_entries = hfs->hfs_entv = NULL;
 	}
 
+	TryCatch try_catch;
+	callback->Call(Context::GetCurrent()->Global(), argc, argv);
 	if (try_catch.HasCaught())
 		FatalException(try_catch);
+
 	return (0);
 }
 
@@ -489,6 +637,7 @@ hyprlofs_cmdname(int cmd)
 	case HYPRLOFS_ADD_ENTRIES:	return ("ADD");
 	case HYPRLOFS_RM_ENTRIES:	return ("REMOVE");
 	case HYPRLOFS_RM_ALL:		return ("CLEAR");
+	case HYPRLOFS_GET_ENTRIES:	return ("GET");
 	default:			break;
 	}
 
@@ -496,7 +645,7 @@ hyprlofs_cmdname(int cmd)
 }
 
 static hyprlofs_entries_t *
-hyfs_entries_populate_add(const Local<Array>& arg)
+hyprlofs_entries_populate_add(const Local<Array>& arg)
 {
 	hyprlofs_entries_t *entrylstp;
 	hyprlofs_entry_t *entries;
@@ -515,7 +664,7 @@ hyfs_entries_populate_add(const Local<Array>& arg)
 	for (int i = 0; i < arg->Length(); i++) {
 		Local<Array> entry = Array::Cast(*(arg->Get(i)));
 		if (*entry == NULL || entry->Length() != 2) {
-			hyfs_entries_free(entrylstp);
+			hyprlofs_entries_free(entrylstp);
 			return (NULL);
 		}
 
@@ -525,8 +674,9 @@ hyfs_entries_populate_add(const Local<Array>& arg)
 		entries[i].hle_path = strdup(*file);
 		entries[i].hle_name = strdup(*alias);
 
-		if (entries[i].hle_path == NULL || entries[i].hle_name == NULL) {
-			hyfs_entries_free(entrylstp);
+		if (entries[i].hle_path == NULL ||
+		    entries[i].hle_name == NULL) {
+			hyprlofs_entries_free(entrylstp);
 			return (NULL);
 		}
 
@@ -538,7 +688,7 @@ hyfs_entries_populate_add(const Local<Array>& arg)
 }
 
 static hyprlofs_entries_t *
-hyfs_entries_populate_remove(const Local<Array>& arg)
+hyprlofs_entries_populate_remove(const Local<Array>& arg)
 {
 	hyprlofs_entries_t *entrylstp;
 	hyprlofs_entry_t *entries;
@@ -560,7 +710,7 @@ hyfs_entries_populate_remove(const Local<Array>& arg)
 		entries[i].hle_name = strdup(*alias);
 
 		if (entries[i].hle_name == NULL) {
-			hyfs_entries_free(entrylstp);
+			hyprlofs_entries_free(entrylstp);
 			return (NULL);
 		}
 
@@ -571,16 +721,16 @@ hyfs_entries_populate_remove(const Local<Array>& arg)
 }
 
 static void
-hyfs_entries_free(hyprlofs_entries_t *entrylstp)
+hyprlofs_entries_free(hyprlofs_entries_t *entrylstp)
 {
 	if (entrylstp == NULL)
 		return;
 
 	for (int i = 0; i < entrylstp->hle_len; i++) {
-		/* XXX jerry */
-		free((void *)entrylstp->hle_entries[i].hle_name);
-		free((void *)entrylstp->hle_entries[i].hle_path);
+		free(entrylstp->hle_entries[i].hle_name);
+		free(entrylstp->hle_entries[i].hle_path);
 	}
 
+	free(entrylstp->hle_entries);
 	free(entrylstp);
 }

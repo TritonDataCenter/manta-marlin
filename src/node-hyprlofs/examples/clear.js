@@ -2,7 +2,7 @@
  * examples/remove.js: removes all mappings
  */
 
-var mod_hyprlofs = require('../');
+var mod_hyprlofs = require('hyprlofs');
 
 if (process.argv.length < 3) {
 	console.error('usage: node clear.js mountpoint');

@@ -2,13 +2,31 @@
  * basic.js: exercise the entry points for the hyprlofs bindings
  */
 
+var mod_assert = require('assert');
 var mod_fs = require('fs');
-var mod_hyprlofs = require('..');
-var mod_path = require('path');
+var mod_hyprlofs = require('hyprlofs');
 
 var tmpdir = '/var/tmp/hylofs.basic/' + process.pid;
 var stages = [];
 var fs;
+
+/*
+ * Example files
+ */
+var file_paths = {
+	'my_release': '/etc/release',
+	'my_cat': '/usr/bin/cat',
+	'my_grep': '/usr/bin/grep',
+	'my_ls': '/usr/bin/ls',
+	'some/other/bash': '/usr/bin/bash'
+};
+
+function makeMappings(paths)
+{
+	return (paths.map(function (path) {
+		return ([ file_paths[path], path ]);
+	}));
+}
 
 /*
  * Process the next asynchronous stage.
@@ -26,7 +44,7 @@ function stageDone(i, err)
 	if (i + 1 == stages.length)
 		return;
 
-	stages[i + 1](function (err) { stageDone(i + 1, err); });
+	stages[i + 1](function (suberr) { stageDone(i + 1, suberr); });
 }
 
 /*
@@ -34,19 +52,65 @@ function stageDone(i, err)
  */
 function checkFiles(files, callback)
 {
-	find(tmpdir, function (err, foundfiles) {
+	var expected_paths = {};
+
+	files.forEach(function (file) {
+		expected_paths[file] = file_paths[file];
+	});
+
+	fs.listMappings(function (err, mappings) {
+		if (files.length === 0 && mappings === undefined &&
+		    err && err['code'] == 'ENOTTY') {
+			err = undefined;
+			mappings = [];
+		}
+
 		if (err)
 			return (callback(err));
 
-		var expected = JSON.stringify(files.sort());
-		var found = JSON.stringify(foundfiles.sort());
+		var i, entry, path;
 
-		if (expected != found)
-			return (callback(new Error('found "' + found + '", ' +
-			    'expected "' + expected + '"')));
+		for (i = 0; i < mappings.length; i++) {
+			entry = mappings[i];
+			mod_assert.ok(Array.isArray(entry));
+			mod_assert.equal(entry.length, 2);
 
-		process.stdout.write('(' + files.length + ' files) ');
-		return (callback());
+			/*
+			 * Currently, hyprlofs GET includes the full path to
+			 * this zone's root directory instead of the full path
+			 * within this zone.  Since we have no way of actually
+			 * knowing what our root directory really is, we just
+			 * look at the *end* of each path.
+			 */
+			if (!expected_paths.hasOwnProperty(entry[1]))
+				break;
+
+			path = entry[0].substr(entry[0].length -
+			    expected_paths[entry[1]].length);
+
+			if (expected_paths[entry[1]] != path)
+				break;
+		}
+
+		if (i < mappings.length)
+			return (callback(new Error('expected ' +
+			    JSON.stringify(makeMappings(files)) +
+			    '; got ' + JSON.stringify(mappings))));
+
+		return (find(tmpdir, function (suberr, foundfiles) {
+			if (suberr)
+				return (callback(suberr));
+
+			var expected = JSON.stringify(files.sort());
+			var found = JSON.stringify(foundfiles.sort());
+
+			if (expected != found)
+				return (callback(new Error('found "' +
+				    found + '", expected "' + expected + '"')));
+
+			process.stdout.write('(' + files.length + ' files) ');
+			return (callback());
+		}));
 	});
 }
 
@@ -76,21 +140,21 @@ function findFiles(dir, prefix, files, callback)
 		var i = 0;
 		var errs = [];
 
-		dirents.forEach(function (ent) {
+		return (dirents.forEach(function (ent) {
 			var newprefix = prefix.length === 0 ? ent :
 			    prefix + '/' + ent;
 
 			i++;
-			
+
 			findFiles(dir + '/' + ent, newprefix,
-			    files, function (err) {
-				if (err)
-					errs.push(err);
+			    files, function (suberr) {
+				if (suberr)
+					errs.push(suberr);
 				if (--i === 0)
 					callback(errs.length > 0 ?
 					    errs[0] : null, files);
 			});
-		});
+		}));
 	});
 }
 
@@ -117,13 +181,13 @@ stages.push(function (callback) {
 	    [ '/etc/release',	'my_release' ],
 	    [ '/usr/bin/cat',	'my_cat' ],
 	    [ '/usr/bin/grep',	'my_grep' ],
-	    [ '/bin/bash',	'some_other_bash' ],
+	    [ '/bin/bash',	'some/other/bash' ]
 	], callback);
 });
 
 stages.push(function (callback) {
 	process.stdout.write('Checking for mappings ... ');
-	checkFiles([ 'my_release', 'my_cat', 'my_grep', 'some_other_bash' ],
+	checkFiles([ 'my_release', 'my_cat', 'my_grep', 'some/other/bash' ],
 	    callback);
 });
 
@@ -141,7 +205,7 @@ stages.push(function (callback) {
 
 stages.push(function (callback) {
 	process.stdout.write('Checking mappings ... ');
-	checkFiles([ 'my_release', 'my_ls', 'some_other_bash' ], callback);
+	checkFiles([ 'my_release', 'my_ls', 'some/other/bash' ], callback);
 });
 
 stages.push(function (callback) {
@@ -173,13 +237,13 @@ stages.push(function (callback) {
 	    [ '/etc/release',	'my_release' ],
 	    [ '/usr/bin/cat',	'my_cat' ],
 	    [ '/usr/bin/grep',	'my_grep' ],
-	    [ '/bin/bash',	'some_other_bash' ],
+	    [ '/bin/bash',	'some/other/bash' ]
 	], callback);
 });
 
 stages.push(function (callback) {
 	process.stdout.write('Checking for mappings ... ');
-	checkFiles([ 'my_release', 'my_cat', 'my_grep', 'some_other_bash' ],
+	checkFiles([ 'my_release', 'my_cat', 'my_grep', 'some/other/bash' ],
 	    callback);
 });
 
