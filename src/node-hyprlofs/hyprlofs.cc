@@ -662,6 +662,11 @@ hyprlofs_entries_populate_add(const Local<Array>& arg)
 	entrylstp->hle_len = arg->Length();
 
 	for (int i = 0; i < arg->Length(); i++) {
+		if (!arg->Get(i)->IsArray()) {
+			hyprlofs_entries_free(entrylstp);
+			return (NULL);
+		}
+
 		Local<Array> entry = Array::Cast(*(arg->Get(i)));
 		if (*entry == NULL || entry->Length() != 2) {
 			hyprlofs_entries_free(entrylstp);
