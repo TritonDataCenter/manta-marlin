@@ -123,8 +123,8 @@ inconsistent while a job is in the "running" state.
 || finish_time || DateTime&nbsp;String || If the job state is "done", this is the approximate time at which the job completed. ||
 || status || String&nbsp;(see&nbsp;below) || If the job state is "done", this describes whether the job completed successfully. ||
 || error_code || String&nbsp;(see&nbsp;below) || If the job status is "failed", this describes why the job failed. ||
+|| output_keys || Array&nbsp;of&nbsp;Strings || List of Manta objects output by this job ||
 || job_log || Array&nbsp;of&nbsp;Objects || Log of job activity ||
-|| objects || Array&nbsp;of&nbsp;Strings || List of Manta objects output by this job ||
 
 The job **state** is one of:
 
@@ -172,13 +172,14 @@ entry of this array describes an individual task, including:
 || taskid || String || Unique identifier for this task within this job. ||
 || host || String || Unique identifier for the host on which this task ran. ||
 || zonename || String || Unique identifier for the compute zone in which the task ran. ||
-|| keys || Array&nbsp;of&nbsp;Strings || List of keys assigned to this task. ||
+|| input_keys || Array&nbsp;of&nbsp;Strings || List of keys assigned to this task. ||
 || start_time || DateTime&nbsp;String || When this task was instantiated. ||
 || state || String || Describes the current state of the task (see below). ||
+|| output_keys || Array&nbsp;of&nbsp;Strings || List of keys output by this task. ||
 || end_time || DateTime&nbsp;String || For completed tasks, the time when the task finished. ||
 || status || String || For tasks in the "done" state, this describes whether the task completed successfully. ||
 || task_data || String || Arbitrary task data (intended for task debugging). ||
-|| discarded_objects || List&nbsp;of&nbsp;Strings || List of Manta objects created by the task but not committed because the task failed or is still running. ||
+|| partial_objects || List&nbsp;of&nbsp;Strings || List of Manta objects created by the task but not committed because the task failed or is still running. ||
 
 The task **state** is one of:
 
@@ -207,6 +208,561 @@ cancel a job.
 
 Returns 204 (no content) on success.
 
+# Job API examples
+
+## Create a job
+
+Here's a job specification:
+
+    $ cat job-input.json
+    {
+        "name": "weekly log rollup",
+        "input_keys": [
+            "logs/2012-03-11.log",
+            "logs/2012-03-12.log",
+            "logs/2012-03-13.log",
+            "logs/2012-03-14.log",
+            "logs/2012-03-15.log",
+            "logs/2012-03-16.log",
+            "logs/2012-03-17.log"
+        ],
+        "bundle_key": [ "bin/log_rollup" ],
+        "job_args": {
+            "reduce_url": "example.com/reduce"
+        }
+    }
+
+Submit the job:
+
+    $ curl -i -X POST -H'content-type: application/json' -T job-input.json \
+          http://$MANTA/jobs
+
+The request looks like this:
+
+    POST /jobs HTTP/1.1
+    Authorization: ...
+    Host: api.example.com
+    Accept: application/json
+    Content-Length: 387
+    Content-Type: application/json
+
+    {
+        "name": "weekly log rollup",
+        "input_keys": [
+            "logs/2012-03-11.log",
+            "logs/2012-03-12.log",
+            "logs/2012-03-13.log",
+            "logs/2012-03-14.log",
+            "logs/2012-03-15.log",
+            "logs/2012-03-16.log",
+            "logs/2012-03-17.log"
+        ],
+        "bundle_key": [ "bin/log_rollup" ],
+        "job_args": {
+            "reduce_url": "example.com/reduce"
+        }
+    }
+
+The response looks like this:
+
+    HTTP/1.1 201 Created
+    Location: /jobs/5e42cd1e-34bb-402f-8796-bf5a2cae47db
+    Access-Control-Allow-Origin: *
+    Access-Control-Allow-Methods: GET, POST
+    Connection: close
+    Date: Tue, 20 Mar 2012 17:19:26 GMT
+    X-Request-Id: 4bcf467e-4b88-4ab4-b7ab-65fad7464de9
+    X-Response-Time: 754
+    Content-Type: application/json
+    Content-MD5: a0cf22d52296f733b0850a721c150ff7
+    Content-Length: 762
+
+    {
+        "jobid": "5e42cd1e-34bb-402f-8796-bf5a2cae47db",
+        "name": "weekly log rollup",
+        "input_keys": [
+            "logs/2012-03-11.log",
+            "logs/2012-03-12.log",
+            "logs/2012-03-13.log",
+            "logs/2012-03-14.log",
+            "logs/2012-03-15.log",
+            "logs/2012-03-16.log",
+            "logs/2012-03-17.log"
+        ],
+        "nkeys": 7,
+        "bundle": "bin/log_rollup",
+        "job_args": {
+            "reduce_url": "example.com/reduce"
+        },
+        "create_time": "2012-03-20T17:19:26.732Z",
+        "state": "queued",
+        "keys_completed": [],
+        "nkeys_completed": 0,
+        "tasks": [],
+        "output_keys": [],
+        "job_log": [ {
+            "date": "2012-03-20T17:19:26.732Z",
+            "event": "state_change",
+            "new_state": "queued",
+            "message": "job created and queued"
+        } ]
+    }
+
+## Checking job state while it is running
+
+    $ curl http://$MANTA/jobs/5e42cd1e-34bb-402f-8796-bf5a2cae47db
+
+The response looks like this:
+
+    HTTP/1.1 200 OK
+    Location: /jobs/5e42cd1e-34bb-402f-8796-bf5a2cae47db
+    Access-Control-Allow-Origin: *
+    Access-Control-Allow-Methods: GET, POST
+    Connection: close
+    Date: Tue, 20 Mar 2012 17:21:40 GMT
+    X-Request-Id: a9ad378a-7449-11e1-a7f2-57be1e07436a
+    X-Response-Time: 652
+    Content-Type: application/json
+    Content-MD5: 306f9070b03edd6b3ad9eab91fb2fbb4
+    Content-Length: 3503
+    
+    {
+        "jobid": "4bcf467e-4b88-4ab4-b7ab-65fad7464de9",
+        "name": "weekly log rollup",
+        "input_keys": [
+            "logs/2012-03-11.log",
+            "logs/2012-03-12.log",
+            "logs/2012-03-13.log",
+            "logs/2012-03-14.log",
+            "logs/2012-03-15.log",
+            "logs/2012-03-16.log",
+            "logs/2012-03-17.log"
+        ],
+        "nkeys": 7,
+        "bundle": "bin/log_rollup",
+        "job_args": {
+            "reduce_url": "example.com/reduce"
+        },
+        "create_time": "2012-03-20T17:19:26.732Z",
+        "state": "running",
+        "keys_completed": [
+                "logs/2012-03-11.log",
+                "logs/2012-03-12.log",
+                "logs/2012-03-13.log",
+                "logs/2012-03-14.log",
+                "logs/2012-03-16.log"
+        ],
+        "nkeys_completed": 5,
+        "tasks": [ {
+            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "host": "2F16",
+            "zonename": "e7b35c46-c36d-4e02-8cde-6fdf2695af15", 
+            "input_keys": [
+                "logs/2012-03-11.log",
+                "logs/2012-03-12.log",
+                "logs/2012-03-16.log"
+            ],
+            "output_keys": [
+                "log_summary/2012-03-11.txt",
+                "log_summary/2012-03-12.txt",
+                "log_summary/2012-03-16.txt"
+            ],
+            "start_time": "2012-03-20T17:19:30.102Z",
+            "state": "done",
+            "end_time": "2012-03-20T17:21:25.327Z",
+            "status": "success"
+        }, {
+            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "host": "2F20",
+            "zonename": "b01698b6-7447-11e1-8f74-fbabac25f69a",
+            "input_keys": [
+                "logs/2012-03-13.log",
+                "logs/2012-03-14.log",
+                "logs/2012-03-15.log",
+                "logs/2012-03-17.log"
+            ],
+            "start_time": "2012-03-20T17:19:33.302Z",
+            "state": "running",
+            "output_keys": [
+                "log_summary/2012-03-13.txt",
+                "log_summary/2012-03-14.txt"
+            ],
+            "partial_keys": [
+                "log_summary/2012-03-15.txt"
+            ]
+        } ],
+        "output_keys": [
+            "log_summary/2012-03-11.txt",
+            "log_summary/2012-03-12.txt",
+            "log_summary/2012-03-13.txt",
+            "log_summary/2012-03-14.txt",
+            "log_summary/2012-03-15.txt",
+            "log_summary/2012-03-16.txt",
+            "log_summary/2012-03-17.txt"
+        ],
+        "job_log": [ {
+            "date": "2012-03-20T17:19:26.732Z",
+            "event": "state_change",
+            "new_state": "queued",
+            "message": "job created and queued"
+        }, {
+            "date": "2012-03-20T17:19:30.102Z",
+            "event": "state_change",
+            "new_state": "running",
+            "message": "job started running"
+        }, {
+            "date": "2012-03-20T17:19:30.102Z",
+            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "event": "state_change",
+            "new_state": "loading",
+            "message": "task started loading"
+        }, {
+            "date": "2012-03-20T17:19:33.302Z",
+            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "event": "state_change",
+            "new_state": "loading",
+            "message": "task started loading"
+        }, {
+            "date": "2012-03-20T17:19:40.102Z",
+            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "event": "state_change",
+            "new_state": "running",
+            "message": "task started running"
+        }, {
+            "date": "2012-03-20T17:19:41.502Z",
+            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "event": "state_change",
+            "new_state": "running",
+            "message": "task started running"
+        }, {
+            "date": "2012-03-20T17:21:25.327Z",
+            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "event": "state_change",
+            "new_state": "done",
+            "message": "task completed"
+        } ]
+    }
+
+This job processes each input object (a daily log file) and outputs a summary
+object (for that day's events).  You can see the precise sequence of events by
+examining the job log.
+
+In this example, the job was distributed to two nodes, 2F16 and 2F20, where one
+task was run on each node.  Each task got a few of the 7 input objects.  The
+first task has completed its 3 objects, while the second is processing its 3rd
+input key.
+
+## Checking completed job state
+
+The response for a successfully completed job looks like this:
+
+    HTTP/1.1 200 OK
+    Location: /jobs/5e42cd1e-34bb-402f-8796-bf5a2cae47db
+    Access-Control-Allow-Origin: *
+    Access-Control-Allow-Methods: GET, POST
+    Connection: close
+    Date: Tue, 20 Mar 2012 17:21:40 GMT
+    X-Request-Id: a9ad378a-7449-11e1-a7f2-57be1e07436a
+    X-Response-Time: 652
+    Content-Type: application/json
+    Content-MD5: 306f9070b03edd6b3ad9eab91fb2fbb4
+    Content-Length: 3503
+    
+    {
+        "jobid": "4bcf467e-4b88-4ab4-b7ab-65fad7464de9",
+        "name": "weekly log rollup",
+        "input_keys": [
+            "logs/2012-03-11.log",
+            "logs/2012-03-12.log",
+            "logs/2012-03-13.log",
+            "logs/2012-03-14.log",
+            "logs/2012-03-15.log",
+            "logs/2012-03-16.log",
+            "logs/2012-03-17.log"
+        ],
+        "nkeys": 7,
+        "bundle": "bin/log_rollup",
+        "job_args": {
+            "reduce_url": "example.com/reduce"
+        },
+        "create_time": "2012-03-20T17:19:26.732Z",
+        "state": "done",
+        "finish_time": "2012-03-20T17:22:35.246Z",
+        "status": "success",
+        "keys_completed": [
+                "logs/2012-03-11.log",
+                "logs/2012-03-12.log",
+                "logs/2012-03-13.log",
+                "logs/2012-03-14.log",
+                "logs/2012-03-15.log",
+                "logs/2012-03-16.log",
+                "logs/2012-03-17.log"
+        ],
+        "nkeys_completed": 7,
+        "tasks": [ {
+            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "host": "2F16",
+            "zonename": "e7b35c46-c36d-4e02-8cde-6fdf2695af15", 
+            "input_keys": [
+                "logs/2012-03-11.log",
+                "logs/2012-03-12.log",
+                "logs/2012-03-16.log"
+            ],
+            "output_keys": [
+                "log_summary/2012-03-11.txt",
+                "log_summary/2012-03-12.txt",
+                "log_summary/2012-03-16.txt"
+            ],
+            "start_time": "2012-03-20T17:19:30.102Z",
+            "state": "done",
+            "end_time": "2012-03-20T17:21:25.327Z",
+            "status": "success"
+        }, {
+            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "host": "2F20",
+            "zonename": "b01698b6-7447-11e1-8f74-fbabac25f69a",
+            "input_keys": [
+                "logs/2012-03-13.log",
+                "logs/2012-03-14.log",
+                "logs/2012-03-15.log",
+                "logs/2012-03-17.log"
+            ],
+            "output_keys": [
+                "log_summary/2012-03-13.txt",
+                "log_summary/2012-03-14.txt",
+                "log_summary/2012-03-15.txt",
+                "log_summary/2012-03-17.txt"
+            ],
+            "start_time": "2012-03-20T17:19:33.302Z",
+            "state": "done",
+            "end_time": "2012-03-20T17:22:35.246Z",
+            "status": "success"
+        } ],
+        "output_keys": [
+            "log_summary/2012-03-11.txt",
+            "log_summary/2012-03-12.txt",
+            "log_summary/2012-03-13.txt",
+            "log_summary/2012-03-14.txt",
+            "log_summary/2012-03-15.txt",
+            "log_summary/2012-03-16.txt",
+            "log_summary/2012-03-17.txt"
+        ],
+        "job_log": [ {
+            "date": "2012-03-20T17:19:26.732Z",
+            "event": "state_change",
+            "new_state": "queued",
+            "message": "job created and queued"
+        }, {
+            "date": "2012-03-20T17:19:30.102Z",
+            "event": "state_change",
+            "new_state": "running",
+            "message": "job started running"
+        }, {
+            "date": "2012-03-20T17:19:30.102Z",
+            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "event": "state_change",
+            "new_state": "loading",
+            "message": "task started loading"
+        }, {
+            "date": "2012-03-20T17:19:33.302Z",
+            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "event": "state_change",
+            "new_state": "loading",
+            "message": "task started loading"
+        }, {
+            "date": "2012-03-20T17:19:40.102Z",
+            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "event": "state_change",
+            "new_state": "running",
+            "message": "task started running"
+        }, {
+            "date": "2012-03-20T17:19:41.502Z",
+            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "event": "state_change",
+            "new_state": "running",
+            "message": "task started running"
+        }, {
+            "date": "2012-03-20T17:21:25.327Z",
+            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "event": "state_change",
+            "new_state": "done",
+            "message": "task completed"
+        }, {
+            "date": "2012-03-20T17:22:35.246Z",
+            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "event": "state_change",
+            "new_state": "done",
+            "message": "task completed"
+        }, {
+            "date": "2012-03-20T17:22:35.246Z",
+            "event": "state_change",
+            "new_state": "done",
+            "message": "job completed"
+        } ]
+    }
+
+## Checking failed job state
+
+Here's what a failed job's state looks like:
+
+    HTTP/1.1 200 OK
+    Location: /jobs/5e42cd1e-34bb-402f-8796-bf5a2cae47db
+    Access-Control-Allow-Origin: *
+    Access-Control-Allow-Methods: GET, POST
+    Connection: close
+    Date: Tue, 20 Mar 2012 17:21:40 GMT
+    X-Request-Id: a9ad378a-7449-11e1-a7f2-57be1e07436a
+    X-Response-Time: 652
+    Content-Type: application/json
+    Content-MD5: 306f9070b03edd6b3ad9eab91fb2fbb4
+    Content-Length: 3503
+    
+    {
+        "jobid": "4bcf467e-4b88-4ab4-b7ab-65fad7464de9",
+        "name": "weekly log rollup",
+        "input_keys": [
+            "logs/2012-03-11.log",
+            "logs/2012-03-12.log",
+            "logs/2012-03-13.log",
+            "logs/2012-03-14.log",
+            "logs/2012-03-15.log",
+            "logs/2012-03-16.log",
+            "logs/2012-03-17.log"
+        ],
+        "nkeys": 7,
+        "bundle": "bin/log_rollup",
+        "job_args": {
+            "reduce_url": "example.com/reduce"
+        },
+        "create_time": "2012-03-20T17:19:26.732Z",
+        "state": "done",
+        "finish_time": "2012-03-20T17:22:35.246Z",
+        "status": "failed",
+        "error_code": "task_failed",
+        "keys_completed": [
+                "logs/2012-03-11.log",
+                "logs/2012-03-12.log",
+                "logs/2012-03-13.log",
+                "logs/2012-03-14.log",
+                "logs/2012-03-16.log",
+                "logs/2012-03-17.log"
+        ],
+        "nkeys_completed": 6,
+        "tasks": [ {
+            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "host": "2F16",
+            "zonename": "e7b35c46-c36d-4e02-8cde-6fdf2695af15", 
+            "input_keys": [
+                "logs/2012-03-11.log",
+                "logs/2012-03-12.log",
+                "logs/2012-03-16.log"
+            ],
+            "output_keys": [
+                "log_summary/2012-03-11.txt",
+                "log_summary/2012-03-12.txt",
+                "log_summary/2012-03-16.txt"
+            ],
+            "start_time": "2012-03-20T17:19:30.102Z",
+            "state": "done",
+            "end_time": "2012-03-20T17:21:25.327Z",
+            "status": "success"
+        }, {
+            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "host": "2F20",
+            "zonename": "b01698b6-7447-11e1-8f74-fbabac25f69a",
+            "input_keys": [
+                "logs/2012-03-13.log",
+                "logs/2012-03-14.log",
+                "logs/2012-03-17.log"
+            ],
+            "output_keys": [
+                "log_summary/2012-03-13.txt",
+                "log_summary/2012-03-14.txt",
+                "log_summary/2012-03-17.txt"
+            ],
+            "partial_keys": [
+                "log_summary/2012-03-15.txt"
+            ]
+            "start_time": "2012-03-20T17:19:33.302Z",
+            "state": "done",
+            "end_time": "2012-03-20T17:22:35.246Z",
+            "status": "failed"
+            "error_code": "failed",
+            "task_data": {
+                "message": "corrupt log record"
+            }
+        } ],
+        "output_keys": [
+            "log_summary/2012-03-11.txt",
+            "log_summary/2012-03-12.txt",
+            "log_summary/2012-03-13.txt",
+            "log_summary/2012-03-14.txt",
+            "log_summary/2012-03-16.txt",
+            "log_summary/2012-03-17.txt"
+        ],
+        "job_log": [ {
+            "date": "2012-03-20T17:19:26.732Z",
+            "event": "state_change",
+            "new_state": "queued",
+            "message": "job created and queued"
+        }, {
+            "date": "2012-03-20T17:19:30.102Z",
+            "event": "state_change",
+            "new_state": "running",
+            "message": "job started running"
+        }, {
+            "date": "2012-03-20T17:19:30.102Z",
+            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "event": "state_change",
+            "new_state": "loading",
+            "message": "task started loading"
+        }, {
+            "date": "2012-03-20T17:19:33.302Z",
+            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "event": "state_change",
+            "new_state": "loading",
+            "message": "task started loading"
+        }, {
+            "date": "2012-03-20T17:19:40.102Z",
+            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "event": "state_change",
+            "new_state": "running",
+            "message": "task started running"
+        }, {
+            "date": "2012-03-20T17:19:41.502Z",
+            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "event": "state_change",
+            "new_state": "running",
+            "message": "task started running"
+        }, {
+            "date": "2012-03-20T17:21:25.327Z",
+            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "event": "state_change",
+            "new_state": "done",
+            "message": "task completed"
+        }, {
+            "date": "2012-03-20T17:22:35.246Z",
+            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "event": "state_change",
+            "new_state": "done",
+            "message": "task failed"
+        }, {
+            "date": "2012-03-20T17:22:35.246Z",
+            "event": "state_change",
+            "new_state": "done",
+            "message": "job completed"
+        } ]
+    }
+
+In this example, we can see that the second task failed partway through.  We
+see this from both the task state and the job log.  Since we see that it had
+started writing the summary for log_summary/2012-03-15.txt, we know it failed
+on this file, and we could next look to see how far it got.  We also have the
+error message reported by the task: "corrupt log record".  The more information
+the task reports, the better the chance of root causing the failure from the
+first occurrence.
+
+
 # Task API
 
 The Task API is used by tasks (user code running in compute zones on Manta
@@ -226,12 +782,37 @@ Retrieves information about the current job and task.
 || job_name || String || Job label (human-readable, not unique) ||
 || job_args || Object || Arbitrary user-specified job arguments ||
 || taskid || String || Task identifier ||
-|| task_keys || Array&nbsp;of&nbsp;Array&nbsp;of&nbsp;Strings || List of Manta objects this task is expected to process. Each entry of this array is an array with two fields: the object key, and the full path to the corresponding file. ||
+|| input_keys || Array&nbsp;of&nbsp;Array&nbsp;of&nbsp;Strings || List of Manta objects this task is expected to process. Each entry of this array is an array with two fields: the object key, and the full path to the corresponding file. ||
 || task_data || Object || Arbitrary task data (intended for task debugging) ||
 
 Object metadata (e.g., user-specified headers) are not included in the task
 info.  Users can retrieve this by querying Manta directly.
 
+### Example
+
+    HTTP/1.1 200 OK
+    Access-Control-Allow-Origin: *
+    Access-Control-Allow-Methods: GET, POST
+    Connection: close
+    Date: Tue, 20 Mar 2012 17:21:40 GMT
+    X-Request-Id: a9ad378a-7449-11e1-a7f2-57be1e07436a
+    X-Response-Time: 5
+    Content-Type: application/json
+    
+    {
+        "jobid": "5e42cd1e-34bb-402f-8796-bf5a2cae47db",
+        "job_name": "weekly log rollup",
+        "job_args": {
+            "reduce_url": "example.com/reduce"
+        },
+        "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+        "input_keys": [
+            "logs/2012-03-11.log",
+            "logs/2012-03-12.log",
+            "logs/2012-03-16.log"
+        ]
+    }
+ 
 
 ## POST /checkpoint
 
@@ -257,6 +838,30 @@ complete should be done before the final call to this URI.
 
 Returns 204 (no content) on success.
 
+### Example
+
+Request:
+
+    POST /checkpoint HTTP/1.1
+    Authorization: ...
+    Host: api.example.com
+    Accept: application/json
+    Content-Type: application/json
+
+    {
+        "keys": [ "logs/2012-03-11.log" ]
+    }
+
+Response:
+
+    HTTP/1.1 204 No content
+    Access-Control-Allow-Origin: *
+    Access-Control-Allow-Methods: GET, POST
+    Connection: close
+    Date: Tue, 20 Mar 2012 17:19:26 GMT
+    X-Request-Id: 4bcf467e-4b88-4ab4-b7ab-65fad7464de9
+    X-Response-Time: 32
+
 
 ## PUT /object/:key
 
@@ -267,6 +872,7 @@ last call to `POST /checkpoint` will be discarded if the job fails.  Such
 objects will not be included in the job's output, but will be listed in the task
 state for *postmortem* analysis.
 
+For examples, see the Manta documentation.
 
 ## PUT /task_data
 
@@ -284,11 +890,33 @@ you to represent any other kind of data.
 For data larger than 16K, create new objects on Manta instead, and if necessary,
 record the keys in the task_data.
 
-
 ### Returns
 
 Returns 204 (no content) on success.
 
+### Example
+
+Request:
+
+    POST /task_data HTTP/1.1
+    Authorization: ...
+    Host: api.example.com
+    Accept: application/json
+    Content-Type: application/json
+
+    {
+        "message": "corrupt log record"
+    }
+
+Response:
+
+    HTTP/1.1 204 No content
+    Access-Control-Allow-Origin: *
+    Access-Control-Allow-Methods: GET, POST
+    Connection: close
+    Date: Tue, 20 Mar 2012 17:19:26 GMT
+    X-Request-Id: 4bcf467e-4b88-4ab4-b7ab-65fad7464de9
+    X-Response-Time: 12
 
 ## POST /fail
 
@@ -298,27 +926,43 @@ Fail the current task (and job).  Any objects created since the last call to
 
 ### Input
 
-|| **Field** || **Type** || **Description** ||
-|| message || String || error message ||
-
-Any additional fields may also be specified, and they will be available in the
-job state.
+Any input is saved to task_data as though it had been PUT directly to `/task_data`.
+If not input is specified, task_data is unchanged.
 
 ### Returns
 
-Returns 200 (OK) on success, but may not return at all, as the task may be
-terminated immediately.
+Returns 204 (no content) on success, but may not return at all, as the task may
+be terminated immediately.
 
+### Example
+
+Request:
+
+    POST /fail HTTP/1.1
+    Authorization: ...
+    Host: api.example.com
+    Accept: application/json
+    Content-Type: application/json
+
+    {
+        "message": "corrupt log record"
+    }
+
+Response:
+
+    HTTP/1.1 204 No content
+    Access-Control-Allow-Origin: *
+    Access-Control-Allow-Methods: GET, POST
+    Connection: close
+    Date: Tue, 20 Mar 2012 17:19:26 GMT
+    X-Request-Id: 4bcf467e-4b88-4ab4-b7ab-65fad7464de9
+    X-Response-Time: 12
 
 ## POST /abort
 
 Exactly like `POST /fail`, except that additional *postmortem* state will be
 kept around and linked to the job state.  Core dumps of currently running user
 processes and the entire filesystem contents will be preserved.
-
-# Examples
-
-# Monitoring and debugging
 
 # Implementing use cases
 
@@ -332,9 +976,9 @@ Sizing
 Create, reset
 Tuning
 
-## Job API
+## Job implementation
 
-## Task API
+## Task implementation
 
 zsock
 
