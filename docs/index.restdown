@@ -970,17 +970,126 @@ processes and the entire filesystem contents will be preserved.
 
 # Implementation
 
+## Overview of a job
+
+Requests for the Jobs API come in through the Manta web API and get proxied to
+a Marlin Controller (MC).  The immutable properties (assigned id, job name, job
+params, etc.) are stored persistently, then the user's request returns
+immediately.
+
+Sometime later (possibly immediately, but asynchronously), the MC queries Manta
+(Moray, specifically) to find out where each of the job's input keys are
+located.  Using this information the MC figures out which compute nodes should
+process which keys and submits requests to agents running on each of the
+assigned compute nodes.  These requests include the job parameters and the set
+of keys that the target CN must process.  Each CN responds with one or more
+tasks that will process the job on that node.
+
+At this point, the MC's main job is to receive progress updates from each of the
+compute nodes, update its internal and persistent state, and service job status
+requests for this information.  When the MC determines that all tasks for this
+job have completed, it marks the job "done" and records that persistently.  At
+that point, all of the job's state is forever immutable, and it only exists at
+the MC.
+
+## CN agent
+
+When the agent receives the request for a new job, it figures out how many tasks
+to split that request into (probably always 1 to start with) and reports that
+back to the MC.  After that, it reports all task state changes back to the MC
+(task queued, loaded, running, timed out/failed/succeeded).
+
+If there are no compute zones available at the moment, tasks are enqueued for
+later.  Otherwise, the agent picks CZs to run each of the tasks and does the
+following:
+
+1. Halts the zone, if it's not already halted.
+2. "zfs rollback" to the zone's origin snapshot
+3. Boots the zone.
+4. Creates a hyprlofs mount for the files.
+5. Sets up the zsock server in the zone. (This could actually be baked into the
+   zone's dataset, in which case this step is skipped.)
+6. Downloads the job's bundle into the zone, unpacks it.
+7. Finally, invokes the bundle.
+
+Steps 5, 6, and 7 have to be done in the context of the zone. We'll probably
+need an agent inside the zone in order to monitor the contract anyway, so this
+agent can be responsible bootstrapping the user's code: downloading the bundle,
+unpacking it, and invoking it.
+
+The agent also has to implement the Tasks API. Users will invoke that API via
+calls to an HTTP server on localhost (see step 5 above) which proxies all
+requests via a zsock to the CN agent.  The CN agent knows which zone each
+request is coming from, so it knows which task and job the request is associated
+with.
+
+`/task_info` and `/task_data` are pretty simple: they just retrieve and store
+data from the agent's persistent state, which already has to exist to manage the
+job.
+
+`/objects/:key` makes a note in the task state that this object is being
+written, and then (first approach) proxies the request directly to manta. But
+see "open questions" below.
+
+`/checkpoint` updates the persistent state for the task to indicate that all
+objects written since the last checkpoing have been committed.
+
+`/fail` also updates the persistent state, but indicates that new objects should
+be discarded.  They won't actually be deleted, but marked as discarded in the
+job state so users can look at them later.  After that, this request terminates
+the zone.
+
+`/abort` is like `/fail`, except that before terminating it gcores all processes
+in the user's contract and does an incremental "zfs send" of the zone to a new
+manta file.  (We'll want some automated mechanism to reconstruct the user's zone
+based on this, presumably by "zfs receive" the dataset and then "zfs receive -i"
+the stream associated with this task.)
+
+To terminate a zone, the CN agent halts it, does a "zfs rollback" to the origin,
+and updates the MC.
+
+
+## Job state
+
+* The MC always owns the immutable state for a job.
+* While a job is running, the run state of the task is comprised of the run
+  state of its tasks, which lives authoritatively on the corresponding CNs.
+  Agents update the MC with task progress, and the MC caches this task state to
+  service job status requests from the user and to determine when the job has
+  completed.
+* CN agents only keep state about tasks that are currently running or queued to
+  run on that node.  They must keep state about already-run tasks until the MC
+  has acked their report that the job completed.
+* Once the job has completed, all of its state is immutable.  The MC keeps this
+  information for future state requests.
+
+## Open questions:
+
+Roughly in order of importance:
+
+* Need to examine all kinds of failures: agent, CN, network, user code, etc.
+* What does the MC actually look like? Presumably it must be HA.
+* How do the components communicate? AMQP or HTTP?
+* [How] can we manage the hyprlofs mount from the global zone?
+* How does the agent manage persistent state? It needs to survive agent failure,
+  but it's less clear that it must (or even should) survive CN failure.  It
+  certainly doesn't have to be available when the CN fails, so it may as well be
+  local storage.
+* When user code wants to write files to manta, how exactly does that work? Do
+  we have a way to tell Manta to write one copy on the local box, and if so, do
+  we avoid sending it across the network twice?
+* How do we monitor the user code's contract? Presumably we'll need an agent
+  in the zone that bootstraps their code and watches the contract (but then we
+  need to figure out what to do if that guy dies -- adopt the contract?)
+* What's the algorithm for assigning tasks to compute nodes? A pretty dumb one
+  will probably suffice for a while, but it might be nice if the MC kept track
+  of what everyone was working on to better distribute work.
+
 ## Compute zones
 
 Sizing
 Create, reset
 Tuning
-
-## Job implementation
-
-## Task implementation
-
-zsock
 
 ## Management API?
 
