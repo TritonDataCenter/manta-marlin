@@ -1,7 +1,7 @@
 ---
 title: Marlin
 markdown2extras: wiki-tables, code-friendly
-apisections: Job API, Task API
+apisections: Job API, Task Control API
 ---
 
 # Marlin
@@ -14,11 +14,12 @@ document describes the desired end state for version 1.
 
 Marlin facilitates the following use cases:
 
-* MapReduce in a generic environment (e.g., video transcoding)
+* MapReduce in a generic environment (e.g., log analysis)
 * MapReduce in a node-based environment (i.e., make it particularly easy for
-  node apps; e.g., log analysis)
-* Straight Map with no reduce (e.g., rendering)
+  node apps)
+* Straight Map with no reduce (e.g., video transcoding)
 * Allowing others to run compute on your data
+* Hadoop itself?
 
 Of course, we want this to be easy to use, monitor, and debug.  A good
 barometer is that word count, the MR equivalent of "hello world", should be
@@ -27,8 +28,8 @@ trivial to write.
 Marlin defines two public APIs:
 
 * Job API: allows end users to submit, manage, and monitor compute jobs
-* Task API: used by user code running inside Marlin to coordinate execution and
-  report progress.
+* Task Control API: used by user code running inside Marlin to coordinate
+  execution and report progress.
 
 All DateTimes in these APIs use W3C DTF in UTC ("YYYY-MM-DDThh:mm:ss.sZ").
 
@@ -43,18 +44,16 @@ and lets end users submit, manage, and monitor compute jobs.
 
 Submit a new **job** to be run immediately under Marlin.
 
-Each job defines a set of input Manta objects (identified by keys) on which to
-operate and a **bundle** of code that will run within Marlin to process a set of
-objects.  When the job is submitted, the **bundle** is distributed to Manta
-nodes that store the input objects.  On each node, one or more **tasks** will be
-spun up inside **compute zones** to process the objects stored on that node.
-Each task gets its own copy of the bundle and invokes it to process its input
-objects.  Tasks must report when they have succeeded or failed, and may also
-report progress as they go.  The system may time out tasks that are taking too
-long.
+Each job defines a set of input Manta objects on which to operate and code to
+process each of these objects.  When the job is submitted, the system divides it
+into several tasks and schedules each task to run on a single Manta storage node
+on whatever input keys are stored on that node.  Each task runs inside a
+**compute zone** on that node.  Tasks must report when they have succeeded or
+failed, and may also report progress as they go.  The system may time out tasks
+that are taking too long.
 
-While the job is running, users can retrieve the state of the job to see what
-tasks have completed, what tasks are running, which keys have been processed,
+While the job is running, users can retrieve the status of the job to see which
+tasks have completed, which tasks are running, which keys have been processed,
 and which keys are left.
 
 When all tasks complete, the job itself completes.  The job succeeds if all
@@ -64,141 +63,80 @@ tasks succeed, and the job fails otherwise.  Failed tasks are not retried.
 ### Inputs
 
 || **Field** || **Type** || **Description** ||
-|| name || String || Human-readable job label (not necessarily unique). ||
-|| input_keys || Array&nbsp;of&nbsp;Strings || List of Manta objects to process. ||
-|| bundle_key || String || Manta key for the job's bundle. ||
-|| bundle_exec || String || For tarball bundles only, the script that starts each job. For non-tarball bundles, the bundle itself is assumed to be executable, and this property is ignored. ||
-|| bundle_contents || String || Inline bundle only: base64-encoded contents of the bundle. ||
-|| bundle_type || String || Inline bundle only: specifies the bundle's content type. ||
-|| job_args || Object || Arbitrary JSON object that will be available to each task.  For MapReduce, this could specify a list of reducer nodes to stream data to.  This can be an arbitrary JSON object; applications that don't use JSON can use any base64-encoded content here. ||
+|| jobName || String || Human-readable job label (not necessarily unique). ||
+|| bundle || Object || Describes the code that implements the body of each task. ||
+|| bundle.assets || Array of Strings || List of Manta objects (identified by key) that will be made available in the compute zone.  These should be binaries, libraries, or other shared objects used to actually run the job, not inputs to the job. ||
+|| bundle.exec || String || Script to run to actually launch the task. ||
+|| bundle.args || Object || User-defined task arguments.  This is just an arbitrary JSON object that will be available to each task, like an array of reducer nodes. ||
+|| inputKeys || Array&nbsp;of&nbsp;Strings || List of Manta objects to process. ||
 
-Bundle contents are specified in one of two ways:
-
-1. As a Manta object identified by `bundle_key`.
-2. Inline, using `bundle_contents` to encode the file contents and `bundle_type`
-   to specify the content type.  This form is primarily for convenience for
-   simple examples.
-
-Based on the content type, Marlin will determine whether the bundle is an
-archive or directly executable.  For archive bundles, the archive will be
-extracted at `/` inside each compute zone, and then the executable identified by
-`bundle_start` will be invoked.  For executable bundles, the bundle will be
-dropped into each compute zone and executed directly, so it can be any native
-binary or a script with a shebang line that works in the compute zone (e.g.,
-`#!/usr/bin/bash`).
+You specify the code that runs in each task with the "bundle" object.  Any Manta
+keys listed in "bundle.assets" will be made available under "/assets" in the
+compute zone before the task is started.  The task is started by invoking
+"bundle.exec".
 
 ### Returns
 
 On success, returns 201 with the URI for the job in a Location header and the
-full state of the job (as returned by `GET /jobs/:jobid`) in the response.
+state of the job as returned by `GET /jobs/:jobId`.
 
-### Errors
+### Example
 
-||**Error Code**||**Description**||
-||InvalidArgument||If the job parameters are invalid||
-||MissingParameter||If required job parameters are missing||
+Here's an example job that uses a script stored on Manta for the body of the
+task:
+
+    {
+        "jobName": "monthly log summary",
+        "bundle": {
+            "assets": "bin/log_rollup",
+            "exec": "/assets/bin/log_rollup",
+            "args": { "reducer": "example.com/reducer" }
+        },
+        "inputKeys": [
+            "logs/2012-03-01.log",
+            "logs/2012-03-02.log",
+            "logs/2012-03-03.log",
+            ...
+            "logs/2012-03-31.log"
+        ]
+    }
 
 
-## GET /jobs/:jobid
+## GET /jobs
 
-Returns the job's current state.  The system makes a best effort to keep this
-information updated, but any of the runtime state may be outdated or
-inconsistent while a job is in the "running" state.
+Returns the list of a user's jobs.
 
+### Inputs
+
+|| **Field** || **Type** || **Description** ||
+|| state || Array of Strings || Returns only jobs in one of the given states. ||
 
 ### Returns
 
-|| **Job&nbsp;field** || **Type** || **Description** ||
-|| jobid || String || Unique identifier for this job. ||
-|| name || String || Human-readable job label (not necessarily unique), provided when the job was created. ||
-|| input_keys || Array&nbsp;of&nbsp;Strings || List of keys to be processed by this job. ||
-|| nkeys || Number || Total number of keys to be processed by this job. ||
-|| bundle || String || Either "inline" or a Manta key identifying the bundle for this job. ||
-|| job_args || Object || Job argument provided when the job was created. ||
-|| create_time || DateTime&nbsp;String || Time at which the job was submitted. ||
-|| state || String&nbsp;(see below) || Describes current job state. ||
-|| keys_completed || Array&nbsp;of&nbsp;Strings || the list of keys which have been successfully processed. ||
-|| nkeys_completed || Number || the number of keys which have been successfully processed. ||
-|| tasks || Array&nbsp;of&nbsp;Objects || Individual task states (see below). ||
-|| finish_time || DateTime&nbsp;String || If the job state is "done", this is the approximate time at which the job completed. ||
-|| status || String&nbsp;(see&nbsp;below) || If the job state is "done", this describes whether the job completed successfully. ||
-|| error_code || String&nbsp;(see&nbsp;below) || If the job status is "failed", this describes why the job failed. ||
-|| output_keys || Array&nbsp;of&nbsp;Strings || List of Manta objects output by this job ||
-|| job_log || Array&nbsp;of&nbsp;Objects || Log of job activity ||
+On success, returns 200 with an array of objects, each with the following
+fields:
 
-The job **state** is one of:
+|| **Field** || **Type** || **Description** ||
+|| jobId || String || See "Inputs" to `POST /jobs`. ||
+|| jobName  || String || See "Inputs" to `POST /jobs`. ||
+|| state || String || See "Returns" for `GET /jobs/:jobId`. ||
 
-|| **Job&nbsp;state** || **Meaning** ||
-|| queued || The job has been created but it's not yet running. That is, no tasks have been instantiated to execute the job yet. ||
-|| running || The job is currently running on at least one storage node. That is, one or more tasks have been instantiated to execute the job. Some or all of those tasks may have already completed, but not all tasks have been instantiated and completed. ||
-|| done || All of the job's tasks have completed or the job has been aborted. ||
+### Example
 
-For completed jobs, the job **status** is one of "success" (if all tasks
-completed successfully) or "failed" (otherwise).
+Example input:
 
-For failed jobs, the **error_code** describes why the job failed:
+    GET /jobs?state=running
 
-|| **Job&nbsp;error&nbsp;code** || **Meaning** ||
-|| job_cancelled || the job was explicitly cancelled ||
-|| task_failed || one or more of the job's tasks failed ||
+Example return value:
 
-#### Job log
-
-The **job_log** field includes entries for all state changes for the job itself
-as well as all tasks associated with the job.  This may be useful for
-understanding job failures and performance *postmortem*.  Each entry has the
-following fields:
-
-|| **Job&nbsp;log&nbsp;entry&nbsp;field** || **Type** || **Description** ||
-|| date || DateTime&nbsp;String || Time of log entry ||
-|| taskid&nbsp;(task&nbsp;entries&nbsp;only) || String || Identifier for a given task ||
-|| event || String || Either "state_change" or "message" ||
-|| message || String || Human-readable message ||
-|| new_state&nbsp;(state&nbsp;change&nbsp;entries&nbsp;only) || String || New state name ||
-
-#### Job progress
-
-Callers can get a high level view of job progress by looking at
-**nkeys_completed** compared with **nkeys**.  They can see precisely which keys
-have been completed by examining "keys_completed".  These mechanisms rely on
-tasks to report progress as they process each object, though tasks are not
-required to report progress until they finish processing all of their input.
-
-The **tasks** field shows more detailed information about how the job was
-distributed to various servers and the status of each task on each server.  Each
-entry of this array describes an individual task, including:
-
-|| **Task&nbsp;field** || **Type** || **Meaning** ||
-|| taskid || String || Unique identifier for this task within this job. ||
-|| host || String || Unique identifier for the host on which this task ran. ||
-|| zonename || String || Unique identifier for the compute zone in which the task ran. ||
-|| input_keys || Array&nbsp;of&nbsp;Strings || List of keys assigned to this task. ||
-|| start_time || DateTime&nbsp;String || When this task was instantiated. ||
-|| state || String || Describes the current state of the task (see below). ||
-|| output_keys || Array&nbsp;of&nbsp;Strings || List of keys output by this task. ||
-|| end_time || DateTime&nbsp;String || For completed tasks, the time when the task finished. ||
-|| status || String || For tasks in the "done" state, this describes whether the task completed successfully. ||
-|| task_data || String || Arbitrary task data (intended for task debugging). ||
-|| partial_objects || List&nbsp;of&nbsp;Strings || List of Manta objects created by the task but not committed because the task failed or is still running. ||
-
-The task **state** is one of:
-
-|| **Task&nbsp;state** || **Meaning** ||
-|| queued || The task has been planned, but has not started running yet. ||
-|| loading || Marlin is preparing the compute zone to run the task. This step includes downloading and extracting the job's bundle. ||
-|| running || The task is currently running. ||
-|| done || The task is no longer running. ||
-
-For tasks that are "done", the task **status** is either "success" or "failure".
-For failed tasks, the **error_code** indicates why the task failed:
-
-|| **Error&nbsp;code** || **Meaning** ||
-|| abnormal_exit || The task exited with non-zero status, or exited without indicating that it had finished processing. ||
-|| failed || The task explicitly failed. ||
-|| timeout || The task did not complete within the alloted time interval. ||
+    [ {
+        "jobId": "acfec1f0-7779-11e1-81f9-979db30d72bf",
+        "jobName": monthly log summary",
+        "state": "running",
+    } ]
 
 
-## POST /jobs/:jobid/cancel
+## POST /jobs/:jobId/cancel
 
 Asynchronously cancels the given job, if the job has not yet completed.  If the
 job has completed, this operation does nothing.  It may take several minutes to
@@ -208,337 +146,254 @@ cancel a job.
 
 Returns 204 (no content) on success.
 
-# Job API examples
 
-## Create a job
+## GET /jobs/:jobId
 
-Here's a job specification:
+Returns basic information about a submitted job.  For detailed runtime status,
+see `GET /jobs/:jobId/status`.
 
-    $ cat job-input.json
-    {
-        "name": "weekly log rollup",
-        "input_keys": [
-            "logs/2012-03-11.log",
-            "logs/2012-03-12.log",
-            "logs/2012-03-13.log",
-            "logs/2012-03-14.log",
-            "logs/2012-03-15.log",
-            "logs/2012-03-16.log",
-            "logs/2012-03-17.log"
-        ],
-        "bundle_key": [ "bin/log_rollup" ],
-        "job_args": {
-            "reduce_url": "example.com/reduce"
-        }
-    }
 
-Submit the job:
+### Returns
 
-    $ curl -i -X POST -H'content-type: application/json' -T job-input.json \
-          http://$MANTA/jobs
+Returns 200 with at least the following fields:
 
-The request looks like this:
+|| **Job&nbsp;field** || **Type** || **Description** ||
+|| jobId || String || Unique identifier for this job. ||
+|| jobName || String || See "Inputs" to `POST /jobs`. ||
+|| bundle || Object || See "Inputs" to `POST /jobs`. ||
+|| inputKeys || Array&nbsp;of&nbsp;Strings || See "Inputs" to `POST /jobs`. ||
+|| createTime || DateTime&nbsp;String || Job submission time. ||
+|| state || String&nbsp;(see&nbsp;below) || Describes whether the job is queued, running, or done.  See below. ||
 
-    POST /jobs HTTP/1.1
-    Authorization: ...
-    Host: api.example.com
-    Accept: application/json
-    Content-Length: 387
-    Content-Type: application/json
+For jobs in the "done" state, these additional fields will be present:
 
-    {
-        "name": "weekly log rollup",
-        "input_keys": [
-            "logs/2012-03-11.log",
-            "logs/2012-03-12.log",
-            "logs/2012-03-13.log",
-            "logs/2012-03-14.log",
-            "logs/2012-03-15.log",
-            "logs/2012-03-16.log",
-            "logs/2012-03-17.log"
-        ],
-        "bundle_key": [ "bin/log_rollup" ],
-        "job_args": {
-            "reduce_url": "example.com/reduce"
-        }
-    }
+|| finishTime || DateTime&nbsp;String || Job completion time. ||
+|| result || "success" or "failure" || Describes whether the job completed successfully. ||
+|| reason || String&nbsp;(see&nbsp;below) || If the job result is "failed", this describes why the job failed. ||
 
-The response looks like this:
+The job **state** is one of:
 
-    HTTP/1.1 201 Created
-    Location: /jobs/5e42cd1e-34bb-402f-8796-bf5a2cae47db
-    Access-Control-Allow-Origin: *
-    Access-Control-Allow-Methods: GET, POST
-    Connection: close
-    Date: Tue, 20 Mar 2012 17:19:26 GMT
-    X-Request-Id: 4bcf467e-4b88-4ab4-b7ab-65fad7464de9
-    X-Response-Time: 754
-    Content-Type: application/json
-    Content-MD5: a0cf22d52296f733b0850a721c150ff7
-    Content-Length: 762
+|| **Job&nbsp;state** || **Meaning** ||
+|| queued || The job has been created but it's not yet running. That is, no tasks have been instantiated to execute the job yet. ||
+|| running || The job is currently running on at least one storage node. That is, one or more tasks have been instantiated to execute the job. Some or all of those tasks may have already completed, but not all tasks have been instantiated and completed. ||
+|| done || All of the job's tasks have completed or the job has been aborted. ||
+
+For failed jobs, the **reason** describes why the job failed:
+
+|| **Job&nbsp;error&nbsp;code** || **Meaning** ||
+|| jobCancelled || the job was explicitly cancelled ||
+|| taskFailed || one or more of the job's tasks failed ||
+
+### Example
+
+Here's example state for a job which has not yet started running:
 
     {
-        "jobid": "5e42cd1e-34bb-402f-8796-bf5a2cae47db",
-        "name": "weekly log rollup",
-        "input_keys": [
-            "logs/2012-03-11.log",
-            "logs/2012-03-12.log",
-            "logs/2012-03-13.log",
-            "logs/2012-03-14.log",
-            "logs/2012-03-15.log",
-            "logs/2012-03-16.log",
-            "logs/2012-03-17.log"
-        ],
-        "nkeys": 7,
-        "bundle": "bin/log_rollup",
-        "job_args": {
-            "reduce_url": "example.com/reduce"
+        "jobId": "acfec1f0-7779-11e1-81f9-979db30d72bf",
+        "jobName": monthly log summary",
+        "bundle": {
+            "assets": "bin/log_rollup",
+            "exec": "/assets/bin/log_rollup",
+            "args": { "reducer": "example.com/reducer" }
         },
-        "create_time": "2012-03-20T17:19:26.732Z",
-        "state": "queued",
-        "keys_completed": [],
-        "nkeys_completed": 0,
-        "tasks": [],
-        "output_keys": [],
-        "job_log": [ {
-            "date": "2012-03-20T17:19:26.732Z",
-            "event": "state_change",
-            "new_state": "queued",
-            "message": "job created and queued"
-        } ]
+        "inputKeys": [
+            "logs/2012-03-01.log",
+            "logs/2012-03-02.log",
+            "logs/2012-03-03.log",
+            ...
+            "logs/2012-03-31.log"
+        ],
+        "createTime": "2012-03-20T17:19:26.732Z",
+        "state": "queued"
     }
 
-## Checking job state while it is running
+Here's an example state for the same job after it has finished successfully:
 
-    $ curl http://$MANTA/jobs/5e42cd1e-34bb-402f-8796-bf5a2cae47db
-
-The response looks like this:
-
-    HTTP/1.1 200 OK
-    Location: /jobs/5e42cd1e-34bb-402f-8796-bf5a2cae47db
-    Access-Control-Allow-Origin: *
-    Access-Control-Allow-Methods: GET, POST
-    Connection: close
-    Date: Tue, 20 Mar 2012 17:21:40 GMT
-    X-Request-Id: a9ad378a-7449-11e1-a7f2-57be1e07436a
-    X-Response-Time: 652
-    Content-Type: application/json
-    Content-MD5: 306f9070b03edd6b3ad9eab91fb2fbb4
-    Content-Length: 3503
-    
     {
-        "jobid": "4bcf467e-4b88-4ab4-b7ab-65fad7464de9",
-        "name": "weekly log rollup",
-        "input_keys": [
-            "logs/2012-03-11.log",
-            "logs/2012-03-12.log",
-            "logs/2012-03-13.log",
-            "logs/2012-03-14.log",
-            "logs/2012-03-15.log",
-            "logs/2012-03-16.log",
-            "logs/2012-03-17.log"
-        ],
-        "nkeys": 7,
-        "bundle": "bin/log_rollup",
-        "job_args": {
-            "reduce_url": "example.com/reduce"
+        "jobId": "acfec1f0-7779-11e1-81f9-979db30d72bf",
+        "jobName": monthly log summary",
+        "bundle": {
+            "assets": "bin/log_rollup",
+            "exec": "/assets/bin/log_rollup",
+            "args": { "reducer": "example.com/reducer" }
         },
-        "create_time": "2012-03-20T17:19:26.732Z",
-        "state": "running",
-        "keys_completed": [
-                "logs/2012-03-11.log",
-                "logs/2012-03-12.log",
-                "logs/2012-03-13.log",
-                "logs/2012-03-14.log",
-                "logs/2012-03-16.log"
+        "inputKeys": [
+            "logs/2012-03-01.log",
+            "logs/2012-03-02.log",
+            "logs/2012-03-03.log",
+            ...
+            "logs/2012-03-31.log"
         ],
-        "nkeys_completed": 5,
-        "tasks": [ {
-            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "host": "2F16",
-            "zonename": "e7b35c46-c36d-4e02-8cde-6fdf2695af15", 
-            "input_keys": [
-                "logs/2012-03-11.log",
-                "logs/2012-03-12.log",
-                "logs/2012-03-16.log"
-            ],
-            "output_keys": [
-                "log_summary/2012-03-11.txt",
-                "log_summary/2012-03-12.txt",
-                "log_summary/2012-03-16.txt"
-            ],
-            "start_time": "2012-03-20T17:19:30.102Z",
-            "state": "done",
-            "end_time": "2012-03-20T17:21:25.327Z",
-            "status": "success"
-        }, {
-            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "host": "2F20",
-            "zonename": "b01698b6-7447-11e1-8f74-fbabac25f69a",
-            "input_keys": [
-                "logs/2012-03-13.log",
-                "logs/2012-03-14.log",
-                "logs/2012-03-15.log",
-                "logs/2012-03-17.log"
-            ],
-            "start_time": "2012-03-20T17:19:33.302Z",
-            "state": "running",
-            "output_keys": [
-                "log_summary/2012-03-13.txt",
-                "log_summary/2012-03-14.txt"
-            ],
-            "partial_keys": [
-                "log_summary/2012-03-15.txt"
-            ]
-        } ],
-        "output_keys": [
-            "log_summary/2012-03-11.txt",
-            "log_summary/2012-03-12.txt",
-            "log_summary/2012-03-13.txt",
-            "log_summary/2012-03-14.txt",
-            "log_summary/2012-03-15.txt",
-            "log_summary/2012-03-16.txt",
-            "log_summary/2012-03-17.txt"
-        ],
-        "job_log": [ {
-            "date": "2012-03-20T17:19:26.732Z",
-            "event": "state_change",
-            "new_state": "queued",
-            "message": "job created and queued"
-        }, {
-            "date": "2012-03-20T17:19:30.102Z",
-            "event": "state_change",
-            "new_state": "running",
-            "message": "job started running"
-        }, {
-            "date": "2012-03-20T17:19:30.102Z",
-            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "event": "state_change",
-            "new_state": "loading",
-            "message": "task started loading"
-        }, {
-            "date": "2012-03-20T17:19:33.302Z",
-            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "event": "state_change",
-            "new_state": "loading",
-            "message": "task started loading"
-        }, {
-            "date": "2012-03-20T17:19:40.102Z",
-            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "event": "state_change",
-            "new_state": "running",
-            "message": "task started running"
-        }, {
-            "date": "2012-03-20T17:19:41.502Z",
-            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "event": "state_change",
-            "new_state": "running",
-            "message": "task started running"
-        }, {
-            "date": "2012-03-20T17:21:25.327Z",
-            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "event": "state_change",
-            "new_state": "done",
-            "message": "task completed"
-        } ]
+        "createTime": "2012-03-20T17:19:26.732Z",
+        "state": "done",
+        "result": "success",
+        "finishTime": "2012-03-20T18:37:52.182Z"
     }
 
-This job processes each input object (a daily log file) and outputs a summary
-object (for that day's events).  You can see the precise sequence of events by
-examining the job log.
+Here's an example where the job failed:
 
-In this example, the job was distributed to two nodes, 2F16 and 2F20, where one
-task was run on each node.  Each task got a few of the 7 input objects.  The
-first task has completed its 3 objects, while the second is processing its 3rd
-input key.
+    {
+        "jobId": "acfec1f0-7779-11e1-81f9-979db30d72bf",
+        "jobName": monthly log summary",
+        "bundle": {
+            "assets": "bin/log_rollup",
+            "exec": "/assets/bin/log_rollup",
+            "args": { "reducer": "example.com/reducer" }
+        },
+        "inputKeys": [
+            "logs/2012-03-01.log",
+            "logs/2012-03-02.log",
+            "logs/2012-03-03.log",
+            ...
+            "logs/2012-03-31.log"
+        ],
+        "createTime": "2012-03-20T17:19:26.732Z",
+        "state": "done",
+        "result": "failed",
+        "reason": "taskFailed",
+        "finishTime": "2012-03-20T18:37:52.182Z"
+    }
 
-## Checking completed job state
+
+## GET /jobs/:jobId/status
+
+Retrieves detailed status information about a job.  The system makes a best
+effort to keep this information up to date, but any of the runtime state may be
+outdated or inconsistent while a job is in the "running" state.  
+
+### Returns
+
+This URI returns all of the fields returned by `GET /jobs/:jobId`, plus these
+extra fields:
+
+|| **Detailed job fields** || **Type** || **Description** ||
+|| doneKeys || Array&nbsp;of&nbsp;Strings || Manta keys that have been processed successfully. ||
+|| outputKeys || Array&nbsp;of&nbsp;Strings || Manta keys output by this job. ||
+|| jobLog || Array&nbsp;of&nbsp;Objects || Log of job activity (see below). ||
+|| tasks || Array&nbsp;of&nbsp;Objects || Individual task states (see below). ||
+
+#### Job log
+
+The **jobLog** field includes entries for all state changes for the job itself
+as well as all tasks associated with the job.  This is useful for understanding
+job failures and performance *postmortem*.  Each entry has the following
+fields:
+
+|| **Job&nbsp;log&nbsp;entry&nbsp;field** || **Type** || **Description** ||
+|| date || DateTime&nbsp;String || Time of log entry ||
+|| taskId&nbsp;(task&nbsp;entries&nbsp;only) || String || Identifier for a given task ||
+|| event || String || Either "stateChange" or "message" ||
+|| message || String || Human-readable message ||
+|| newState&nbsp;(state&nbsp;change&nbsp;entries&nbsp;only) || String || New state name ||
+
+#### Job progress
+
+Callers can see precisely which keys have been completed by examining
+"doneKeys".  For a rough measure of progress, callers can compare
+"doneKeys.length" to "inputKeys.length".  These mechanisms rely on tasks
+to report progress as they process each object, though tasks are not required
+to report progress until they finish processing all of their input.
+
+The **tasks** field shows more detailed information about how the job was
+distributed to various servers and the status of each task on each server.  Each
+entry of this array describes an individual task, including:
+
+|| **Task&nbsp;field** || **Type** || **Meaning** ||
+|| taskId || String || Unique identifier for this task within this job. ||
+|| host || String || Unique identifier for the physical server on which this task ran. ||
+|| machine || String || Unique identifier for the compute zone in which the task ran. ||
+|| inputKeys || Array&nbsp;of&nbsp;Strings || List of keys assigned to this task. ||
+|| startTime || DateTime&nbsp;String || When this task was started. ||
+|| state || String || Describes the current state of the task (see below). ||
+|| outputKeys || Array&nbsp;of&nbsp;Strings || List of keys output by this task. ||
+|| endTime || DateTime&nbsp;String || The time when the task finished (done tasks only). ||
+|| result || "result" or "failure" || Describes whether the task completed successfully (done tasks only). ||
+|| partialKeys || List&nbsp;of&nbsp;Strings || List of Manta objects created by the task but not committed because the task failed or is still running. ||
+
+The task **state** is one of:
+
+|| **Task&nbsp;state** || **Meaning** ||
+|| queued || The task has been planned, but has not started running yet. ||
+|| loading || Marlin is preparing the compute zone to run the task. This step includes downloading and extracting the job's bundle. ||
+|| running || The task is currently running. ||
+|| done || The task is no longer running. ||
+
+For failed tasks, the **reason** indicates why the task failed:
+
+|| **Error&nbsp;code** || **Meaning** ||
+|| abnormalExit || The task exited with non-zero status, or exited without indicating that it had finished processing. ||
+|| failed || The task explicitly failed. ||
+|| timeout || The task did not complete within the alloted time interval. ||
+
+
+### Examples
 
 The response for a successfully completed job looks like this:
 
-    HTTP/1.1 200 OK
-    Location: /jobs/5e42cd1e-34bb-402f-8796-bf5a2cae47db
-    Access-Control-Allow-Origin: *
-    Access-Control-Allow-Methods: GET, POST
-    Connection: close
-    Date: Tue, 20 Mar 2012 17:21:40 GMT
-    X-Request-Id: a9ad378a-7449-11e1-a7f2-57be1e07436a
-    X-Response-Time: 652
-    Content-Type: application/json
-    Content-MD5: 306f9070b03edd6b3ad9eab91fb2fbb4
-    Content-Length: 3503
-    
     {
-        "jobid": "4bcf467e-4b88-4ab4-b7ab-65fad7464de9",
-        "name": "weekly log rollup",
-        "input_keys": [
+        "jobId": "4bcf467e-4b88-4ab4-b7ab-65fad7464de9",
+        "jobName": "weekly log summary",
+        "bundle": {
+            "assets": "bin/log_rollup",
+            "exec": "/assets/bin/log_rollup",
+            "args": { "reducer": "example.com/reducer" }
+        },
+        "inputKeys": [
             "logs/2012-03-11.log",
             "logs/2012-03-12.log",
-            "logs/2012-03-13.log",
-            "logs/2012-03-14.log",
-            "logs/2012-03-15.log",
-            "logs/2012-03-16.log",
+            ...
             "logs/2012-03-17.log"
         ],
-        "nkeys": 7,
-        "bundle": "bin/log_rollup",
-        "job_args": {
-            "reduce_url": "example.com/reduce"
-        },
-        "create_time": "2012-03-20T17:19:26.732Z",
+        "createTime": "2012-03-20T17:19:26.732Z",
         "state": "done",
-        "finish_time": "2012-03-20T17:22:35.246Z",
-        "status": "success",
-        "keys_completed": [
-                "logs/2012-03-11.log",
-                "logs/2012-03-12.log",
-                "logs/2012-03-13.log",
-                "logs/2012-03-14.log",
-                "logs/2012-03-15.log",
-                "logs/2012-03-16.log",
-                "logs/2012-03-17.log"
+        "finishTime": "2012-03-20T17:22:35.246Z",
+        "result": "success",
+        "doneKeys": [
+            "logs/2012-03-11.log",
+            "logs/2012-03-12.log",
+            ...
+            "logs/2012-03-17.log"
         ],
-        "nkeys_completed": 7,
         "tasks": [ {
-            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
             "host": "2F16",
-            "zonename": "e7b35c46-c36d-4e02-8cde-6fdf2695af15", 
-            "input_keys": [
+            "machine": "e7b35c46-c36d-4e02-8cde-6fdf2695af15", 
+            "inputKeys": [
                 "logs/2012-03-11.log",
                 "logs/2012-03-12.log",
                 "logs/2012-03-16.log"
             ],
-            "output_keys": [
+            "outputKeys": [
                 "log_summary/2012-03-11.txt",
                 "log_summary/2012-03-12.txt",
                 "log_summary/2012-03-16.txt"
             ],
-            "start_time": "2012-03-20T17:19:30.102Z",
+            "startTime": "2012-03-20T17:19:30.102Z",
             "state": "done",
-            "end_time": "2012-03-20T17:21:25.327Z",
-            "status": "success"
+            "endTime": "2012-03-20T17:21:25.327Z",
+            "result": "success"
         }, {
-            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
             "host": "2F20",
-            "zonename": "b01698b6-7447-11e1-8f74-fbabac25f69a",
-            "input_keys": [
+            "machine": "b01698b6-7447-11e1-8f74-fbabac25f69a",
+            "inputKeys": [
                 "logs/2012-03-13.log",
                 "logs/2012-03-14.log",
                 "logs/2012-03-15.log",
                 "logs/2012-03-17.log"
             ],
-            "output_keys": [
+            "outputKeys": [
                 "log_summary/2012-03-13.txt",
                 "log_summary/2012-03-14.txt",
                 "log_summary/2012-03-15.txt",
                 "log_summary/2012-03-17.txt"
             ],
-            "start_time": "2012-03-20T17:19:33.302Z",
+            "startTime": "2012-03-20T17:19:33.302Z",
             "state": "done",
-            "end_time": "2012-03-20T17:22:35.246Z",
-            "status": "success"
+            "endTime": "2012-03-20T17:22:35.246Z",
+            "result": "success"
         } ],
-        "output_keys": [
+        "outputKeys": [
             "log_summary/2012-03-11.txt",
             "log_summary/2012-03-12.txt",
             "log_summary/2012-03-13.txt",
@@ -547,80 +402,75 @@ The response for a successfully completed job looks like this:
             "log_summary/2012-03-16.txt",
             "log_summary/2012-03-17.txt"
         ],
-        "job_log": [ {
+        "jobLog": [ {
             "date": "2012-03-20T17:19:26.732Z",
-            "event": "state_change",
-            "new_state": "queued",
+            "event": "stateChange",
+            "newState": "queued",
             "message": "job created and queued"
         }, {
             "date": "2012-03-20T17:19:30.102Z",
-            "event": "state_change",
-            "new_state": "running",
+            "event": "stateChange",
+            "newState": "running",
             "message": "job started running"
         }, {
             "date": "2012-03-20T17:19:30.102Z",
-            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "event": "state_change",
-            "new_state": "loading",
+            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "event": "stateChange",
+            "newState": "loading",
             "message": "task started loading"
         }, {
             "date": "2012-03-20T17:19:33.302Z",
-            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "event": "state_change",
-            "new_state": "loading",
+            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "event": "stateChange",
+            "newState": "loading",
             "message": "task started loading"
         }, {
             "date": "2012-03-20T17:19:40.102Z",
-            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "event": "state_change",
-            "new_state": "running",
+            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "event": "stateChange",
+            "newState": "running",
             "message": "task started running"
         }, {
             "date": "2012-03-20T17:19:41.502Z",
-            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "event": "state_change",
-            "new_state": "running",
+            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "event": "stateChange",
+            "newState": "running",
             "message": "task started running"
         }, {
             "date": "2012-03-20T17:21:25.327Z",
-            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "event": "state_change",
-            "new_state": "done",
+            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "event": "stateChange",
+            "newState": "done",
             "message": "task completed"
         }, {
             "date": "2012-03-20T17:22:35.246Z",
-            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "event": "state_change",
-            "new_state": "done",
+            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "event": "stateChange",
+            "newState": "done",
             "message": "task completed"
         }, {
             "date": "2012-03-20T17:22:35.246Z",
-            "event": "state_change",
-            "new_state": "done",
+            "event": "stateChange",
+            "newState": "done",
             "message": "job completed"
         } ]
     }
 
-## Checking failed job state
+In this example, the job was distributed to two nodes, 2F16 and 2F20, where one
+task was run on each node.  Each task got a few of the 7 input objects.  Both
+tasks have completed processing all of their objects.
 
 Here's what a failed job's state looks like:
 
-    HTTP/1.1 200 OK
-    Location: /jobs/5e42cd1e-34bb-402f-8796-bf5a2cae47db
-    Access-Control-Allow-Origin: *
-    Access-Control-Allow-Methods: GET, POST
-    Connection: close
-    Date: Tue, 20 Mar 2012 17:21:40 GMT
-    X-Request-Id: a9ad378a-7449-11e1-a7f2-57be1e07436a
-    X-Response-Time: 652
-    Content-Type: application/json
-    Content-MD5: 306f9070b03edd6b3ad9eab91fb2fbb4
-    Content-Length: 3503
-    
     {
-        "jobid": "4bcf467e-4b88-4ab4-b7ab-65fad7464de9",
-        "name": "weekly log rollup",
-        "input_keys": [
+        "jobId": "4bcf467e-4b88-4ab4-b7ab-65fad7464de9",
+        "jobName": "weekly log summary",
+        "bundle": {
+            "assets": "bin/log_rollup",
+            "exec": "/assets/bin/log_rollup",
+            "args": { "reducer": "example.com/reducer" }
+        },
+        "inputKeys": [
             "logs/2012-03-11.log",
             "logs/2012-03-12.log",
             "logs/2012-03-13.log",
@@ -629,17 +479,12 @@ Here's what a failed job's state looks like:
             "logs/2012-03-16.log",
             "logs/2012-03-17.log"
         ],
-        "nkeys": 7,
-        "bundle": "bin/log_rollup",
-        "job_args": {
-            "reduce_url": "example.com/reduce"
-        },
-        "create_time": "2012-03-20T17:19:26.732Z",
+        "createTime": "2012-03-20T17:19:26.732Z",
         "state": "done",
-        "finish_time": "2012-03-20T17:22:35.246Z",
-        "status": "failed",
-        "error_code": "task_failed",
-        "keys_completed": [
+        "finishTime": "2012-03-20T17:22:35.246Z",
+        "result": "failed",
+        "reason": "taskFailed",
+        "doneKeys": [
                 "logs/2012-03-11.log",
                 "logs/2012-03-12.log",
                 "logs/2012-03-13.log",
@@ -647,52 +492,51 @@ Here's what a failed job's state looks like:
                 "logs/2012-03-16.log",
                 "logs/2012-03-17.log"
         ],
-        "nkeys_completed": 6,
         "tasks": [ {
-            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
             "host": "2F16",
-            "zonename": "e7b35c46-c36d-4e02-8cde-6fdf2695af15", 
-            "input_keys": [
+            "machine": "e7b35c46-c36d-4e02-8cde-6fdf2695af15", 
+            "inputKeys": [
                 "logs/2012-03-11.log",
                 "logs/2012-03-12.log",
                 "logs/2012-03-16.log"
             ],
-            "output_keys": [
+            "outputKeys": [
                 "log_summary/2012-03-11.txt",
                 "log_summary/2012-03-12.txt",
                 "log_summary/2012-03-16.txt"
             ],
-            "start_time": "2012-03-20T17:19:30.102Z",
+            "startTime": "2012-03-20T17:19:30.102Z",
             "state": "done",
-            "end_time": "2012-03-20T17:21:25.327Z",
-            "status": "success"
+            "endTime": "2012-03-20T17:21:25.327Z",
+            "result": "success"
         }, {
-            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
             "host": "2F20",
-            "zonename": "b01698b6-7447-11e1-8f74-fbabac25f69a",
-            "input_keys": [
+            "machine": "b01698b6-7447-11e1-8f74-fbabac25f69a",
+            "inputKeys": [
                 "logs/2012-03-13.log",
                 "logs/2012-03-14.log",
                 "logs/2012-03-17.log"
             ],
-            "output_keys": [
+            "outputKeys": [
                 "log_summary/2012-03-13.txt",
                 "log_summary/2012-03-14.txt",
                 "log_summary/2012-03-17.txt"
             ],
-            "partial_keys": [
+            "partialKeys": [
                 "log_summary/2012-03-15.txt"
             ]
-            "start_time": "2012-03-20T17:19:33.302Z",
+            "startTime": "2012-03-20T17:19:33.302Z",
             "state": "done",
-            "end_time": "2012-03-20T17:22:35.246Z",
-            "status": "failed"
-            "error_code": "failed",
-            "task_data": {
+            "endTime": "2012-03-20T17:22:35.246Z",
+            "result": "failed",
+            "reason": "failed",
+            "error": {
                 "message": "corrupt log record"
             }
         } ],
-        "output_keys": [
+        "outputKeys": [
             "log_summary/2012-03-11.txt",
             "log_summary/2012-03-12.txt",
             "log_summary/2012-03-13.txt",
@@ -700,56 +544,56 @@ Here's what a failed job's state looks like:
             "log_summary/2012-03-16.txt",
             "log_summary/2012-03-17.txt"
         ],
-        "job_log": [ {
+        "jobLog": [ {
             "date": "2012-03-20T17:19:26.732Z",
-            "event": "state_change",
-            "new_state": "queued",
+            "event": "stateChange",
+            "newState": "queued",
             "message": "job created and queued"
         }, {
             "date": "2012-03-20T17:19:30.102Z",
-            "event": "state_change",
-            "new_state": "running",
+            "event": "stateChange",
+            "newState": "running",
             "message": "job started running"
         }, {
             "date": "2012-03-20T17:19:30.102Z",
-            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "event": "state_change",
-            "new_state": "loading",
+            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "event": "stateChange",
+            "newState": "loading",
             "message": "task started loading"
         }, {
             "date": "2012-03-20T17:19:33.302Z",
-            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "event": "state_change",
-            "new_state": "loading",
+            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "event": "stateChange",
+            "newState": "loading",
             "message": "task started loading"
         }, {
             "date": "2012-03-20T17:19:40.102Z",
-            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "event": "state_change",
-            "new_state": "running",
+            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "event": "stateChange",
+            "newState": "running",
             "message": "task started running"
         }, {
             "date": "2012-03-20T17:19:41.502Z",
-            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "event": "state_change",
-            "new_state": "running",
+            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "event": "stateChange",
+            "newState": "running",
             "message": "task started running"
         }, {
             "date": "2012-03-20T17:21:25.327Z",
-            "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "event": "state_change",
-            "new_state": "done",
+            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+            "event": "stateChange",
+            "newState": "done",
             "message": "task completed"
         }, {
             "date": "2012-03-20T17:22:35.246Z",
-            "taskid": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "event": "state_change",
-            "new_state": "done",
+            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
+            "event": "stateChange",
+            "newState": "done",
             "message": "task failed"
         }, {
             "date": "2012-03-20T17:22:35.246Z",
-            "event": "state_change",
-            "new_state": "done",
+            "event": "stateChange",
+            "newState": "done",
             "message": "job completed"
         } ]
     }
@@ -763,13 +607,16 @@ the task reports, the better the chance of root causing the failure from the
 first occurrence.
 
 
-# Task API
+# Task Control API
 
-The Task API is used by tasks (user code running in compute zones on Manta
-storage nodes) to retrieve parameters and report on progress.  The API is
+The Task Control API is used by tasks (user code running in compute zones on
+Manta storage nodes) to retrieve parameters and report on progress.  The API is
 serviced not by a public endpoint, but by a small server running inside the
 task's own compute zone that's implicitly scoped to that zone's current task.
 As a result, task identifiers are not actually necessary in the task API.
+
+This API is *not* used to monitor task status; that's provided by the
+public-facing Job API.
 
 ## GET /info
 
@@ -778,38 +625,27 @@ Retrieves information about the current job and task.
 ### Returns
 
 || **Field** || **Type** || **Description** ||
-|| jobid || String || Job identifier ||
-|| job_name || String || Job label (human-readable, not unique) ||
-|| job_args || Object || Arbitrary user-specified job arguments ||
-|| taskid || String || Task identifier ||
-|| input_keys || Array&nbsp;of&nbsp;Array&nbsp;of&nbsp;Strings || List of Manta objects this task is expected to process. Each entry of this array is an array with two fields: the object key, and the full path to the corresponding file. ||
-|| task_data || Object || Arbitrary task data (intended for task debugging) ||
+|| jobId || String || See `POST /jobs`. ||
+|| jobName || String || See `POST /jobs`. ||
+|| bundle || Object || See `POST /jobs`. ||
+|| taskId || String || Task identifier ||
+|| inputKeys || Array&nbsp;of&nbsp;Array&nbsp;of&nbsp;Strings || List of Manta objects this task is expected to process. Each entry of this array is an array with two fields: the object key, and the full path to the corresponding file. ||
 
 Object metadata (e.g., user-specified headers) are not included in the task
 info.  Users can retrieve this by querying Manta directly.
 
 ### Example
 
-    HTTP/1.1 200 OK
-    Access-Control-Allow-Origin: *
-    Access-Control-Allow-Methods: GET, POST
-    Connection: close
-    Date: Tue, 20 Mar 2012 17:21:40 GMT
-    X-Request-Id: a9ad378a-7449-11e1-a7f2-57be1e07436a
-    X-Response-Time: 5
-    Content-Type: application/json
-    
+Here's an example response:
+
     {
-        "jobid": "5e42cd1e-34bb-402f-8796-bf5a2cae47db",
-        "job_name": "weekly log rollup",
-        "job_args": {
-            "reduce_url": "example.com/reduce"
-        },
-        "taskid": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-        "input_keys": [
-            "logs/2012-03-11.log",
-            "logs/2012-03-12.log",
-            "logs/2012-03-16.log"
+        "jobId": "5e42cd1e-34bb-402f-8796-bf5a2cae47db",
+        "jobName": "weekly log rollup",
+        "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
+        "inputKeys": [
+            [ "logs/2012-03-11.log", "/keys/logs/2012-03-11.log" ],
+            [ "logs/2012-03-12.log", "/keys/logs/2012-03-12.log" ],
+            [ "logs/2012-03-16.log", "/keys/logs/2012-03-16.log" ]
         ]
     }
  
@@ -874,65 +710,28 @@ state for *postmortem* analysis.
 
 For examples, see the Manta documentation.
 
-## PUT /task_data
-
-Record up to 16K of task-specific data that will be retrievable by the end user
-when they retrieve the job status.  This is intended primarily for debugging:
-use it to record error messages, more sophisticated error objects, stats, or
-whatever other information may be useful *postmortem*.
-
-### Input
-
-An arbitrary JSON payload smaller than 16K.  Applications where JSON is not
-suitable can use a JSON string whose contents are base64-encoded, which allows
-you to represent any other kind of data.
-
-For data larger than 16K, create new objects on Manta instead, and if necessary,
-record the keys in the task_data.
-
-### Returns
-
-Returns 204 (no content) on success.
-
-### Example
-
-Request:
-
-    POST /task_data HTTP/1.1
-    Authorization: ...
-    Host: api.example.com
-    Accept: application/json
-    Content-Type: application/json
-
-    {
-        "message": "corrupt log record"
-    }
-
-Response:
-
-    HTTP/1.1 204 No content
-    Access-Control-Allow-Origin: *
-    Access-Control-Allow-Methods: GET, POST
-    Connection: close
-    Date: Tue, 20 Mar 2012 17:19:26 GMT
-    X-Request-Id: 4bcf467e-4b88-4ab4-b7ab-65fad7464de9
-    X-Response-Time: 12
-
 ## POST /fail
 
-Fail the current task (and job).  Any objects created since the last call to
-`POST /checkpoint` will be discarded (but will be linked in the task state for
+Fail the current task.  Any objects created since the last call to `POST
+/checkpoint` will be discarded (but will be linked in the task state for
 *postmortem* analysis).
 
 ### Input
 
-Any input is saved to task_data as though it had been PUT directly to `/task_data`.
-If not input is specified, task_data is unchanged.
+The input should have at least the following fields:
+
+|| **message** || String || human-readable error message ||
+
+It's also recommended to include a "code" field for a machine-parseable error
+code in string form.
 
 ### Returns
 
 Returns 204 (no content) on success, but may not return at all, as the task may
 be terminated immediately.
+
+Callers can assume that this call can never fail.
+
 
 ### Example
 
@@ -966,7 +765,10 @@ processes and the entire filesystem contents will be preserved.
 
 # Implementing use cases
 
-## MapReduce
+## Log analysis (MapReduce)
+## Video transcoding (Straight Map)
+## Node interface
+## Hadoop
 
 # Implementation
 
@@ -1009,23 +811,22 @@ following:
 4. Creates a hyprlofs mount for the files.
 5. Sets up the zsock server in the zone. (This could actually be baked into the
    zone's dataset, in which case this step is skipped.)
-6. Downloads the job's bundle into the zone, unpacks it.
-7. Finally, invokes the bundle.
+6. Downloads the job's bundle's assets into the zone.
+7. Finally, invokes the bundle's exec script.
 
 Steps 5, 6, and 7 have to be done in the context of the zone. We'll probably
 need an agent inside the zone in order to monitor the contract anyway, so this
-agent can be responsible bootstrapping the user's code: downloading the bundle,
-unpacking it, and invoking it.
+agent can be responsible bootstrapping the user's code: downloading the assets
+and invoking the bundle.
 
-The agent also has to implement the Tasks API. Users will invoke that API via
-calls to an HTTP server on localhost (see step 5 above) which proxies all
-requests via a zsock to the CN agent.  The CN agent knows which zone each
-request is coming from, so it knows which task and job the request is associated
-with.
+The agent also has to implement the Task Control API. Users will invoke that
+API via calls to an HTTP server on localhost (see step 5 above) which proxies
+all requests via a zsock to the CN agent.  The CN agent knows which zone each
+request is coming from, so it knows which task and job the request is
+associated with.
 
-`/task_info` and `/task_data` are pretty simple: they just retrieve and store
-data from the agent's persistent state, which already has to exist to manage the
-job.
+`/info` is simple: it just retrieves data from the agent's persistent state,
+which already has to exist to manage the job.
 
 `/objects/:key` makes a note in the task state that this object is being
 written, and then (first approach) proxies the request directly to manta. But
@@ -1084,6 +885,7 @@ Roughly in order of importance:
 * What's the algorithm for assigning tasks to compute nodes? A pretty dumb one
   will probably suffice for a while, but it might be nice if the MC kept track
   of what everyone was working on to better distribute work.
+* Should the job log be a manta object so that user's can add their own entries?
 
 ## Compute zones
 
