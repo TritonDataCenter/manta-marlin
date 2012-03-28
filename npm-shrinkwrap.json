@@ -8,8 +8,17 @@
     "hyprlofs": {
       "version": "0.0.1"
     },
+    "JSV": {
+      "version": "4.0.0"
+    },
+    "node-uuid": {
+      "version": "1.3.3"
+    },
+    "posix-getopt": {
+      "version": "0.0.1"
+    },
     "restify": {
-      "version": "1.2.0",
+      "version": "1.3.0",
       "dependencies": {
         "async": {
           "version": "0.1.18"

@@ -37,7 +37,7 @@ fs.mount(function (callback) {
 	}, /invalid mappings/);
 
 	mod_assert.throws(function () {
-		fs.addMappings([ [1,2,3] ], function () {});
+		fs.addMappings([ [1, 2, 3] ], function () {});
 	}, /invalid mappings/);
 
 	mod_assert.throws(function () {
