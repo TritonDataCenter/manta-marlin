@@ -18,7 +18,8 @@ Marlin facilitates the following use cases:
 * MapReduce in a node-based environment (i.e., make it particularly easy for
   node apps)
 * Straight Map with no reduce (e.g., video transcoding)
-* Allowing others to run compute on your data
+* Allowing others to run compute on your data (e.g., for government
+  organizations with lots of public data)
 * Hadoop itself?
 
 Of course, we want this to be easy to use, monitor, and debug.  A good
@@ -33,6 +34,77 @@ Marlin defines two public APIs:
 
 All DateTimes in these APIs use W3C DTF in UTC ("YYYY-MM-DDThh:mm:ss.sZ").
 
+This document assumes familiarity with the Manta object store.
+
+
+# Overview by example
+
+To explain Marlin, we'll outline how a user would implement distributed word
+count algorithm.  This is a distributed version of "wc -w".  On a single
+system, that might look like this:
+
+    $ wc -w /usr/share/dict/*
+          69 /usr/share/dict/README
+         150 /usr/share/dict/connectives
+        1323 /usr/share/dict/propernames
+      234936 /usr/share/dict/web2
+      121847 /usr/share/dict/web2a
+      234936 /usr/share/dict/words
+      593261 total
+
+The idea of the distributed version is that you'd like to do something like:
+
+    $ wc -w file1 file2 ...
+
+where file1, file2, ... may be stored on completely different systems, and get
+back summary output:
+
+    593261
+
+Let's assume the input files are already stored in Manta:
+
+* file1, file2, file4 on storage node S1
+* file3, file5 on storage node S2
+
+though the user doesn't know which files are on which nodes.
+
+To execute the word count, the user submits a Marlin **job** that includes the
+following information:
+
+    "jobName": "distributed word count example",
+    "inputKeys": [ "file1", "file2", "file3", "file4", "file5" ],
+    "phases": [ {
+        "exec": "wc -w $mc_input_keys | mpipe",
+    }, {
+        "type": "reduce",
+        "exec": "awk '{sum += $1} END{ print sum; } $mc_input_keys' | mpipe"
+    } ]
+
+"jobName" and "inputKeys" are pretty self-explanatory.  "phases" describes what
+to actually do with the data.  Marlin splits the first phase into two **tasks**:
+one task runs "wc -w file1 file2 file4" on storage node S1, and the other task
+runs "wc -w file3 file5" on node S2.  On each node, the output of the "wc"
+command is stored in a new Manta object that will become the input for the
+second phase.
+
+The second phase is a **reduce phase** that takes the outputs from the previous
+phases and runs the given awk script, producing a single total that's the sum of
+all words in all files.  Since there's only one of these and it combines data
+from many different nodes, it runs on general-purpose compute nodes, not Manta
+storage nodes.  The output of this phase is saved as a new Manta object and
+becomes the output of the job.
+
+With this example we've covered:
+
+* *jobs*, which users submit to do work with data
+* *phases*, which describe individual processing steps of a job
+* *map phases*, which run on individual nodes where input objects are stored and
+  process one object at a time
+* *reduce phases*, which run on separate compute nodes and combine outputs from
+  previous phases
+* *tasks*, which are individual pieces of a map or reduce phase
+* *compute zones*, which are the environments in which tasks run
+
 
 # Job API
 
@@ -42,56 +114,88 @@ and lets end users submit, manage, and monitor compute jobs.
 
 ## POST /jobs
 
-Submit a new **job** to be run immediately under Marlin.
+Submit a new job to be run as soon as possible under Marlin.
 
-Each job defines a set of input Manta objects on which to operate and code to
-process each of these objects.  When the job is submitted, the system divides it
-into several tasks and schedules each task to run on a single Manta storage node
-on whatever input keys are stored on that node.  Each task runs inside a
-**compute zone** on that node.  Tasks must report when they have succeeded or
-failed, and may also report progress as they go.  The system may time out tasks
-that are taking too long.
+Each job defines a set of input Manta objects to process and a set of
+**phases**, each describing what to do with each of the input objects.  Each
+phase may output any number of manta objects for input to the next phase.  The
+output from the last phase is the output of the job.
 
-While the job is running, users can retrieve the status of the job to see which
-tasks have completed, which tasks are running, which keys have been processed,
-and which keys are left.
+Each phase of the job is divided into discrete tasks that run one piece of the
+phase.  While the job is running, users can retrieve the status of the job to
+see which tasks have completed, which tasks are running, which keys have been
+processed, and which keys are left.
 
-When all tasks complete, the job itself completes.  The job succeeds if all
-tasks succeed, and the job fails otherwise.  Failed tasks are not retried.
+When all tasks complete, the job itself completes.  Failed tasks are not
+retried (though retry options may be provided in a future version of this API).
+By default, if a task fails, other tasks are unaffected.  The system continues
+running tasks until all of them either fail or complete in order to make as
+much progress as possible.  This behavior can be controlled with the "failFast"
+job option.
 
 
 ### Inputs
 
 || **Field** || **Type** || **Description** ||
 || jobName || String || Human-readable job label (not necessarily unique). ||
-|| bundle || Object || Describes the code that implements the body of each task. ||
-|| bundle.assets || Array of Strings || List of Manta objects (identified by key) that will be made available in the compute zone.  These should be binaries, libraries, or other shared objects used to actually run the job, not inputs to the job. ||
-|| bundle.exec || String || Script to run to actually launch the task. ||
-|| bundle.args || Object || User-defined task arguments.  This is just an arbitrary JSON object that will be available to each task, like an array of reducer nodes. ||
+|| phases || Array&nbsp;of&nbsp;Objects || Array of compute phases.  See below.  ||
+|| phases[i].type (optional) || String: "map"&nbsp;or&nbsp;"reduce" || Map phases (the default) process individual objects and are executed on the physical system where those objects are stored.  Reduce phases process many objects at once and are generally executed on separate compute nodes. ||
+|| phases[i].count (optional) || Integer || For reduce jobs only, indicates how many reducers to use. See "Pipelined Reducers" below. ||
+|| phases[i].assets (optional) || Array of Strings || List of Manta objects that will be made available in the compute zone.  These may be scripts, binaries, libraries, or other objects used to actually run the job, not inputs to the job. ||
+|| phases[i].exec || String || Shell command to launch the task.  This are passed directly to "bash -c". ||
+|| phases[i].args (optional) || Object || User-defined task arguments.  This is just an arbitrary JSON object that will be available to each task.  Many jobs won't need this because they use shell arguments directly in the "exec" line, but complex tasks may find it easier to process a structured JSON argument. ||
+|| phases[i].datasetVersion (optional) || String || Version of compute zone dataset to use.  By default, the latest stable dataset is used. ||
 || inputKeys || Array&nbsp;of&nbsp;Strings || List of Manta objects to process. ||
+|| failFast (optional) || Boolean || Cancel all tasks when any task fails.  Otherwise, tasks continue running even after one of them fails (in attempt to make as much progress as possible). ||
 
-You specify the code that runs in each task with the "bundle" object.  Any Manta
-keys listed in "bundle.assets" will be made available under "/assets" in the
-compute zone before the task is started.  The task is started by invoking
-"bundle.exec".
+Jobs can have any number of map or reduce phases.  For examples:
+
+* N &gt; 1 map phases, 0 reduce phases: file conversion (e.g., video
+  transcoding, image rendering)
+* N &gt; 1 map phases, 1 reduce phase: traditional map-reduce (e.g., word count)
+* N &gt; 1 map phases, M &gt; 1 reduce phases: MR with pipelined reducers
+* 0 map phases, N reduce phases: in-place compute
+
+To process a map phase, the system divides the phase into tasks, where each task
+runs a piece of the overall job on a Manta node where some of the input objects
+are stored.  Reduce phases are also divided into tasks, with one task per
+reducer.  (But most jobs will have at most 1 reducer.)
+
+Both map and reduce tasks must report when they have succeeded or failed, and
+should also report progress as they go.  The system may time out map tasks that
+are taking too long.
+
+You specify the code that runs in each phase using the "assets", "exec", and
+"args" properties.  Any Manta keys listed in "bundle.assets" will be made
+available under "/assets" in the compute zone before the task is started.  This
+can be used to distribute applications and libraries that will actually process
+the input to each compute zone.  "assets" should *not* be used to specify input
+keys.  Use "inputKeys" for that.
+
+The task is started by invoking "bundle.exec".  This may be any shell-style
+command, including environment variables, shell arguments, and pipelines.
+The shell variable "$mln_input_files" may be used to refer to input key files.
+
+Additional structured arguments may be stored in "args", which can be retrieved
+by the task's code using the Task Control API.
 
 ### Returns
 
 On success, returns 201 with the URI for the job in a Location header and the
 state of the job as returned by `GET /jobs/:jobId`.
 
-### Example
+### Examples
 
 Here's an example job that uses a script stored on Manta for the body of the
 task:
 
     {
         "jobName": "monthly log summary",
-        "bundle": {
-            "assets": "bin/log_rollup",
+        "phases": [ {
+            "assets": [ "bin/log_rollup" ],
             "exec": "/assets/bin/log_rollup",
             "args": { "reducer": "example.com/reducer" }
-        },
+        } ],
         "inputKeys": [
             "logs/2012-03-01.log",
             "logs/2012-03-02.log",
@@ -100,6 +204,8 @@ task:
             "logs/2012-03-31.log"
         ]
     }
+
+See use cases below for more examples.
 
 
 ## GET /jobs
@@ -160,16 +266,10 @@ Returns 200 with at least the following fields:
 || **Job&nbsp;field** || **Type** || **Description** ||
 || jobId || String || Unique identifier for this job. ||
 || jobName || String || See "Inputs" to `POST /jobs`. ||
-|| bundle || Object || See "Inputs" to `POST /jobs`. ||
+|| phases || Array of Objects || See "Inputs" to `POST /jobs`. ||
 || inputKeys || Array&nbsp;of&nbsp;Strings || See "Inputs" to `POST /jobs`. ||
 || createTime || DateTime&nbsp;String || Job submission time. ||
 || state || String&nbsp;(see&nbsp;below) || Describes whether the job is queued, running, or done.  See below. ||
-
-For jobs in the "done" state, these additional fields will be present:
-
-|| finishTime || DateTime&nbsp;String || Job completion time. ||
-|| result || "success" or "failure" || Describes whether the job completed successfully. ||
-|| reason || String&nbsp;(see&nbsp;below) || If the job result is "failed", this describes why the job failed. ||
 
 The job **state** is one of:
 
@@ -178,11 +278,18 @@ The job **state** is one of:
 || running || The job is currently running on at least one storage node. That is, one or more tasks have been instantiated to execute the job. Some or all of those tasks may have already completed, but not all tasks have been instantiated and completed. ||
 || done || All of the job's tasks have completed or the job has been aborted. ||
 
+For jobs in the "done" state, these additional fields will be present:
+
+|| finishTime || DateTime&nbsp;String || Job completion time. ||
+|| result || "success" or "failure" || Describes whether the job completed successfully. ||
+|| reason || String&nbsp;(see&nbsp;below) || If the job result is "failed", this describes why the job failed. ||
+
 For failed jobs, the **reason** describes why the job failed:
 
 || **Job&nbsp;error&nbsp;code** || **Meaning** ||
 || jobCancelled || the job was explicitly cancelled ||
 || taskFailed || one or more of the job's tasks failed ||
+
 
 ### Example
 
@@ -191,11 +298,10 @@ Here's example state for a job which has not yet started running:
     {
         "jobId": "acfec1f0-7779-11e1-81f9-979db30d72bf",
         "jobName": monthly log summary",
-        "bundle": {
+        "phases": [ {
             "assets": "bin/log_rollup",
-            "exec": "/assets/bin/log_rollup",
-            "args": { "reducer": "example.com/reducer" }
-        },
+            "exec": "/assets/bin/log_rollup"
+        } ],
         "inputKeys": [
             "logs/2012-03-01.log",
             "logs/2012-03-02.log",
@@ -212,11 +318,11 @@ Here's an example state for the same job after it has finished successfully:
     {
         "jobId": "acfec1f0-7779-11e1-81f9-979db30d72bf",
         "jobName": monthly log summary",
-        "bundle": {
+        "phases": [ {
             "assets": "bin/log_rollup",
             "exec": "/assets/bin/log_rollup",
             "args": { "reducer": "example.com/reducer" }
-        },
+        } ],
         "inputKeys": [
             "logs/2012-03-01.log",
             "logs/2012-03-02.log",
@@ -235,11 +341,10 @@ Here's an example where the job failed:
     {
         "jobId": "acfec1f0-7779-11e1-81f9-979db30d72bf",
         "jobName": monthly log summary",
-        "bundle": {
+        "phases": [ {
             "assets": "bin/log_rollup",
-            "exec": "/assets/bin/log_rollup",
-            "args": { "reducer": "example.com/reducer" }
-        },
+            "exec": "/assets/bin/log_rollup"
+        } ],
         "inputKeys": [
             "logs/2012-03-01.log",
             "logs/2012-03-02.log",
@@ -624,33 +729,18 @@ Retrieves information about the current job and task.
 
 ### Returns
 
+This field returns the entire job info (as `GET /jobs/:jobid` does) plus the
+following fields:
+
 || **Field** || **Type** || **Description** ||
-|| jobId || String || See `POST /jobs`. ||
-|| jobName || String || See `POST /jobs`. ||
-|| bundle || Object || See `POST /jobs`. ||
 || taskId || String || Task identifier ||
-|| inputKeys || Array&nbsp;of&nbsp;Array&nbsp;of&nbsp;Strings || List of Manta objects this task is expected to process. Each entry of this array is an array with two fields: the object key, and the full path to the corresponding file. ||
+|| taskInputKeys || Array&nbsp;of&nbsp;Array&nbsp;of&nbsp;Strings || List of Manta objects this task is expected to process. Each entry of this array is an array with two fields: the object key, and the full path to the corresponding file. ||
 
 Object metadata (e.g., user-specified headers) are not included in the task
 info.  Users can retrieve this by querying Manta directly.
-
-### Example
-
-Here's an example response:
-
-    {
-        "jobId": "5e42cd1e-34bb-402f-8796-bf5a2cae47db",
-        "jobName": "weekly log rollup",
-        "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-        "inputKeys": [
-            [ "logs/2012-03-11.log", "/keys/logs/2012-03-11.log" ],
-            [ "logs/2012-03-12.log", "/keys/logs/2012-03-12.log" ],
-            [ "logs/2012-03-16.log", "/keys/logs/2012-03-16.log" ]
-        ]
-    }
  
 
-## POST /checkpoint
+## POST /commit
 
 Report that the given keys have been successfully processed.  Tasks *must*
 report when they finish processing all of their keys, and *may* also report
@@ -678,12 +768,6 @@ Returns 204 (no content) on success.
 
 Request:
 
-    POST /checkpoint HTTP/1.1
-    Authorization: ...
-    Host: api.example.com
-    Accept: application/json
-    Content-Type: application/json
-
     {
         "keys": [ "logs/2012-03-11.log" ]
     }
@@ -703,17 +787,24 @@ Response:
 
 Writes a new Manta object named "key" associated with this task.  The arguments,
 semantics, and return value for this URI exactly match the Manta API for
-creating a new object, except that any object created using this URI since the
-last call to `POST /checkpoint` will be discarded if the job fails.  Such
-objects will not be included in the job's output, but will be listed in the task
-state for *postmortem* analysis.
+creating a new object, with the following additions:
+
+* Any object created using this URI since the last call to `POST /commit` will
+  be discarded if the job fails.  Such objects will not be included in the
+  job's output, but will be listed in the task state for *postmortem* analysis.
+* Jobs using pipelined reducers may specify a "X-Marlin-Reducer" header whose
+  value is an integer from 0 to N - 1, where N is the number of reducers in the
+  next phase.  Any other input results in a 409 Conflict error.  This value
+  indicates which of several reducers this output file should be fed to.  If
+  this value is unspecified and there are multiple reducers in the next phase,
+  output keys will be randomly assigned to reducers.
 
 For examples, see the Manta documentation.
 
 ## POST /fail
 
 Fail the current task.  Any objects created since the last call to `POST
-/checkpoint` will be discarded (but will be linked in the task state for
+/commit` will be discarded (but will be linked in the task state for
 *postmortem* analysis).
 
 ### Input
@@ -723,25 +814,20 @@ The input should have at least the following fields:
 || **message** || String || human-readable error message ||
 
 It's also recommended to include a "code" field for a machine-parseable error
-code in string form.
+code in string form.  Other fields may also be specified up to a maximum
+request size.
 
 ### Returns
 
 Returns 204 (no content) on success, but may not return at all, as the task may
 be terminated immediately.
 
-Callers can assume that this call can never fail.
+Callers can assume that this call will never fail.
 
 
 ### Example
 
 Request:
-
-    POST /fail HTTP/1.1
-    Authorization: ...
-    Host: api.example.com
-    Accept: application/json
-    Content-Type: application/json
 
     {
         "message": "corrupt log record"
@@ -765,14 +851,237 @@ processes and the entire filesystem contents will be preserved.
 
 # Implementing use cases
 
+## Built-in facilities
+
+We'll provide several facilities for dealing with common tasks in MR jobs.
+
+### mpipe: output to the next job pipeline
+
+mpipe [&lt;manta_key&gt;] [reducer]
+
+Reads content from stdin and outputs it from this task.  If &lt;manta_key&gt; is not
+given, a new name will be created.
+
+This is exactly equivalent to:
+
+    $ curl -X PUT -T- http://localhost/object/$manta_key
+
+If "reducer" is specified, it must be an integer from 0 to N - 1, where N is the
+number of reducers in the next stage of the job pipeline.  This indicates that
+this object should be routed to the given reducer.
+
+
+### aggr: aggregate rows of numbers
+
+aggr &lt;sum|avg|pctile99...&gt;
+
+Reads a set of "key: value" pairs on stdin, aggregates them key-wise according
+to the given function, and emits the result.
+
+Example input:
+
+    $ cat data.txt
+    manta: 15
+    marlin: 12.8
+    manta: 38
+    moray: 3
+
+Example output:
+
+    $ aggr sum < data.txt
+    manta: 53
+    marlin: 12.8
+    moray: 3
+
+The "key:" bit may also be omitted.
+
+
+## Total word count
+
+Input: a bunch of text files
+
+Output: a count of the total number of words in all files
+
+    {
+        "jobName": "total word count"
+        "inputKeys": [ ... ],
+        "phases": [ {
+            "exec": "wc -w < $mc_input_files | mpipe"
+        }, {
+            "type": "reduce",
+            "exec": "aggr sum | mpipe"
+        } ]
+    }
+
+## Specific word count
+
+Input: a bunch of text files and a word "baseball"
+
+Output: the total number of occurences of "baseball" in all files
+
+    {
+        "jobName": "'baseball' count"
+        "inputKeys": [ ... ],
+        "phases": [ {
+            "exec": "grep -c baseball $mc_input_files | mpipe"
+        }, {
+            "type": "reduce",
+            "exec": "aggr sum | mpipe"
+        } ]
+    }
+
+## Word frequency count (and using a custom asset)
+
+Input: a bunch of files
+
+Output: a text table for the frequency count of each word; e.g.:
+
+    marlin: 527
+    manta: 328
+    moray: 356
+
+For this case, you'll need a script that computes this for a given text file.
+This will do:
+
+    $ cat wordfreq
+    #!/usr/bin/perl -W
+    
+    $counts = {};
+    
+    while (<>) {
+        foreach(split) {
+            s/^\W+//;
+            s/\W+$//;
+            next unless $_;
+            $counts->{lc($_)}++ 
+        }
+    }
+    
+    while (($word, $count) = each(%$counts)) {
+        printf("%s: %d\n", $word, $count);
+    }
+
+You'll first need to PUT this to manta, say at /dap/bin/wordfreq.  Then the job
+looks like this:
+
+    {
+        "jobName": "word frequency count"
+        "inputKeys": [ ... ],
+        "phases": [ {
+            "assets": [ "/dap/bin/wordfreq" ],
+            "exec": "/dap/bin/wordfreq $mc_input_files | mpipe"
+        }, {
+            "type": "reduce",
+            "exec": "aggr sum | mpipe",
+        } ]
+    }
+
+If you wanted, you could rewrite "wordfreq" as a one-liner and include it
+directly in the "exec" property, but this would be a bit unwieldy.
+
+## Pipelined reducers
+
+Sometimes it's necessary to pipeline the reduce phase so that instead of
+processing all input keys in one pass, the input keys are processed in chunks
+across multiple passes.  For example, you may want to process half of the input
+keys in each of two parallel tasks, and then process the output of that, to
+avoid having to load the entire data set in memory at once.
+
+We already support multiple "reduce" phases in a job, but to support this you
+also need to parallelize a single reduce phase.  You can do this with the
+"count" property:
+
+    "phases": [
+        ... /* any number of map phases */
+        , {
+            "type": "reduce",
+            "exec": ...,
+            "count": 2
+        }, {
+            "type": "reduce",
+            "exec": ...
+        }
+    ]
+
+In this example, some number of map phases are followed by a phase with two
+reducers running in parallel, followed by a final reduce stage.  The two
+parallel reducers are identical except for their input and output keys.  By
+default, input keys are randomly assigned to one of the reducers.  If a more
+sophisticated assignment is necessary, the previous map phase may specify to
+which reducer a given output object will be assigned using the X-Marlin-Reducer
+header, which must be an integer between 0 and N - 1, where N is the total
+number of reducers in the next phase.
+
+
+## Node, Python, Ruby, etc. interface
+
+The Jobs API is built in terms of Unix shell commands for generality.  This
+makes it easy to run simple jobs like "grep" and "wc".  For slightly more
+complex cases, custom utilities can be built in the Unix style and composed with
+existing system utilities without writing significant new code.  For more
+complex cases you want entirely custom code, you can simply run your program via
+the "exec" string.
+
+We'll also provide a higher-level interface for Node.js, so that people that
+want to build jobs with custom code can use Node easily.  Likely we'll have
+consumers implement an interface like:
+
+    function processObject(file, callback) { ... }
+
+and we'll provide convenience routines for API operations (like "taskParams()",
+"commit()", "abort()", and so on).
+
+Without fleshing this out completely, we know such an interface can be
+implemented without changes to the Jobs API.  When people want to use the Node
+API, we tell them to write phases like this:
+
+    "phases": [ {
+        "assets": [ "my/npm/package" ],
+        "exec": "mnode /assets/my/npm/package"
+    } ]
+
+"mnode" is an executable Node.js program included with the dataset that installs
+the given npm package (and therefore its dependencies, too) and then invokes our
+Marlin interface in that package.
+
+If we care to, we can do something similar for Python, Ruby, R, or any other
+environment.  It would be just as easy for third parties to build their own.
+Users would only need to reference a third party asset:
+
+    "phases": [ {
+        "assets": [
+            "third-party/framework/start.sh"
+            "my/script"
+        ],
+        "exec": "/assets/third-party/framework/start.sh /assets/my/script" 
+    } ]
+
 ## Log analysis (MapReduce)
-## Video transcoding (Straight Map)
+
+## Image conversion / video transcoding (Straight Map)
+
+This job uses the "convert" command that's part of the ImageMagick suite.  It
+converts image files between types based on file extension.
+
+    {
+        "jobName": "convert GIFs to PNGs",
+        "inputKeys": [ "file1.gif", "file2.gif", ... ]
+        "phases": [ {
+            "exec": "for gif in $mc_input_files; do convert $gif $(basename $gif .gif).png"
+        } ]
+    }
+
+
 ## Node interface
-## Hadoop
 
-# Implementation
+TBD.
 
-## Overview of a job
+## Hadoop proper
+
+TBD.
+
+
+# Marlin implementation
 
 Requests for the Jobs API come in through the Manta web API and get proxied to
 a Marlin Controller (MC).  The immutable properties (assigned id, job name, job
@@ -793,6 +1102,7 @@ requests for this information.  When the MC determines that all tasks for this
 job have completed, it marks the job "done" and records that persistently.  At
 that point, all of the job's state is forever immutable, and it only exists at
 the MC.
+
 
 ## CN agent
 
@@ -832,7 +1142,7 @@ which already has to exist to manage the job.
 written, and then (first approach) proxies the request directly to manta. But
 see "open questions" below.
 
-`/checkpoint` updates the persistent state for the task to indicate that all
+`/commit` updates the persistent state for the task to indicate that all
 objects written since the last checkpoing have been committed.
 
 `/fail` also updates the persistent state, but indicates that new objects should
