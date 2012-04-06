@@ -166,15 +166,15 @@ should also report progress as they go.  The system may time out map tasks that
 are taking too long.
 
 You specify the code that runs in each phase using the "assets", "exec", and
-"args" properties.  Any Manta keys listed in "bundle.assets" will be made
+"args" properties.  Any Manta keys listed in "phases[i].assets" will be made
 available under "/assets" in the compute zone before the task is started.  This
 can be used to distribute applications and libraries that will actually process
 the input to each compute zone.  "assets" should *not* be used to specify input
 keys.  Use "inputKeys" for that.
 
-The task is started by invoking "bundle.exec".  This may be any shell-style
+The task is started by invoking "phases[i].exec".  This may be any shell-style
 command, including environment variables, shell arguments, and pipelines.
-The shell variable "$mln_input_files" may be used to refer to input key files.
+The shell variable "$mc_input_files" may be used to refer to input key files.
 
 Additional structured arguments may be stored in "args", which can be retrieved
 by the task's code using the Task Control API.
@@ -419,7 +419,7 @@ The task **state** is one of:
 
 || **Task&nbsp;state** || **Meaning** ||
 || queued || The task has been planned, but has not started running yet. ||
-|| loading || Marlin is preparing the compute zone to run the task. This step includes downloading and extracting the job's bundle. ||
+|| loading || Marlin is preparing the compute zone to run the task. This step includes downloading and extracting the job's assets. ||
 || running || The task is currently running. ||
 || done || The task is no longer running. ||
 
@@ -438,11 +438,10 @@ The response for a successfully completed job looks like this:
     {
         "jobId": "4bcf467e-4b88-4ab4-b7ab-65fad7464de9",
         "jobName": "weekly log summary",
-        "bundle": {
+        "phases": [ {
             "assets": "bin/log_rollup",
-            "exec": "/assets/bin/log_rollup",
-            "args": { "reducer": "example.com/reducer" }
-        },
+            "exec": "/assets/bin/log_rollup"
+        } ],
         "inputKeys": [
             "logs/2012-03-11.log",
             "logs/2012-03-12.log",
@@ -570,11 +569,10 @@ Here's what a failed job's state looks like:
     {
         "jobId": "4bcf467e-4b88-4ab4-b7ab-65fad7464de9",
         "jobName": "weekly log summary",
-        "bundle": {
+        "phases": [ {
             "assets": "bin/log_rollup",
-            "exec": "/assets/bin/log_rollup",
-            "args": { "reducer": "example.com/reducer" }
-        },
+            "exec": "/assets/bin/log_rollup"
+        } ],
         "inputKeys": [
             "logs/2012-03-11.log",
             "logs/2012-03-12.log",
