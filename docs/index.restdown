@@ -81,18 +81,25 @@ following information:
     } ]
 
 "jobName" and "inputKeys" are pretty self-explanatory.  "phases" describes what
-to actually do with the data.  Marlin splits the first phase into two **tasks**:
-one task runs "wc -w file1 file2 file4" on storage node S1, and the other task
-runs "wc -w file3 file5" on node S2.  On each node, the output of the "wc"
-command is stored in a new Manta object that will become the input for the
-second phase.
+to actually do with the data.
+
+Because the first phase operates on all five files, but these are stored on
+different storage nodes, Marlin splits this phase into two **tasks**, one for
+each node containing input files.  The first task runs runs "wc -w file1
+file2 file4 | mpipe" on storage node S1, and the other task runs "wc -w file3
+file5 | mpipe" on node S2.  "mpipe" is a built-in command that reads data on
+stdin, buffers it until EOF, and outputs a uniquely named temporary object on
+Manta as the output of the current task.  So by piping the "wc" output to
+"mpipe", we make it the output of this task, and that output gets stored on
+Manta.
 
 The second phase is a **reduce phase** that takes the outputs from the previous
-phases and runs the given awk script, producing a single total that's the sum of
-all words in all files.  Since there's only one of these and it combines data
-from many different nodes, it runs on general-purpose compute nodes, not Manta
-storage nodes.  The output of this phase is saved as a new Manta object and
-becomes the output of the job.
+phases (the temporary objects created by "mpipe") and runs the given awk script,
+producing a single total that's the sum of all words in all files.  Since
+there's only one of these and it combines data from many different nodes, it
+runs on general-purpose compute nodes, not Manta storage nodes.  Using "mpipe"
+again, the output of this phase is saved as a new Manta object which becomes the
+output of the job.
 
 With this example we've covered:
 
