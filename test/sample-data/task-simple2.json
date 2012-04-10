@@ -1,0 +1,14 @@
+{
+	"job": {
+		"jobId": "7dbd0750-8357-11e1-a1cf-277decac4b5c",
+		"jobName": "another word frequency count example",
+		"inputKeys": [ "bar.js" ],
+		"phases": [ {
+			"exec": "wc $mc_input_keys | mpipe"
+		} ]
+	},
+
+	"taskId": "7e1674f2-8357-11e1-9368-3bf42ef79ecf",
+	"taskInputKeys": [ "bar.js" ],
+	"taskPhasenum": 0
+}
