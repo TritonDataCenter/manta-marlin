@@ -1120,11 +1120,13 @@ also makes it easier to synchronize changes to the job state.
 
 Job state is stored in Moray under the following buckets:
 
-/marlin/jobs/all/JOBID: job definition (immutable properties: name, input, phases, etc.) and *committed* job state (which keys have been processed)
-/marlin/jobs/unassigned/JOBID: job assignment records (for unassigned jobs)
-/marlin/workers/WORKER/JOBID: jobs assignment record (for jobs assigned to this worker)
-/marlin/task_assignments/COMPUTE_NODE/TASKID: task definition (immutable properties: input keys, task type, assets, etc.)
-/marlin/task_state/JOBID/TASKID: task progress
+
+|| **File** || **Purpose** ||
+|| /marlin/jobs/all/JOBID || job definition (immutable properties: name, input, phases, etc.) and *committed* job state (which keys have been processed) ||
+|| /marlin/jobs/unassigned/JOBID || job assignment records (for unassigned jobs) ||
+|| /marlin/workers/WORKER/JOBID || jobs assignment record (for jobs assigned to this worker) ||
+|| /marlin/task_assignments/COMPUTE_NODE/TASKID || task definition (immutable properties: input keys, task type, assets, etc.) ||
+|| /marlin/task_state/JOBID/TASKID || task progress ||
 
 **Web tier**
 
