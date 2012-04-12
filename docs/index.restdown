@@ -1088,25 +1088,154 @@ TBD.
 
 # Marlin implementation
 
-Requests for the Jobs API come in through the Manta web API and get proxied to
-a Marlin Controller (MC).  The immutable properties (assigned id, job name, job
-params, etc.) are stored persistently, then the user's request returns
-immediately.
+There are at least three types of services in the Marlin architecture:
 
-Sometime later (possibly immediately, but asynchronously), the MC queries Manta
-(Moray, specifically) to find out where each of the job's input keys are
-located.  Using this information the MC figures out which compute nodes should
-process which keys and submits requests to agents running on each of the
-assigned compute nodes.  These requests include the job parameters and the set
-of keys that the target CN must process.  Each CN responds with one or more
-tasks that will process the job on that node.
+* Web tier, which handles requests to GET job state and POST new jobs. 
+* Job workers, which assign tasks to individual storage and compute nodes and
+  monitor task progress.
+* Compute node agents, which execute and monitor tasks and report progress and
+  completion.
 
-At this point, the MC's main job is to receive progress updates from each of the
-compute nodes, update its internal and persistent state, and service job status
-requests for this information.  When the MC determines that all tasks for this
-job have completed, it marks the job "done" and records that persistently.  At
-that point, all of the job's state is forever immutable, and it only exists at
-the MC.
+To keep the service resilient to partitions and individual node failures, **all
+job state is stored in Moray**.  Recall that Moray spans datacenters, is
+eventually consistent, and remains available in the case of minority DC
+partitions.
+
+There's a cluster of web tier workers and job workers in each datacenter, but
+there's no real DC-awareness in these workers.  These workers are mostly
+stateless, too, though see below for details.  They can be scaled horizontally,
+and the system is resilient to failures in individual nodes.
+
+Below we describe several possible approaches to managing the flow of jobs
+through the system.
+
+
+## Approach 1: stateful worker assignment, polling, no (magical) queue
+
+In this model, each job is assigned to one job worker at a time.  This means a
+given job worker only needs to monitor the state of a subset of jobs, and this
+also makes it easier to synchronize changes to the job state.
+
+**Job state**
+
+Job state is stored in Moray under the following buckets:
+
+/marlin/jobs/all/JOBID: job definition (immutable properties: name, input, phases, etc.) and *committed* job state (which keys have been processed)
+/marlin/jobs/unassigned/JOBID: job assignment records (for unassigned jobs)
+/marlin/workers/WORKER/JOBID: jobs assignment record (for jobs assigned to this worker)
+/marlin/task_assignments/COMPUTE_NODE/TASKID: task definition (immutable properties: input keys, task type, assets, etc.)
+/marlin/task_state/JOBID/TASKID: task progress
+
+**Web tier**
+
+Workers retrieve current job state by fetching the job in /marlin/jobs/all.
+
+When a new job is submitted, the web tier allocates a new id and drops an empty
+object into /marlin/jobs/unassigned/JOBID, then drops the actual job
+definition in /marlin/jobs/all/JOBID.  The user request is completed when
+both of these records are in place (and we'll probably want some asynchronous
+process to cleanup assignment records that have no corresponding job -- in case
+of web tier crashes).
+
+**Job workers**
+
+Job workers periodically scan /marlin/jobs/unassigned and pick up new jobs.
+They assign themselves new-job records using a test-and-set overwrite of the
+"unassigned" file with a (worker, timestamp) tuple.  The worker "owns" this job
+for a WORKER_TIMEOUT period from the saved timestamp.  After writing this
+record, the worker immediately moves the file into
+/marlin/workers/WORKER/JOBID.  Until the job is complete, the worker updates
+the assignment record at least every WORKER_TIMEOUT.  If this update ever fails,
+the worker immediately discards any job state it has and stops working on the
+job.
+
+Workers are allowed to pick up empty records (indicating new jobs) as well as
+assigned jobs with an expired timestamp (indicating that a worker crashed,
+possibly in between writing the above record and moving it).
+
+When the job is first submitted, the worker queries Moray to find out where all
+the input keys are and creates **tasks** to process the job.  These tasks are
+written into /marlin/task_assignments/COMPUTE_NODE, which is monitored by
+the corresponding compute node agent (see below).
+
+The worker monitors the files in /marlin/task_state/JOBID.  As tasks complete,
+the worker schedules the set of tasks for the next job, drops those into
+/marling/task_assignments, and so on.  (This may happen even before a phase is
+complete, once it's known where at least some of the output keys are.)
+
+As tasks make progress, the worker updates the job state in /marlin/jobs/all so
+that the web tier can see the results.
+
+**Compute node agents**
+
+Compute node agents monitor their directory in /marlin/task_assignments for new
+tasks.  As their tasks make progress, they drop state updates into
+/marlin/task_state/JOBID/TASKID, which is monitored by the corresponding job
+worker.
+
+**Health monitor**
+
+This design requires an additional set of nodes to monitor workers, but the
+operation is relatively simple: they sweep over all outstanding job assignments
+(/marlin/workers/*) looking for expired timestamps.  They test-and-set rename
+them into /marlin/jobs/unassigned.  This functionality could even be built into
+job workers themselves (that they periodically scan other workers' queues for
+outdated records).
+
+**Invariants and failure modes**
+
+Invariants:
+
+* At most one worker can ever "own" a job.  Only the owner of a job can write
+  task assignments or update the job record in /marlin/jobs/all.
+
+If a user's code fails within a task (e.g., dumps core), and any retry policy
+has been exhausted, the compute agent reports it as failed, and that will be
+visible in the final job state.  It's the user's problem at that point.
+
+If a compute node agent fails transiently (e.g., dumps core and restarts), it
+should be able to pick up where it left off.  This should be invisible to the
+user's code and the rest of the system, modulo slightly increased task
+completion time.
+
+If a compute node agent either fails for an extended period *or* becomes
+partitioned from the rest of the system (which are indistinguishable to the
+outside world), the job worker redispatches any uncompleted work to other nodes
+that have the same data.  It does not cancel the task on the failed node.
+If both eventually complete successfully, the worker will necessarily see one's
+results first and discard the other.  (That's why the state in
+/marlin/task_state is not authoritative job state, and why the worker must
+"commit" this state to the actual job record for the web tier rather than have
+the web tier scan /marlin/task_state.)
+
+If a job worker fails transiently, it should be able to pick up where it left
+off, since all state is stored in Moray.  This should be invisible to the rest
+of the system, modulo slightly increased job completion time.
+
+If a job worker fails for an extended period, the health monitor will unassign
+the job and another worker will pick it up.  This becomes exactly like the case
+where a worker fails transiently: the state in Moray is sufficient for the new
+worker to pick up where the old one left off.
+
+If a job worker becomes partitioned, the rest of the system treats this as an
+extended failure once WORKER_TIMEOUT has elapsed.  The worker itself won't try
+to clobber the job state after someone else has picked it up because it also
+knows that WORKER_TIMEOUT has elapsed.
+
+Health monitor nodes are completely stateless.  Partitioning, transient failure,
+and persistent failure have no impact as long as enough nodes are in service to
+handle load.
+
+Web tier nodes are also completely stateless.  Any failure results in failing
+any in-flight requests.  Persistent failures have no additional impact as long
+as enough nodes are in service to handle load.  Partitions between the web node
+and Moray would result in failed requests.
+
+If an entire datacenter becomes partitioned from the rest, then its web tier
+nodes certainly won't be able to service any requests.  All of its job workers
+become partitioned (see above -- the work should eventually be picked up by
+workers in other datacenters).  All of its compute node agents effectively also
+become partitioned, and their work *may* be duplicated in other datacenters.
 
 
 ## CN agent
