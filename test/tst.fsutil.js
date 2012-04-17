@@ -3,6 +3,7 @@
  */
 
 var mod_assert = require('assert');
+var mod_child = require('child_process');
 var mod_fs = require('fs');
 
 var mod_asyncutil = require('../lib/asyncutil');
@@ -26,6 +27,7 @@ function makeTreeSync(dir)
 	mod_fs.chmodSync(dir + '/burns/lil_lisa/slurry', 0444);
 	mod_fs.writeFileSync(dir + '/burns/lil_lisa/plant', 'fishing net');
 	mod_fs.writeFileSync(dir + '/burns/lil_lisa/cost', 'millions of cans');
+	mod_fs.symlinkSync('../../fat_tony', dir + '/burns/lil_lisa/owner');
 	mod_fs.writeFileSync(dir + '/burns/moes', 'occasionally');
 	mod_fs.writeFileSync(dir + '/fat_tony', 'milk contract');
 	mod_fs.writeFileSync(dir + '/marge', 'pretzel wagon');
@@ -42,7 +44,7 @@ function checkTree(dir)
 	checkDirExists(dir + '/empty2', 040700, []);
 	checkDirExists(dir + '/burns', 040750, [ 'lil_lisa', 'moes', 'snpp' ]);
 	checkDirExists(dir + '/burns/lil_lisa', 040755,
-	    [ 'cost', 'plant', 'slurry' ]);
+	    [ 'cost', 'owner', 'plant', 'slurry' ]);
 
 	checkFileContents(dir + '/burns/snpp', 0100644, 'excellent');
 	checkFileContents(dir + '/burns/lil_lisa/slurry', 0100444,
@@ -55,12 +57,14 @@ function checkTree(dir)
 	checkFileContents(dir + '/fat_tony', 0100644, 'milk contract');
 	checkFileContents(dir + '/marge', 0100644, 'pretzel wagon');
 
+	checkSymlink(dir + '/burns/lil_lisa/owner', '../../fat_tony');
+
 	console.log('tree %s okay', dir);
 }
 
 function checkDirExists(dir, mode, expected)
 {
-	var stat = mod_fs.statSync(dir);
+	var stat = mod_fs.lstatSync(dir);
 	mod_assert.ok(stat.isDirectory(), dir + ' is a directory');
 	mod_assert.equal(mode, stat.mode, dir + ' permissions');
 
@@ -71,11 +75,20 @@ function checkDirExists(dir, mode, expected)
 
 function checkFileContents(file, mode, expected)
 {
-	var stat = mod_fs.statSync(file);
+	var stat = mod_fs.lstatSync(file);
 	mod_assert.ok(stat.isFile(), file + ' is a file');
 	mod_assert.equal(mode, stat.mode, file + ' permissions');
 
 	var actual = mod_fs.readFileSync(file);
+	mod_assert.equal(actual, expected, file + ' contents');
+}
+
+function checkSymlink(file, expected)
+{
+	var stat = mod_fs.lstatSync(file);
+	mod_assert.ok(stat.isSymbolicLink(), file + ' is a symlink');
+
+	var actual = mod_fs.readlinkSync(file);
 	mod_assert.equal(actual, expected, file + ' contents');
 }
 
@@ -117,21 +130,23 @@ function copyFailExists(_, next)
 	    });
 }
 
-function copyFailSymlink(_, next)
+function copyFailPipe(_, next)
 {
-	makeTreeSync(tmpdir + '/contains_symlink');
-	checkTree(tmpdir + '/contains_symlink');
-	console.log('create symlink; attempt copy');
-	mod_fs.symlinkSync(tmpdir + '/source',
-	    tmpdir + '/contains_symlink/mylink');
-	mod_fsutil.copyTree(tmpdir + '/contains_symlink', tmpdir + '/newcopy',
+	makeTreeSync(tmpdir + '/contains_pipe');
+	checkTree(tmpdir + '/contains_pipe');
+	console.log('create pipe; attempt copy');
+	/* There's no mkfifo or mknod binding. */
+	mod_child.execFile('mkfifo', [ tmpdir + '/contains_pipe/mypipe' ], {},
 	    function (err) {
-		if (!err)
-			throw (new Error('expected failure'));
-
-		console.error('saw expected failure on copy ' +
-		    '(contains symlink): %s', err);
-		next();
+		mod_fsutil.copyTree(tmpdir + '/contains_pipe',
+		    tmpdir + '/newcopy', function (err) {
+			if (!err)
+				throw (new Error('expected failure'));
+	
+			console.error('saw expected failure on copy ' +
+			    '(contains pipe): %s', err);
+			next();
+		    });
 	    });
 }
 
@@ -140,7 +155,7 @@ mod_asyncutil.asPipeline({
 	setup,
 	copyOk,
 	copyFailExists,
-	copyFailSymlink
+	copyFailPipe
     ]
 }, function (err) {
 	if (err)
