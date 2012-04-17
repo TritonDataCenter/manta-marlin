@@ -139,12 +139,12 @@ function copyFailPipe(_, next)
 	mod_child.execFile('mkfifo', [ tmpdir + '/contains_pipe/mypipe' ], {},
 	    function (err) {
 		mod_fsutil.copyTree(tmpdir + '/contains_pipe',
-		    tmpdir + '/newcopy', function (err) {
-			if (!err)
+		    tmpdir + '/newcopy', function (suberr) {
+			if (!suberr)
 				throw (new Error('expected failure'));
-	
+
 			console.error('saw expected failure on copy ' +
-			    '(contains pipe): %s', err);
+			    '(contains pipe): %s', suberr);
 			next();
 		    });
 	    });
