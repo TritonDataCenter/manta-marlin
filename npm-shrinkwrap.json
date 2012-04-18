@@ -8,6 +8,9 @@
     "hyprlofs": {
       "version": "0.0.1"
     },
+    "jsprim": {
+      "version": "0.0.1"
+    },
     "JSV": {
       "version": "4.0.0"
     },
@@ -57,6 +60,27 @@
         },
         "semver": {
           "version": "1.0.13"
+        }
+      }
+    },
+    "vasync": {
+      "version": "1.0.1",
+      "dependencies": {
+        "verror": {
+          "version": "1.0.1",
+          "dependencies": {
+            "extsprintf": {
+              "version": "1.0.0"
+            }
+          }
+        }
+      }
+    },
+    "verror": {
+      "version": "1.0.1",
+      "dependencies": {
+        "extsprintf": {
+          "version": "1.0.0"
         }
       }
     },
