@@ -19,16 +19,18 @@ Marlin facilitates the following use cases:
   node apps)
 * Straight Map with no reduce (e.g., video transcoding)
 * Allowing others to run compute on your data (e.g., for government
-  organizations with lots of public data)
+  organizations with lots of public data, e.g.,
+  http://community.topcoder.com/pds-challenge/)
 * Hadoop itself?
 
 Of course, we want this to be easy to use, monitor, and debug.  A good
 barometer is that word count, the MR equivalent of "hello world", should be
-trivial to write.  
+trivial to write.
 
 Marlin defines two public APIs:
 
-* Job API: allows end users to submit, manage, and monitor compute jobs
+* Job API: allows end users to submit, cancel, and monitor compute jobs.  This
+  will ultimately become part of the Manta API.
 * Task Control API: used by user code running inside Marlin to coordinate
   execution and report progress.
 
@@ -74,10 +76,10 @@ following information:
     "jobName": "distributed word count example",
     "inputKeys": [ "file1", "file2", "file3", "file4", "file5" ],
     "phases": [ {
-        "exec": "wc -w $mc_input_keys | mpipe",
+        "exec": "wc -w $mc_input_key | mpipe",
     }, {
         "type": "reduce",
-        "exec": "awk '{sum += $1} END{ print sum; } $mc_input_keys' | mpipe"
+        "exec": "awk '{sum += $1} END{ print sum; } $mc_input_key' | mpipe"
     } ]
 
 "jobName" and "inputKeys" are pretty self-explanatory.  "phases" describes what
@@ -146,12 +148,12 @@ job option.
 || **Field** || **Type** || **Description** ||
 || jobName || String || Human-readable job label (not necessarily unique). ||
 || phases || Array&nbsp;of&nbsp;Objects || Array of compute phases.  See below.  ||
-|| phases[i].type (optional) || String: "map"&nbsp;or&nbsp;"reduce" || Map phases (the default) process individual objects and are executed on the physical system where those objects are stored.  Reduce phases process many objects at once and are generally executed on separate compute nodes. ||
-|| phases[i].count (optional) || Integer || For reduce jobs only, indicates how many reducers to use. See "Pipelined Reducers" below. ||
-|| phases[i].assets (optional) || Array of Strings || List of Manta objects that will be made available in the compute zone.  These may be scripts, binaries, libraries, or other objects used to actually run the job, not inputs to the job. ||
-|| phases[i].exec || String || Shell command to launch the task.  This are passed directly to "bash -c". ||
-|| phases[i].args (optional) || Object || User-defined task arguments.  This is just an arbitrary JSON object that will be available to each task.  Many jobs won't need this because they use shell arguments directly in the "exec" line, but complex tasks may find it easier to process a structured JSON argument. ||
-|| phases[i].datasetVersion (optional) || String || Version of compute zone dataset to use.  By default, the latest stable dataset is used. ||
+|| phaseN.type (optional) || String: "map"&nbsp;or&nbsp;"reduce" || Map phases (the default) process individual objects and are executed on the physical system where those objects are stored.  Reduce phases process many objects at once and are generally executed on separate compute nodes. ||
+|| phaseN.count (optional) || Integer || For reduce jobs only, indicates how many reducers to use. See "Pipelined Reducers" below. ||
+|| phaseN.assets (optional) || Array of Strings || List of Manta objects that will be made available in the compute zone.  These may be scripts, binaries, libraries, or other objects used to actually run the job, not inputs to the job. ||
+|| phaseN.exec || String || Shell command to launch the task.  This are passed directly to "bash -c". ||
+|| phaseN.args (optional) || Object || User-defined task arguments.  This is just an arbitrary JSON object that will be available to each task.  Many jobs won't need this because they use shell arguments directly in the "exec" line, but complex tasks may find it easier to process a structured JSON argument. ||
+|| phaseN.datasetVersion (optional) || String || Version of compute zone dataset to use.  By default, the latest stable dataset is used. ||
 || inputKeys || Array&nbsp;of&nbsp;Strings || List of Manta objects to process. ||
 || failFast (optional) || Boolean || Cancel all tasks when any task fails.  Otherwise, tasks continue running even after one of them fails (in attempt to make as much progress as possible). ||
 
@@ -173,15 +175,15 @@ should also report progress as they go.  The system may time out map tasks that
 are taking too long.
 
 You specify the code that runs in each phase using the "assets", "exec", and
-"args" properties.  Any Manta keys listed in "phases[i].assets" will be made
+"args" properties.  Any Manta keys listed in "phaseN.assets" will be made
 available under "/assets" in the compute zone before the task is started.  This
 can be used to distribute applications and libraries that will actually process
 the input to each compute zone.  "assets" should *not* be used to specify input
 keys.  Use "inputKeys" for that.
 
-The task is started by invoking "phases[i].exec".  This may be any shell-style
+The task is started by invoking "phaseN.exec".  This may be any shell-style
 command, including environment variables, shell arguments, and pipelines.
-The shell variable "$mc_input_files" may be used to refer to input key files.
+The shell variable "$mc\_input\_file" may be used to refer to input key files.
 
 Additional structured arguments may be stored in "args", which can be retrieved
 by the task's code using the Task Control API.
@@ -710,7 +712,7 @@ Here's what a failed job's state looks like:
 
 In this example, we can see that the second task failed partway through.  We
 see this from both the task state and the job log.  Since we see that it had
-started writing the summary for log_summary/2012-03-15.txt, we know it failed
+started writing the summary for log\_summary/2012-03-15.txt, we know it failed
 on this file, and we could next look to see how far it got.  We also have the
 error message reported by the task: "corrupt log record".  The more information
 the task reports, the better the chance of root causing the failure from the
@@ -747,23 +749,22 @@ info.  Users can retrieve this by querying Manta directly.
 
 ## POST /commit
 
-Report that the given keys have been successfully processed.  Tasks *must*
-report when they finish processing all of their keys, and *may* also report
-piecemeal progress.
+Report that the given key has been successfully processed.  Tasks *must* report
+when they finish processing all of their keys.
 
 This information is used for two purposes: first, it is recorded in the job
 state so that end users can see what progress is being made while the job runs.
 Second, any objects created since the last progress report are committed to the
 job.  See `PUT /object/:key`.
 
-When the last keys have been completed, the task may be terminated immediately,
+When the last key has been completed, the task may be terminated immediately,
 potentially before this request even completes.  Any cleanup the task wishes to
 complete should be done before the final call to this URI.
 
 ### Input
 
 || **Field** || **Type** || **Description** ||
-|| keys || Array&nbsp;of&nbsp;Strings || List of objects successfully completed ||
+|| key || String || Key for input object successfully completed ||
 
 ### Returns
 
@@ -774,7 +775,7 @@ Returns 204 (no content) on success.
 Request:
 
     {
-        "keys": [ "logs/2012-03-11.log" ]
+        "key": "logs/2012-03-11.log"
     }
 
 Response:
@@ -796,7 +797,8 @@ creating a new object, with the following additions:
 
 * Any object created using this URI since the last call to `POST /commit` will
   be discarded if the job fails.  Such objects will not be included in the
-  job's output, but will be listed in the task state for *postmortem* analysis.
+  job's output, but will be listed in the task state for *postmortem*
+  debugging.
 * Jobs using pipelined reducers may specify a "X-Marlin-Reducer" header whose
   value is an integer from 0 to N - 1, where N is the number of reducers in the
   next phase.  Any other input results in a 409 Conflict error.  This value
@@ -864,8 +866,8 @@ We'll provide several facilities for dealing with common tasks in MR jobs.
 
 mpipe [&lt;manta_key&gt;] [reducer]
 
-Reads content from stdin and outputs it from this task.  If &lt;manta_key&gt; is not
-given, a new name will be created.
+Reads content from stdin and outputs it from this task.  If &lt;manta\_key&gt;
+is not given, a new name will be created.
 
 This is exactly equivalent to:
 
@@ -958,7 +960,7 @@ This will do:
             s/^\W+//;
             s/\W+$//;
             next unless $_;
-            $counts->{lc($_)}++ 
+            $counts->{lc($\_)}++ 
         }
     }
     
@@ -974,15 +976,15 @@ looks like this:
         "inputKeys": [ ... ],
         "phases": [ {
             "assets": [ "/dap/bin/wordfreq" ],
-            "exec": "/dap/bin/wordfreq $mc_input_files | mpipe"
+            "exec": "/dap/bin/wordfreq $mc_input_file | mpipe"
         }, {
             "type": "reduce",
             "exec": "aggr sum | mpipe",
         } ]
     }
 
-If you wanted, you could rewrite "wordfreq" as a one-liner and include it
-directly in the "exec" property, but this would be a bit unwieldy.
+If you wanted, you could rewrite "wordfreq" as an awk one-liner and include it
+directly in the "exec" property, but this may be a bit unwieldy.
 
 ## Pipelined reducers
 
@@ -1088,188 +1090,263 @@ TBD.
 
 # Marlin implementation
 
-There are at least three types of services in the Marlin architecture:
+## Marlin network architecture
+
+There are four main components in the Marlin architecture:
 
 * Web tier, which handles requests to GET job state and POST new jobs. 
-* Job workers, which assign tasks to individual storage and compute nodes and
-  monitor task progress.
+* Job worker tier, which assigns tasks to individual storage and compute nodes
+  and monitor task progress.
 * Compute node agents, which execute and monitor tasks and report progress and
   completion.
-
-To keep the service resilient to partitions and individual node failures, **all
-job state is stored in Moray**.  Recall that Moray spans datacenters, is
-eventually consistent, and remains available in the case of minority DC
-partitions.
+* Moray, where all Marlin state is stored.
 
 There's a cluster of web tier workers and job workers in each datacenter, but
-there's no real DC-awareness in these workers.  These workers are mostly
-stateless, too, though see below for details.  They can be scaled horizontally,
-and the system is resilient to failures in individual nodes.
-
-Below we describe several possible approaches to managing the flow of jobs
-through the system.
-
-
-## Approach 1: stateful worker assignment, polling, no (magical) queue
-
-In this model, each job is assigned to one job worker at a time.  This means a
-given job worker only needs to monitor the state of a subset of jobs, and this
-also makes it easier to synchronize changes to the job state.
+there's no real DC-awareness among these components.
 
 **Job state**
 
-Job state is stored in Moray under the following buckets:
+To keep the service resilient to partitions and individual node failures, **all
+job state is stored in Moray** (i.e., all components are essentially
+stateless), and **all communication happens via Moray**.  Rather than talking
+to each other directly, each component drops state changes into Moray and polls
+for whatever other state changes it needs to know about.  This model makes it
+relatively easy to deal with individual component failure and to scale
+horizontally.  See "Invariants and failure modes" below for details.
 
+Recall that Moray spans datacenters, is eventually consistent, and remains
+available in the case of minority DC partitions.  Using Moray in this way also
+implies that Moray becoming unavailable makes Marlin unavailable, and that
+Moray must be able to keep up with the Marlin workload.  See "Scalability"
+below.
 
-|| **File** || **Purpose** ||
-|| /marlin/jobs/all/JOBID || job definition (immutable properties: name, input, phases, etc.) and *committed* job state (which keys have been processed) ||
-|| /marlin/jobs/unassigned/JOBID || job assignment records (for unassigned jobs) ||
-|| /marlin/workers/WORKER/JOBID || jobs assignment record (for jobs assigned to this worker) ||
-|| /marlin/task_assignments/COMPUTE_NODE/TASKID || task definition (immutable properties: input keys, task type, assets, etc.) ||
-|| /marlin/task_state/JOBID/TASKID || task progress ||
+Jobs are stored inside a single Moray bucket called "marlin\_jobs", with
+indexed fields that allow the web tier, job workers, and agents to poll on the
+subset of jobs that they care about.
+
 
 **Web tier**
 
-Workers retrieve current job state by fetching the job in /marlin/jobs/all.
+Workers retrieve current job state by querying "marlin\_jobs" for the job with
+the given jobId.
 
-When a new job is submitted, the web tier allocates a new id and drops an empty
-object into /marlin/jobs/unassigned/JOBID, then drops the actual job
-definition in /marlin/jobs/all/JOBID.  The user request is completed when
-both of these records are in place (and we'll probably want some asynchronous
-process to cleanup assignment records that have no corresponding job -- in case
-of web tier crashes).
+When a new job is submitted, the web tier allocates a new jobId and drops the
+job definition into "marlin\_jobs".
+
 
 **Job workers**
 
-Job workers periodically scan /marlin/jobs/unassigned and pick up new jobs.
-They assign themselves new-job records using a test-and-set overwrite of the
-"unassigned" file with a (worker, timestamp) tuple.  The worker "owns" this job
-for a WORKER_TIMEOUT period from the saved timestamp.  After writing this
-record, the worker immediately moves the file into
-/marlin/workers/WORKER/JOBID.  Until the job is complete, the worker updates
-the assignment record at least every WORKER_TIMEOUT.  If this update ever fails,
-the worker immediately discards any job state it has and stops working on the
-job.
+To synchronize changes to job state, each job is assigned to one worker at a
+time.  This assignment is stored in the job object in Moray.  An assignment is
+valid as long as the job's modification time (mtime) is within the last
+WORKER\_TIMEOUT seconds.
 
-Workers are allowed to pick up empty records (indicating new jobs) as well as
-assigned jobs with an expired timestamp (indicating that a worker crashed,
-possibly in between writing the above record and moving it).
+This works as follows: each job worker periodically queries Moray for jobs
+whose state is not "done" and either (a) the "worker" field is undefined or (b)
+the modification time is more than WORKER\_TIMEOUT seconds ago.  (This is a
+relatively simple query on indexed fields.)  For each job the worker finds, it
+uses a test-and-set operation to assign the job to itself.  In this way,
+workers pick up both new jobs and jobs whose assigned workers appear to have
+failed.  A worker must update each job every WORKER\_TIMEOUT seconds, even if
+there's no meaningful progress to report, to indicate that the worker is still
+handling that job.  If the worker sees that WORKER\_TIMEOUT seconds has elapsed
+since it last updated the job, it must discard any job state it has and stop
+working on the job to avoid conflicting with another worker who picks up the
+job.  (In practice, the best way to implement this may simply be to have all
+state updates use a test-and-set that checks whether worker == me.)
 
-When the job is first submitted, the worker queries Moray to find out where all
-the input keys are and creates **tasks** to process the job.  These tasks are
-written into /marlin/task_assignments/COMPUTE_NODE, which is monitored by
-the corresponding compute node agent (see below).
+When a worker picks up a newly submitted job, the first thing it has to do is
+query Moray to find out where all the input keys are.  Moray itself has many
+independent partitions and uses a consistent hash ring to map a given key to
+the Moray partition that holds the metadata for that key.  The worker takes all
+the input keys, executes the consistent hash function to group them by Moray
+partition, and performs a batch request to each partition to determine which
+storage nodes each key is actually stored on.
 
-The worker monitors the files in /marlin/task_state/JOBID.  As tasks complete,
-the worker schedules the set of tasks for the next job, drops those into
-/marling/task_assignments, and so on.  (This may happen even before a phase is
-complete, once it's known where at least some of the output keys are.)
+The worker than divides the first phase of the job into **tasks**, each of
+which will run on one storage node and process whichever input keys are stored
+on that node.  These task assignments are written out to a Moray bucket called
+"marlin\_tasks" with a field identifying the hostname of the node on which the
+task will run.  The agents running on each node poll Moray for tasks assigned to
+them, process each one, and update the task object.  The job worker polls on
+these task updates, updates the global job state with job progress (so the web
+tier can see it) and advances the job when each phase completes.
 
-As tasks make progress, the worker updates the job state in /marlin/jobs/all so
-that the web tier can see the results.
+When a phase completes (as determined by the worker when all of its tasks have
+completed), the worker begins processing the next phase in the same way it did
+the first one: by locating the objects within Manta and then assigning tasks to
+individual nodes.  When all phases complete, the job is marked done.
 
 **Compute node agents**
 
-Compute node agents monitor their directory in /marlin/task_assignments for new
-tasks.  As their tasks make progress, they drop state updates into
-/marlin/task_state/JOBID/TASKID, which is monitored by the corresponding job
-worker.
-
-**Health monitor**
-
-This design requires an additional set of nodes to monitor workers, but the
-operation is relatively simple: they sweep over all outstanding job assignments
-(/marlin/workers/*) looking for expired timestamps.  They test-and-set rename
-them into /marlin/jobs/unassigned.  This functionality could even be built into
-job workers themselves (that they periodically scan other workers' queues for
-outdated records).
+As described above, compute node agents monitor tasks assigned to them in
+"marlin\_tasks".  As their tasks make progress, they update the task record,
+which is also monitored by a job worker.
 
 **Invariants and failure modes**
 
 Invariants:
 
+* All state is stored in Moray, so all components are stateless.
 * At most one worker can ever "own" a job.  Only the owner of a job can write
-  task assignments or update the job record in /marlin/jobs/all.
+  task assignments or update the job record in "marlin\_jobs".
+* To a first approximation, a component is partitioned iff it cannot reach
+  Moray.  This is an oversimplification because Moray itself is sharded, so it's
+  theoretically possible to be partitioned from one shard but not another.
+  This case is very unlikely, since each shard has a presence in each DC, but
+  the system will handle this.  Most importantly, the only partitioning that
+  matters is that between a component and a given Moray shard.
 
-If a user's code fails within a task (e.g., dumps core), and any retry policy
-has been exhausted, the compute agent reports it as failed, and that will be
-visible in the final job state.  It's the user's problem at that point.
+If a user's code fails within a task (e.g., dumps core), and the on-node retry
+policy has been exhausted, the compute agent reports the task as failed, and
+that will become visible in the final job state.  It's the user's problem at
+that point.
 
 If a compute node agent fails transiently (e.g., dumps core and restarts), it
 should be able to pick up where it left off.  This should be invisible to the
 user's code and the rest of the system, modulo slightly increased task
-completion time.
+completion time.  (The agent must synchronously write state to local disk to
+facilitate this.  If this storage fails, that's equivalent to the compute node
+agent failing persistently.)
 
 If a compute node agent either fails for an extended period *or* becomes
-partitioned from the rest of the system (which are indistinguishable to the
-outside world), the job worker redispatches any uncompleted work to other nodes
-that have the same data.  It does not cancel the task on the failed node.
-If both eventually complete successfully, the worker will necessarily see one's
-results first and discard the other.  (That's why the state in
-/marlin/task_state is not authoritative job state, and why the worker must
-"commit" this state to the actual job record for the web tier rather than have
-the web tier scan /marlin/task_state.)
+partitioned from its Moray shard (which are indistinguishable to the outside
+world), the job worker redispatches any uncompleted work to other nodes that
+have the same data.  It does not cancel the task on the failed node.  If both
+tasks eventually complete successfully, the worker will necessarily see one's
+results first and discard the other's.  (That's why the state in "marlin\_tasks"
+is not authoritative job state, and why the worker must "commit" this state to
+the job record in "marlin\_jobs" for the web tier to see it, rather than having
+the web tier scan "marlin\_tasks" for itself.)
 
 If a job worker fails transiently, it should be able to pick up where it left
 off, since all state is stored in Moray.  This should be invisible to the rest
 of the system, modulo slightly increased job completion time.
 
-If a job worker fails for an extended period, the health monitor will unassign
-the job and another worker will pick it up.  This becomes exactly like the case
-where a worker fails transiently: the state in Moray is sufficient for the new
-worker to pick up where the old one left off.
+If a job worker fails for an extended period, another job worker will pick up
+its jobs.  This becomes exactly like the case where a worker fails transiently:
+the state in Moray is sufficient for the new worker to pick up where the old one
+left off.
 
-If a job worker becomes partitioned, the rest of the system treats this as an
-extended failure once WORKER_TIMEOUT has elapsed.  The worker itself won't try
-to clobber the job state after someone else has picked it up because it also
-knows that WORKER_TIMEOUT has elapsed.
+If a job worker becomes partitioned from one or more Moray shards, then it will
+be unable to process task updates from compute nodes reporting to those shards.
+It may end up trying to redispatch tasks assigned to those nodes to other nodes.
+If it can talk to enough shards to complete the phase, the phase will complete;
+otherwise, it will stall until connectivity is restored, at which point the
+worker will see the completed task state and finish the phase.
 
-Health monitor nodes are completely stateless.  Partitioning, transient failure,
-and persistent failure have no impact as long as enough nodes are in service to
-handle load.
+If a job worker becomes partitioned from the Moray shard storing the job state
+for WORKER\_TIMEOUT seconds, this will be treated as an extended worker failure.
+Another worker will pick up the job where the first one left off.  The first
+worker won't clobber the job state after someone else has picked up the job
+because it also knows that WORKER\_TIMEOUT has elapsed.
 
-Web tier nodes are also completely stateless.  Any failure results in failing
-any in-flight requests.  Persistent failures have no additional impact as long
-as enough nodes are in service to handle load.  Partitions between the web node
-and Moray would result in failed requests.
+Web tier nodes are completely stateless.  Any failure results in failing any
+in-flight requests.  Persistent failures have no additional impact as long as
+enough nodes are in service to handle load.  Partitions between the web node and
+the Moray shard storing job records would result in failed requests.
 
 If an entire datacenter becomes partitioned from the rest, then its web tier
 nodes certainly won't be able to service any requests.  All of its job workers
 become partitioned (see above -- the work should eventually be picked up by
 workers in other datacenters).  All of its compute node agents effectively also
 become partitioned, and their work *may* be duplicated in other datacenters.
+Importantly, jobs submitted to the majority partition should always be able to
+complete successfully in this state, since there's always enough copies of the
+data to process the job.
+
+**Scalability**
+
+Being stateless, web tier nodes can be scaled arbitrarily horizontally.  If load
+exceeds capacity, requests will queue up and potentially eventually fail, but
+alarms should ring long before that happens.
+
+Similarly, job workers can be scaled arbitrarily horizontally, and capacity
+monitoring should allow administrators to ensure that sufficient capacity is
+always available.  The failure mode for excess load is simply increased job
+completion time.  Task updates may accumulate in Moray faster than the worker
+can process them, but the total space used in Moray is the same regardless of
+how fast the job workers process them, so there's no cascading failure.  If job
+workers cannot update their locks in Moray, the system may thrash as workers try
+to take each others' jobs, but this would be very extreme.
+
+Compute nodes rely on the OS to properly balance the workload within that box.
+They may queue tasks after some very large number of concurrent tasks, but it's
+not anticipated that we would ever reach that point in practice.  If this
+became a problem, job workers could conceivably redispatch the task to another
+node with the same data available.  If this truly became a serious problem, we
+could support compute agents that download data, rather than operating locally
+(just as reducers already do).
+
+Given that there's enough capacity in each of the Marlin tiers, the remaining
+question is Moray.  Moray will be sharded, and we will say that each compute
+node reports its tasks to exactly one (uniformly distributed) shard.  All job
+state will be stored on a single shard, since the number of updates is
+relatively minimal.  We should be able to reshard to scale this out.
+
+Additionally, each compute node can batch its Moray updates from all tasks for
+up to N seconds, sharply reducing the number of requests required.  Similarly,
+job workers can batch job state updates for many jobs up to N seconds.  Batching
+of "location" GET requests is discussed above, under "job workers".  Thus, the
+total number of Moray-wide requests should be boundable to something like (# of
+workers \* # of compute zone agents) / (N seconds), where N is how frequently
+each agent updates Moray.  These requests should mostly be distributed across
+all shards.
+
+Batching requests for the same record over multiple seconds reduces both network
+throughput and database operations, as multiple state changes can be combined at
+the source.
+
+Batching requests over multiple records helps network throughput, but not the
+total number of database operations, since each record must be operated on
+separately.  The total number of database operations could still be around (# of
+active tasks \* # of agents \* # of active jobs \* # of job workers).  Again,
+these are distributed across many Moray shards, which can be scaled
+horizontally.
+
+## Cancellation
+
+To cancel a job, the web tier writes "cancelled: true" to the job record.  At
+this point, we could say that the job state is immutable and all future state
+requests only show whatever state has been completed up to this point.
+
+Asynchronously, the job worker will need to be polling on the job state
+occasionally to notice the cancelled flag.  It propagates this to individual
+task assignments, where the compute node agents will notice that the job has
+been cancelled and abort them.  Eventually, all work on the job will complete,
+though this may take some time to propagate through the system.
 
 
 ## CN agent
 
-When the agent receives the request for a new job, it figures out how many tasks
-to split that request into (probably always 1 to start with) and reports that
-back to the MC.  After that, it reports all task state changes back to the MC
-(task queued, loaded, running, timed out/failed/succeeded).
+As described above, compute node agents receive task assignments via Moray and
+report progress back to Moray.  Such progress includes keys processed and state
+changes, including that a task is queued, loaded, running, timed out, failed, or
+done.)
 
-If there are no compute zones available at the moment, tasks are enqueued for
-later.  Otherwise, the agent picks CZs to run each of the tasks and does the
+The agent maintains a pool of compute zones that are either "uninitialized",
+"ready", or "busy".  Uninitialized zones are those currently in an arbitrary
+state.  Those are asynchronously transitioned to "ready" by the following steps:
+
+1. Halt the zone, if it's not already halted.
+2. "zfs rollback" to the zone's origin snapshot
+3. Boot the zone.
+4. Sets up an agent inside the zone that listens for local HTTP requests to the
+   Task Control API and forwards them via a zsock server to the CN agent.
+
+When a new task is dispatched, if there are no "ready" zones available, tasks
+are enqueued for later.  Otherwise, the agent picks a "ready" zone and does the
 following:
 
-1. Halts the zone, if it's not already halted.
-2. "zfs rollback" to the zone's origin snapshot
-3. Boots the zone.
-4. Creates a hyprlofs mount for the files.
-5. Sets up the zsock server in the zone. (This could actually be baked into the
-   zone's dataset, in which case this step is skipped.)
-6. Downloads the job's bundle's assets into the zone.
-7. Finally, invokes the bundle's exec script.
+1. Downloads the job's bundle's assets into the zone.
+2. Creates a hyprlofs mount for the files.
+3. Finally, invokes the bundle's exec script.
 
-Steps 5, 6, and 7 have to be done in the context of the zone. We'll probably
-need an agent inside the zone in order to monitor the contract anyway, so this
-agent can be responsible bootstrapping the user's code: downloading the assets
-and invoking the bundle.
+When the job completes, successfully or otherwise, the CN agent reclaims the
+zone by marking it "uninitialized" again and asynchronously transitioning it to
+"ready" again to be used for another task.
 
-The agent also has to implement the Task Control API. Users will invoke that
-API via calls to an HTTP server on localhost (see step 5 above) which proxies
-all requests via a zsock to the CN agent.  The CN agent knows which zone each
-request is coming from, so it knows which task and job the request is
-associated with.
+To implement the Task Control API:
 
 `/info` is simple: it just retrieves data from the agent's persistent state,
 which already has to exist to manage the job.
@@ -1292,53 +1369,84 @@ manta file.  (We'll want some automated mechanism to reconstruct the user's zone
 based on this, presumably by "zfs receive" the dataset and then "zfs receive -i"
 the stream associated with this task.)
 
-To terminate a zone, the CN agent halts it, does a "zfs rollback" to the origin,
-and updates the MC.
+In order to survive transient failure, the agent must store state on disk.  The
+current plan is to use sqlite for this because it already has usable Node
+bindings.
 
-
-## Job state
-
-* The MC always owns the immutable state for a job.
-* While a job is running, the run state of the task is comprised of the run
-  state of its tasks, which lives authoritatively on the corresponding CNs.
-  Agents update the MC with task progress, and the MC caches this task state to
-  service job status requests from the user and to determine when the job has
-  completed.
-* CN agents only keep state about tasks that are currently running or queued to
-  run on that node.  They must keep state about already-run tasks until the MC
-  has acked their report that the job completed.
-* Once the job has completed, all of its state is immutable.  The MC keeps this
-  information for future state requests.
-
-## Open questions:
+## Open questions
 
 Roughly in order of importance:
 
-* Need to examine all kinds of failures: agent, CN, network, user code, etc.
-* What does the MC actually look like? Presumably it must be HA.
-* How do the components communicate? AMQP or HTTP?
-* [How] can we manage the hyprlofs mount from the global zone?
-* How does the agent manage persistent state? It needs to survive agent failure,
-  but it's less clear that it must (or even should) survive CN failure.  It
-  certainly doesn't have to be available when the CN fails, so it may as well be
-  local storage.
 * When user code wants to write files to manta, how exactly does that work? Do
   we have a way to tell Manta to write one copy on the local box, and if so, do
   we avoid sending it across the network twice?
 * How do we monitor the user code's contract? Presumably we'll need an agent
   in the zone that bootstraps their code and watches the contract (but then we
   need to figure out what to do if that guy dies -- adopt the contract?)
+* What metrics do we want to provide via CA?  How will we implement these?
+  What other changes must be made to CA to support Marlin and Manta?
 * What's the algorithm for assigning tasks to compute nodes? A pretty dumb one
-  will probably suffice for a while, but it might be nice if the MC kept track
-  of what everyone was working on to better distribute work.
+  will probably suffice for a while, but it might be nice if the worker kept
+  track of what everyone was working on to better distribute work.
 * Should the job log be a manta object so that user's can add their own entries?
-
-## Compute zones
-
-Sizing
-Create, reset
-Tuning
 
 ## Management API?
 
 cancel tasks, take compute zones and servers in and out of service
+initial setup: creating compute zones
+tuning # of compute zones
+
+## Rough roadmap
+
+The basic idea is to get a prototype up and running relatively quickly and
+build that out as needed.  This is a *very* rough draft of how to get there.
+
+Eventually, we'll need the following from Moray:
+
+* an instance to test on that supports PUT, GET, DELETE of individual objects,
+  test-and-set, GET with a JSON query, etc.
+* a client-side library that supports throttling and handles the consistent
+  hashing among partitions, given some configuration in UFDS.
+
+It will be important to be able to test each component in isolation anyway, so
+we'll want to build a "fake" Moray for testing anyway.
+
+For the CN agent, the prototype steps might look like this:
+
+* A CN agent that can take a given "map" task (consistent of input keys and a
+  command to run) and execute it in one of a fixed pool of zones.
+* Add testing entry points to manage the set of zones: add a new zone (which
+  must already exist), remove a zone, etc.
+* Add the ability to actually map the input keys as files via hyprlofs.  At
+  this point, they'd just be files stored in some hardcoded tmpdir on the
+  server.  Once a manta prototype is available, we can wire this up to manta.
+* Implement the basics of the Task Control API in the agent.
+* Add "assets" downloading.
+* Wire the agent up to Moray: read tasks from Moray, write updates back to Moray.
+* Make the CN agent robust to transient failures (i.e. persist state on disk).
+* Eventually: implement cancel.
+* Eventually: support "abort", which saves zone state.
+
+For the job worker:
+
+* Figure out what the in-moray data structures look like, including version
+  numbers and "expected" versions (e.g., so the agent can write updates it
+  knows the worker can read).
+* Implement a tool that reads various task state emitted by compute nodes and
+  unifies it.  This will likely be valuable for working on the agent, too.
+* Build something that polls something for new tasks and always assigns
+  tasks to the same "agent" (probably using a mock agent that reports progress
+  at some fixed rate) and otherwise processes the job completely.
+* Do the same, with a group of mock agents.
+* Implement recovery from an arbitrary point along a job.
+* Implement cancel.
+* Wire it up to Moray (implement locking protocol).
+
+For the web tier:
+
+* Implement create, get, cancel given job state as emitted by the worker.
+  These are actually relatively easy, though we may need to iterate on the job
+  representation as we build the other components, which means the "get" part
+  may change.  However, this will likely be a useful component to build before
+  implementing the worker in order to interact with the worker.
+
