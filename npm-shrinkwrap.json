@@ -68,6 +68,9 @@
     "node-uuid": {
       "version": "1.3.3"
     },
+    "panic": {
+      "version": "0.2.1"
+    },
     "posix-getopt": {
       "version": "0.0.1"
     },
