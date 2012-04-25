@@ -1,0 +1,13 @@
+{
+	"job": {
+		"jobId": "ae1a1bb8-8b0e-11e1-9767-57516e10139b",
+		"jobName": "task that will block indefinitely",
+		"phases": [ {
+			"exec": "cat"
+		} ],
+		"inputKeys": [ "one" ]
+	},
+	"taskId": "b5e0fc7c-8b0e-11e1-8e7f-db58082c32a9",
+	"taskInputKeys": [ "one" ],
+	"taskPhasenum": 0
+}

@@ -1,0 +1,13 @@
+{
+	"job": {
+		"jobId": "ae1a1bb8-8b0e-11e1-9767-57516e10139b",
+		"jobName": "testing job",
+		"phases": [ {
+			"exec": "grep $mc_input_key /usr/dict/words"
+		} ],
+		"inputKeys": [ "hello", "there", "thisisnotaword", "world" ]
+	},
+	"taskId": "b5e0fc7c-8b0e-11e1-8e7f-db58082c32a9",
+	"taskInputKeys": [ "hello", "there", "thisisnotaword", "world" ],
+	"taskPhasenum": 0
+}
