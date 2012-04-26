@@ -5,9 +5,9 @@
 		"phases": [ {
 			"exec": "cat"
 		} ],
-		"inputKeys": [ "one" ]
+		"inputKeys": [ "one", "two" ]
 	},
 	"taskId": "b5e0fc7c-8b0e-11e1-8e7f-db58082c32a9",
-	"taskInputKeys": [ "one" ],
+	"taskInputKeys": [ "one", "two" ],
 	"taskPhasenum": 0
 }
