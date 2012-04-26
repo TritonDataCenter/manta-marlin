@@ -18,6 +18,7 @@
 #
 DOC_FILES	 = index.restdown
 JS_FILES	:= $(shell find src lib test -name '*.js')
+JS_FILES	+= cmd/dpipe
 JSL_CONF_NODE	 = tools/jsl.node.conf
 JSL_FILES_NODE   = $(JS_FILES)
 JSSTYLE_FILES	 = $(JS_FILES)

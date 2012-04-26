@@ -1,0 +1,89 @@
+#!/usr/bin/env node
+
+var mod_fs = require('fs');
+var mod_http = require('http');
+var mod_uuid = require('node-uuid');
+
+/*
+ * dpipe: distributed pipe
+ */
+var dpUsageMessage = [
+    'usage: dpipe [objectkey]',
+    '',
+    'dpipe is a distributed pipe for compute jobs.  This command reads data',
+    'from stdin and saves it as a new object called "objectkey".  The new ',
+    'object is recorded as an output object for the current input object.  ',
+    'If "objectkey" is unspecified, a unique key will be created.',
+    '',
+    'Because the object store requires knowing content-length ahead of time, ',
+    'this command buffers input to the local filesystem before uploading any ',
+    'of it.'
+].join('\n');
+
+var dpTmpfile = '/var/tmp/dpipe.' + process.pid;
+var dpObjkey;
+var dpOutstream, dpInstream;
+
+function main()
+{
+	if (process.argv.length > 2) {
+		dpObjkey = process.argv[2];
+	} else {
+		dpObjkey = mod_uuid.v4();
+	}
+
+	if (dpObjkey.length === 0) {
+		console.error(dpUsageMessage);
+		process.exit(2);
+	}
+
+	console.error('saving stdin to %s', dpTmpfile);
+	dpOutstream = mod_fs.createWriteStream(dpTmpfile);
+	process.stdin.pipe(dpOutstream);
+	process.stdin.resume();
+	process.stdin.on('end', dpUploadFile);
+}
+
+function dpFatal(message)
+{
+	console.error(message);
+	process.exit(1);
+}
+
+function dpUploadFile()
+{
+	dpInstream = mod_fs.createReadStream(dpTmpfile);
+
+	dpInstream.on('open', function () {
+		mod_fs.stat(dpTmpfile, function (err, stat) {
+			if (err)
+				dpFatal('failed to stat ' + dpTmpfile +
+				    ': ' + err.message);
+
+			var uri = '/object/' + dpObjkey;
+			console.error('uploading file to %s', uri);
+
+			var request = mod_http.request({
+			    'host': 'localhost',
+			    'port': 8080,
+			    'method': 'PUT',
+			    'path': uri,
+			    'headers': {
+				'content-length': stat['size']
+			    }
+			});
+
+			dpInstream.pipe(request);
+
+			request.on('response', function (response) {
+				if (response.statusCode != 201)
+					dpFatal('server returned ' +
+					    response.statusCode);
+
+				console.log(dpObjkey);
+			});
+		});
+	});
+}
+
+main();
