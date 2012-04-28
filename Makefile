@@ -22,7 +22,11 @@ JS_FILES	+= cmd/dpipe
 JSL_CONF_NODE	 = tools/jsl.node.conf
 JSL_FILES_NODE   = $(JS_FILES)
 JSSTYLE_FILES	 = $(JS_FILES)
-SMF_MANIFESTS_IN = smf/manifests/marlin-zone-agent.xml.in
+SMF_MANIFESTS_IN = \
+    smf/manifests/marlin-agent.xml.in \
+    smf/manifests/marlin-zone-agent.xml.in \
+    smf/manifests/marlin-mock-manta.xml.in
+
 REPO_MODULES     = src/node-hyprlofs
 
 include ./tools/mk/Makefile.defs

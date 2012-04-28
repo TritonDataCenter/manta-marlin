@@ -1,0 +1,13 @@
+#!/bin/bash
+
+set -o pipefail
+
+function fail
+{
+	echo "$*" >&2
+	exit 1
+}
+
+[[ -n "$1" ]] || fail "usage: $(basename $0) zonename"
+
+exec curl -X POST -is "http://localhost:8080/zones?zonename=$1" | json
