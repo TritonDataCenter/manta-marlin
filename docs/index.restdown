@@ -54,6 +54,11 @@ system, that might look like this:
       234936 /usr/share/dict/words
       593261 total
 
+Alternatively, you might do this:
+
+    $ cat /usr/share/dict/* | wc -w
+    593261
+
 The idea of the distributed version is that you'd like to do something like:
 
     $ wc -w file1 file2 ...
@@ -76,32 +81,36 @@ following information:
     "jobName": "distributed word count example",
     "inputKeys": [ "file1", "file2", "file3", "file4", "file5" ],
     "phases": [ {
-        "exec": "wc -w $mc_input_key | mpipe",
+        "exec": "wc -w",
     }, {
         "type": "reduce",
-        "exec": "awk '{sum += $1} END{ print sum; } $mc_input_key' | mpipe"
+        "exec": "awk '{sum += $1} END{ print sum; }'"
     } ]
 
 "jobName" and "inputKeys" are pretty self-explanatory.  "phases" describes what
 to actually do with the data.
 
-Because the first phase operates on all five files, but these are stored on
-different storage nodes, Marlin splits this phase into two **tasks**, one for
-each node containing input files.  The first task runs runs "wc -w file1
-file2 file4 | mpipe" on storage node S1, and the other task runs "wc -w file3
-file5 | mpipe" on node S2.  "mpipe" is a built-in command that reads data on
-stdin, buffers it until EOF, and outputs a uniquely named temporary object on
-Manta as the output of the current task.  So by piping the "wc" output to
-"mpipe", we make it the output of this task, and that output gets stored on
-Manta.
+In the first phase, Marlin invokes "wc -w" once for each input file, and passes
+the files contents on stdin.  Each of these invocations is called a **task**.
+The stdout for "wc" will become input for the next phase.
 
-The second phase is a **reduce phase** that takes the outputs from the previous
-phases (the temporary objects created by "mpipe") and runs the given awk script,
-producing a single total that's the sum of all words in all files.  Since
-there's only one of these and it combines data from many different nodes, it
-runs on general-purpose compute nodes, not Manta storage nodes.  Using "mpipe"
-again, the output of this phase is saved as a new Manta object which becomes the
-output of the job.
+Because the first phase operates on all five files, but these are stored on
+different storage nodes, Marlin splits this phase into two **task groups**, one
+for each node containing input files.  The first task group runs three
+separate **tasks** on node S1, equivalent to "wc -w &lt; file1", "wc -w &lt;
+file2", "wc -w &lt; file4".  The second task group runs two tasks on S2,
+equivalent to "wc -w &lt; file3" 'and "wc -w &lt; file5".
+
+The stdout of each of these commands becomes the input for the second phase.  As
+an implementation detail, these will be stored as temporary files in Manta, but
+this is not visible to end users.
+
+The second phase is a **reduce phase** that takes the output objects from the
+previous phase and runs the given awk script, producing a single total that's
+the sum of all words in all files.  Since there's only one task for a reduce
+phase and it combines data from many different nodes, it runs on a
+general-purpose compute node, not a Manta storage node.  The output is saved as
+a new Manta object which will become the output of the job.
 
 With this example we've covered:
 
@@ -112,6 +121,7 @@ With this example we've covered:
 * *reduce phases*, which run on separate compute nodes and combine outputs from
   previous phases
 * *tasks*, which are individual pieces of a map or reduce phase
+* *task groups*, which are the set of tasks that run on a single node
 * *compute zones*, which are the environments in which tasks run
 
 
@@ -130,9 +140,9 @@ Each job defines a set of input Manta objects to process and a set of
 phase may output any number of manta objects for input to the next phase.  The
 output from the last phase is the output of the job.
 
-Each phase of the job is divided into discrete tasks that run one piece of the
-phase.  While the job is running, users can retrieve the status of the job to
-see which tasks have completed, which tasks are running, which keys have been
+Each phase of the job is divided into discrete task groups that run one piece of
+the phase.  While the job is running, users can retrieve the status of the job
+to see which tasks have completed, which tasks are running, which keys have been
 processed, and which keys are left.
 
 When all tasks complete, the job itself completes.  Failed tasks are not
@@ -165,21 +175,21 @@ Jobs can have any number of map or reduce phases.  For examples:
 * N &gt; 1 map phases, M &gt; 1 reduce phases: MR with pipelined reducers
 * 0 map phases, N reduce phases: in-place compute
 
-To process a map phase, the system divides the phase into tasks, where each task
-runs a piece of the overall job on a Manta node where some of the input objects
-are stored.  Reduce phases are also divided into tasks, with one task per
-reducer.  (But most jobs will have at most 1 reducer.)
+To process a map phase, the system divides the phase into task groups, where
+each task group runs a piece of the overall job on a Manta node where some of
+the input objects are stored.  The task group is divided into tasks, each of
+which processes exactly one input key.  Reduce phases are also divided into
+tasks, with one task per reducer.  (But most jobs will have at most 1 reducer.)
 
-Both map and reduce tasks must report when they have succeeded or failed, and
-should also report progress as they go.  The system may time out map tasks that
-are taking too long.
+Both map and reduce tasks must report when they have succeeded or failed.  The
+system may time out map tasks that are taking too long.
 
-You specify the code that runs in each phase using the "assets", "exec", and
-"args" properties.  Any Manta keys listed in "phaseN.assets" will be made
-available under "/assets" in the compute zone before the task is started.  This
-can be used to distribute applications and libraries that will actually process
-the input to each compute zone.  "assets" should *not* be used to specify input
-keys.  Use "inputKeys" for that.
+You specify the code that runs in each task using the "assets", "exec", and
+"args" properties of the phase.  Any Manta keys listed in "phaseN.assets" will
+be made available under "/assets" in the compute zone before the task is
+started.  This can be used to distribute applications and libraries that will
+actually process the input to each compute zone.  "assets" should *not* be used
+to specify input keys.  Use "inputKeys" for that.
 
 The task is started by invoking "phaseN.exec".  This may be any shell-style
 command, including environment variables, shell arguments, and pipelines.
@@ -373,7 +383,7 @@ Here's an example where the job failed:
 
 Retrieves detailed status information about a job.  The system makes a best
 effort to keep this information up to date, but any of the runtime state may be
-outdated or inconsistent while a job is in the "running" state.  
+outdated or inconsistent while a job is in the "running" state.
 
 ### Returns
 
@@ -384,7 +394,7 @@ extra fields:
 || doneKeys || Array&nbsp;of&nbsp;Strings || Manta keys that have been processed successfully. ||
 || outputKeys || Array&nbsp;of&nbsp;Strings || Manta keys output by this job. ||
 || jobLog || Array&nbsp;of&nbsp;Objects || Log of job activity (see below). ||
-|| tasks || Array&nbsp;of&nbsp;Objects || Individual task states (see below). ||
+|| taskGroups || Array&nbsp;of&nbsp;Objects || Individual task group states (see below). ||
 
 #### Job log
 
@@ -404,13 +414,15 @@ fields:
 
 Callers can see precisely which keys have been completed by examining
 "doneKeys".  For a rough measure of progress, callers can compare
-"doneKeys.length" to "inputKeys.length".  These mechanisms rely on tasks
-to report progress as they process each object, though tasks are not required
-to report progress until they finish processing all of their input.
+"doneKeys.length" to "inputKeys.length".
 
-The **tasks** field shows more detailed information about how the job was
+The **taskGroups** field shows more detailed information about how the job was
 distributed to various servers and the status of each task on each server.  Each
 entry of this array describes an individual task, including:
+
+XXX This section will need more changes to reflect the change from task to task
+group.  Users may only care about tasks, though operators will likely care about
+task groups as well.
 
 || **Task&nbsp;field** || **Type** || **Meaning** ||
 || taskId || String || Unique identifier for this task within this job. ||
@@ -467,7 +479,7 @@ The response for a successfully completed job looks like this:
             ...
             "logs/2012-03-17.log"
         ],
-        "tasks": [ {
+        "taskGroups": [ {
             "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
             "host": "2F16",
             "machine": "e7b35c46-c36d-4e02-8cde-6fdf2695af15", 
@@ -570,8 +582,8 @@ The response for a successfully completed job looks like this:
     }
 
 In this example, the job was distributed to two nodes, 2F16 and 2F20, where one
-task was run on each node.  Each task got a few of the 7 input objects.  Both
-tasks have completed processing all of their objects.
+task group was run on each node.  Each task group got a few of the 7 input
+objects.  Both task groups have completed processing all of their objects.
 
 Here's what a failed job's state looks like:
 
@@ -604,7 +616,7 @@ Here's what a failed job's state looks like:
                 "logs/2012-03-16.log",
                 "logs/2012-03-17.log"
         ],
-        "tasks": [ {
+        "taskGroups": [ {
             "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
             "host": "2F16",
             "machine": "e7b35c46-c36d-4e02-8cde-6fdf2695af15", 
@@ -710,13 +722,13 @@ Here's what a failed job's state looks like:
         } ]
     }
 
-In this example, we can see that the second task failed partway through.  We
-see this from both the task state and the job log.  Since we see that it had
-started writing the summary for log\_summary/2012-03-15.txt, we know it failed
-on this file, and we could next look to see how far it got.  We also have the
-error message reported by the task: "corrupt log record".  The more information
-the task reports, the better the chance of root causing the failure from the
-first occurrence.
+In this example, we can see that the second task group failed partway through.
+We see this from both the task group state and the job log.  Since we see that
+it had started writing the summary for log\_summary/2012-03-15.txt, we know it
+failed on this file, and we could next look to see how far it got.  We also have
+the error message reported by the task group: "corrupt log record".  The more
+information the task reports, the better the chance of root causing the failure
+from the first occurrence.
 
 
 # Task Control API
@@ -741,7 +753,7 @@ following fields:
 
 || **Field** || **Type** || **Description** ||
 || taskId || String || Task identifier ||
-|| taskInputKeys || Array&nbsp;of&nbsp;Array&nbsp;of&nbsp;Strings || List of Manta objects this task is expected to process. Each entry of this array is an array with two fields: the object key, and the full path to the corresponding file. ||
+|| taskInputKey || Array&nbsp;of&nbsp;Strings || An array with two fields: the object key, and the full path to the corresponding file. ||
 
 Object metadata (e.g., user-specified headers) are not included in the task
 info.  Users can retrieve this by querying Manta directly.
@@ -750,14 +762,14 @@ info.  Users can retrieve this by querying Manta directly.
 ## POST /commit
 
 Report that the given key has been successfully processed.  Tasks *must* report
-when they finish processing all of their keys.
+when they finish processing each key.
 
 This information is used for two purposes: first, it is recorded in the job
 state so that end users can see what progress is being made while the job runs.
 Second, any objects created since the last progress report are committed to the
 job.  See `PUT /object/:key`.
 
-When the last key has been completed, the task may be terminated immediately,
+When the key has been completed, the task may be terminated immediately,
 potentially before this request even completes.  Any cleanup the task wishes to
 complete should be done before the final call to this URI.
 
@@ -913,10 +925,10 @@ Output: a count of the total number of words in all files
         "jobName": "total word count"
         "inputKeys": [ ... ],
         "phases": [ {
-            "exec": "wc -w < $mc_input_files | mpipe"
+            "exec": "wc -w"
         }, {
             "type": "reduce",
-            "exec": "aggr sum | mpipe"
+            "exec": "aggr sum"
         } ]
     }
 
@@ -930,10 +942,10 @@ Output: the total number of occurences of "baseball" in all files
         "jobName": "'baseball' count"
         "inputKeys": [ ... ],
         "phases": [ {
-            "exec": "grep -c baseball $mc_input_files | mpipe"
+            "exec": "grep -c baseball"
         }, {
             "type": "reduce",
-            "exec": "aggr sum | mpipe"
+            "exec": "aggr sum"
         } ]
     }
 
@@ -976,10 +988,10 @@ looks like this:
         "inputKeys": [ ... ],
         "phases": [ {
             "assets": [ "/dap/bin/wordfreq" ],
-            "exec": "/dap/bin/wordfreq $mc_input_file | mpipe"
+            "exec": "/dap/bin/wordfreq"
         }, {
             "type": "reduce",
-            "exec": "aggr sum | mpipe",
+            "exec": "aggr sum",
         } ]
     }
 
@@ -1074,8 +1086,8 @@ converts image files between types based on file extension.
         "jobName": "convert GIFs to PNGs",
         "inputKeys": [ "file1.gif", "file2.gif", ... ]
         "phases": [ {
-            "exec": "for gif in $mc_input_files; do convert $gif $(basename $gif .gif).png"
-        } ]
+            "exec": "output=$(basename $mc_input_file .gif).png; convert $mc_input_file $output && mpipe < $output"
+        }
     }
 
 
@@ -1163,7 +1175,7 @@ the input keys, executes the consistent hash function to group them by Moray
 partition, and performs a batch request to each partition to determine which
 storage nodes each key is actually stored on.
 
-The worker than divides the first phase of the job into **tasks**, each of
+The worker than divides the first phase of the job into **task groups**, each of
 which will run on one storage node and process whichever input keys are stored
 on that node.  These task assignments are written out to a Moray bucket called
 "marlin\_tasks" with a field identifying the hostname of the node on which the
