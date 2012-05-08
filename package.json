@@ -17,7 +17,7 @@
 		"restify": "1.4.1",
 		"vasync": "1.0.1",
 		"verror": "1.0.1",
-		"zsock": "1.1.1"
+		"zsock": "git://github.com/mcavage/node-zsock.git"
 	},
 	"bundledDependencies": [
 		"bunyan",
