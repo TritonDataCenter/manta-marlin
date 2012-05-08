@@ -8,7 +8,7 @@
 		} ],
 		"inputKeys": [ "key1", "key2", "key3", "key4", "key5" ]
 	},
-	"taskId": "5440f77e-90c7-11e1-9353-c7d9e0df4fa2",
-	"taskInputKeys": [ "key1", "key2", "key3" ],
-	"taskPhasenum": 0
+	"taskGroupId": "5440f77e-90c7-11e1-9353-c7d9e0df4fa2",
+	"taskGroupInputKeys": [ "key1", "key2", "key3" ],
+	"taskGroupPhasenum": 0
 }

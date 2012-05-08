@@ -7,7 +7,7 @@
 		} ],
 		"inputKeys": [ "hello", "there", "thisisnotaword", "world" ]
 	},
-	"taskId": "b5e0fc7c-8b0e-11e1-8e7f-db58082c32a9",
-	"taskInputKeys": [ "hello", "there", "thisisnotaword", "world" ],
-	"taskPhasenum": 0
+	"taskGroupId": "b5e0fc7c-8b0e-11e1-8e7f-db58082c32a9",
+	"taskGroupInputKeys": [ "hello", "there", "thisisnotaword", "world" ],
+	"taskGroupPhasenum": 0
 }
