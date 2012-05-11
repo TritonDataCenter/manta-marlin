@@ -76,6 +76,7 @@
     },
     "restify": {
       "version": "1.4.1",
+      "from": "git://github.com/davepacheco/node-restify.git#ea84cc32c2bbec21db33ca3c5492fcb53cab4743",
       "dependencies": {
         "async": {
           "version": "0.1.18"
