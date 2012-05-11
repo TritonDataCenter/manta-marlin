@@ -15,7 +15,7 @@
 		"panic": "0.2.1",
 		"posix-getopt": "0.0.1",
 		"restify": "1.4.1",
-		"vasync": "1.0.1",
+		"vasync": "1.2.0",
 		"verror": "1.0.1",
 		"zsock": "git://github.com/mcavage/node-zsock.git"
 	},
