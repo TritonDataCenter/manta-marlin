@@ -161,10 +161,8 @@ HyprlofsFilesystem::Initialize(Handle<Object> target)
 }
 
 /*
- * This object wraps a mountpoint, caching both the file descriptor and
- * mountpoint path.  Ownership of the file descriptor is passed to this object
- * when the object is constructed, and the fd will be closed when the object is
- * destroyed.
+ * This object wraps a mountpoint, caching the mountpoint path.  The mountpoint
+ * path is not checked or used until the first time it's needed.
  */
 Handle<Value>
 HyprlofsFilesystem::New(const Arguments& args)

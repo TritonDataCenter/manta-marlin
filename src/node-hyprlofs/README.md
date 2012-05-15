@@ -72,13 +72,16 @@ below.
 ### `new Filesystem(mountpoint)`: work with a hyprlofs filesystem
 
 The constructor creates a handle for issuing subsequent hyprlofs requests.  This
-does *not* mount the filesystem or create any mappings, but this call will fail
-if the given mountpoint does not already exist.
+does *not* mount the filesystem or create any mappings.  The mountpoint itself
+will not be validated until it's used by one of the other methods.
 
 ### `fs.mount(callback)`: mount a hyprlofs filesystem
 
 Mounts a new **read-only** hyprlofs filesystem at this object's mountpoint.  The
 filesystem initially contains no mappings.
+
+If a hyprlofs filesystem cannot be mounted at the object's mountpoint, this
+call will fail.
 
 ### `fs.unmount(callback)`: unmount a hyprlofs filesystem
 
