@@ -3,11 +3,11 @@
 		"jobId": "ae1a1bb8-8b0e-11e1-9767-57516e10139b",
 		"jobName": "task that will block indefinitely",
 		"phases": [ {
-			"type": "generic",
+			"type": "storage-map",
 			"exec": "cat"
 		} ],
-		"inputKeys": [ "one", "two" ]
+		"inputKeys": [ "words", "release" ]
 	},
-	"taskGroupInputKeys": [ "one", "two" ],
+	"taskGroupInputKeys": [ "words", "release" ],
 	"taskGroupPhasenum": 0
 }

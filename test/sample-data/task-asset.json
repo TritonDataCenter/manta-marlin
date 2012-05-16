@@ -3,6 +3,7 @@
 		"jobId": "8ec69e76-8a50-11e1-9477-23301f656f29",
 		"jobName": "testing job",
 		"phases": [ {
+			"type": "generic",
 			"assets": [ "/my/exec.sh" ],
 			"exec": "/assets/my/exec.sh $mc_input_key"
 		} ],

@@ -3,6 +3,7 @@
 		"jobId": "ae1a1bb8-8b0e-11e1-9767-57516e10139b",
 		"jobName": "testing job",
 		"phases": [ {
+			"type": "generic",
 			"exec": "grep $mc_input_key /usr/dict/words"
 		} ],
 		"inputKeys": [ "hello", "there", "thisisnotaword", "world" ]
