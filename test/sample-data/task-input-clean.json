@@ -4,7 +4,7 @@
 		"jobName": "word count input files",
 		"phases": [ {
 			"type": "storage-map",
-			"exec": "wc | dpipe $mc_input_key.custom.out"
+			"exec": "wc"
 		} ],
 		"inputKeys": [ "words", "release" ]
 	},
