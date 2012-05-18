@@ -88,18 +88,17 @@ following information:
     } ]
 
 "jobName" and "inputKeys" are pretty self-explanatory.  "phases" describes what
-to actually do with the data.
-
-In the first phase, Marlin invokes "wc -w" once for each input file, and passes
-the files contents on stdin.  Each of these invocations is called a **task**.
-The stdout for "wc" will become input for the next phase.
+to actually do with the data.  By default, phases are **map** operations, so
+in the first phase above, Marlin invokes "wc -w" once for each input file, and
+passes the files contents on stdin.  Each of these invocations is called a
+**task**.  The stdout for "wc" will become input for the next phase.
 
 Because the first phase operates on all five files, but these are stored on
 different storage nodes, Marlin splits this phase into two **task groups**, one
 for each node containing input files.  The first task group runs three
-separate **tasks** on node S1, equivalent to "wc -w &lt; file1", "wc -w &lt;
-file2", "wc -w &lt; file4".  The second task group runs two tasks on S2,
-equivalent to "wc -w &lt; file3" 'and "wc -w &lt; file5".
+separate **tasks** in a **compute zone** on node S1, equivalent to "wc -w &lt;
+file1", "wc -w &lt; file2", "wc -w &lt; file4".  The second task group runs two
+tasks on S2, equivalent to "wc -w &lt; file3" 'and "wc -w &lt; file5".
 
 The stdout of each of these commands becomes the input for the second phase.  As
 an implementation detail, these will be stored as temporary files in Manta, but
