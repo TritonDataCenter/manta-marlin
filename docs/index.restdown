@@ -1422,21 +1422,13 @@ Eventually, we'll need the following from Moray:
 It will be important to be able to test each component in isolation anyway, so
 we'll want to build a "fake" Moray for testing anyway.
 
-For the CN agent, the prototype steps might look like this:
-
-* A CN agent that can take a given "map" task (consistent of input keys and a
-  command to run) and execute it in one of a fixed pool of zones.
-* Add testing entry points to manage the set of zones: add a new zone (which
-  must already exist), remove a zone, etc.
-* Add the ability to actually map the input keys as files via hyprlofs.  At
-  this point, they'd just be files stored in some hardcoded tmpdir on the
-  server.  Once a manta prototype is available, we can wire this up to manta.
-* Implement the basics of the Task Control API in the agent.
-* Add "assets" downloading.
-* Wire the agent up to Moray: read tasks from Moray, write updates back to Moray.
-* Make the CN agent robust to transient failures (i.e. persist state on disk).
-* Eventually: implement cancel.
-* Eventually: support "abort", which saves zone state.
+For the CN agent, the current prototype can execute "generic" and "storage-map"
+tasks on a pool of zones, using hyprlofs to map the files in, providing input on
+stdin, and capturing stdout.  It also downloads assets from a mock manta
+instance.  Steps required to flesh this out include wiring the agent up to
+Moray, making both the in-zone and CN agent robust to transient failures by
+persisting state on disk, and implementing niceties like "cancel" and "abort"
+(the latter of which saves zone state).
 
 For the job worker:
 
