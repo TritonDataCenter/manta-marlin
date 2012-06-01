@@ -1315,6 +1315,132 @@ active tasks \* # of agents \* # of active jobs \* # of job workers).  Again,
 these are distributed across many Moray shards, which can be scaled
 horizontally.
 
+## Objects
+
+There are two types of objects stored in Moray: jobs and task group
+assignments.  Here's what an internal job record looks like:
+
+    {
+        "version": 0,                           /* versioning */
+        "jobId": "...",                         /* see API above */
+        "jobName": "...",                       /* see API above */
+        "phases": [ {                           /* see API above */
+                "type": "...",
+                "count": "...",
+                "datasetVersion": "...",
+                "assets": [ "..." ],
+                "args": { "...": "..." },
+                "exec": "..."
+        } ],
+        "inputKeys": [ "..." ],                 /* see API above */
+        "failFast": false,                      /* see API above */
+    
+        "state": "...",                         /* see API above */
+        "error": "...",                         /* see API above */
+        "createTime": "...",                    /* see API above */
+        "finishTime": "...",                    /* see API above */
+    
+        "results": [
+                [                               /* phase 1 results */
+                        {                       /* input key 1 result */
+                                "machine": "...",       /* zonename */
+                                "input": "...",         /* input key */
+                                "state": "...",         /* queued, etc. */
+                                "result": "...",        /* success? */
+                                "partial": [ "..." ],   /* only while running */
+                                "outputs": [ "..." ],   /* only on success */
+                                "discarded": [ "..." ], /* only on failure */
+                                "startTime": "...",
+                                "doneTime": "...",
+                                "error": "..."          /* only on failure */
+                        },
+                        {                       /* input key 2 result */
+                                "machine": "...",
+                                "input": "...",
+                                "state": "...",
+                                "result": "...",
+                                "partial": [ "..." ],
+                                "outputs": [ "..." ],
+                                "discarded": [ "..." ],
+                                "startTime": "...",
+                                "doneTime": "...",
+                                "error": "..."
+                        }
+                ] /* end phase 1 results */
+        ]
+    
+        "jobLog": [ "..." ],
+    
+        /* internal state */
+        "worker": "...",                        /* owner worker's uuid */
+        "lastCompletedPhase": "..."             /* index into phases, or -1 */
+    }
+
+Here's what an internal task group assignment looks like:
+
+    {
+        "version": 0,                           /* version written by worker */
+        "maxVersion": 0,                        /* max version worker accepts */
+        "jobId": "...",                         /* see API above */
+        "taskGroupId": "...",                   /* identifies this record */
+        "host": "...",                          /* destination host */
+        "inputKeys": [ "..." ],                 /* keys for this task group */
+        "phase": {                              /* phase for this task group */
+                "datasetVersion": "...",
+                "assets": [ "..." ],
+                "args": { "...": "..." },
+                "exec": "..."
+        },
+        "failFast": false,                      /* see API above */
+        "state": "...",                         /* current status */
+        "error": "...",                         /* only on failure */
+        "results": [ {                          /* see job record */
+                "machine": "...",
+                "input": "...",
+                "state": "...",
+                "result": "...",
+                "partial": [ "..." ],
+                "outputs": [ "..." ],
+                "discarded": [ "..." ],
+                "startTime": "...",
+                "doneTime": "...",
+                "error": "..."
+        }, {
+                "machine": "...",
+                "input": "...",
+                "state": "...",
+                "result": "...",
+                "partial": [ "..." ],
+                "outputs": [ "..." ],
+                "discarded": [ "..." ],
+                "startTime": "...",
+                "doneTime": "...",
+                "error": "..."
+        } ]
+    }
+
+Here are the Moray operations on these objects:
+
+Web tier:
+
+* POST /jobs (create new job)
+* GET /jobs/jobId (get job status)
+* PUT /jobs/jobId (rare case: use T&S to set cancelled = true)
+
+Workers:
+
+* GET /jobs where worker == null or mtime < ... (pick up new jobs)
+* PUT /jobs/jobId (update job state)
+* PUT /taskgroups/taskGroupId (create/update assignment)
+* GET /taskgroups/taskGroupId (check task group state)
+
+Agents:
+
+* GET /taskgroups where host == me (pick up new task groups)
+* GET /taskgroups/taskGroupId (check task group state)
+* PUT /taskgroups/taskGroupId (post task group results)
+
+
 ## Cancellation
 
 To cancel a job, the web tier writes "cancelled: true" to the job record.  At
