@@ -7,6 +7,6 @@
 	"engines":	{ "node": ">=0.6" },
 	"main":		"./build/Release/hyprlofs",
 	"scripts": {
-		"install": "node-waf configure build"
+		"install": "node-gyp configure build"
 	}
 }

@@ -50,14 +50,14 @@ protected:
 	HyprlofsFilesystem(const char *, bool);
 	~HyprlofsFilesystem();
 
-	void async(void (*)(eio_req *), Local<Value>);
+	void async(void (*)(uv_work_t *), Local<Value>);
 	void doIoctl(int, void *);
 
-	static int eioAsyncFini(eio_req *);
-	static void eioIoctlRun(eio_req *);
-	static void eioIoctlGetRun(eio_req *);
-	static void eioMountRun(eio_req *);
-	static void eioUmountRun(eio_req *);
+	static void eioAsyncFini(uv_work_t *);
+	static void eioIoctlRun(uv_work_t *);
+	static void eioIoctlGetRun(uv_work_t *);
+	static void eioMountRun(uv_work_t *);
+	static void eioUmountRun(uv_work_t *);
 
 	static Handle<Value> New(const Arguments&);
 	static Handle<Value> Mount(const Arguments&);
@@ -370,7 +370,7 @@ HyprlofsFilesystem::argsCheck(const char *label, const Arguments& args,
  * boilerplate for Node add-ons implementing asynchronous operations.
  */
 void
-HyprlofsFilesystem::async(void (*eiofunc)(eio_req *), Local<Value> callback)
+HyprlofsFilesystem::async(void (*eiofunc)(uv_work_t *), Local<Value> callback)
 {
 	assert(!this->hfs_pending);
 	this->hfs_pending = true;
@@ -378,15 +378,16 @@ HyprlofsFilesystem::async(void (*eiofunc)(eio_req *), Local<Value> callback)
 	    Local<Function>::Cast(callback));
 	this->Ref();
 
-	eio_custom(eiofunc, EIO_PRI_DEFAULT, eioAsyncFini, this);
-	ev_ref(EV_DEFAULT_UC);
+	uv_work_t *_req = new uv_work_t;
+	_req->data = this;
+	uv_queue_work(uv_default_loop(), _req, eiofunc, eioAsyncFini);
 }
 
 /*
  * Invoked outside the event loop (via eio_custom) to actually run umount(2).
  */
 void
-HyprlofsFilesystem::eioUmountRun(eio_req *req)
+HyprlofsFilesystem::eioUmountRun(uv_work_t *req)
 {
 	HyprlofsFilesystem *hfs = static_cast<HyprlofsFilesystem *>(req->data);
 	if (hyprlofs_debug || hfs->hfs_debug)
@@ -417,7 +418,7 @@ HyprlofsFilesystem::eioUmountRun(eio_req *req)
  * Invoked outside the event loop (via eio_custom) to actually run mount(2).
  */
 void
-HyprlofsFilesystem::eioMountRun(eio_req *req)
+HyprlofsFilesystem::eioMountRun(uv_work_t *req)
 {
 	char optstr[256];
 
@@ -494,14 +495,14 @@ HyprlofsFilesystem::doIoctl(int cmd, void *arg)
  * hyprlofs ioctl.
  */
 void
-HyprlofsFilesystem::eioIoctlRun(eio_req *req)
+HyprlofsFilesystem::eioIoctlRun(uv_work_t *req)
 {
 	HyprlofsFilesystem *hfs = (HyprlofsFilesystem *)(req->data);
 	hfs->doIoctl(hfs->hfs_ioctl_cmd, hfs->hfs_ioctl_arg);
 }
 
 void
-HyprlofsFilesystem::eioIoctlGetRun(eio_req *req)
+HyprlofsFilesystem::eioIoctlGetRun(uv_work_t *req)
 {
 	HyprlofsFilesystem *hfs = (HyprlofsFilesystem *)(req->data);
 	hyprlofs_curr_entry_t *entv;
@@ -558,8 +559,8 @@ top:
  * completed.  Here we invoke the user's callback to indicate that the operation
  * has completed.
  */
-int
-HyprlofsFilesystem::eioAsyncFini(eio_req *req)
+void
+HyprlofsFilesystem::eioAsyncFini(uv_work_t *req)
 {
 	HandleScope scope;
 	Local<Function> callback;
@@ -567,7 +568,7 @@ HyprlofsFilesystem::eioAsyncFini(eio_req *req)
 
 	HyprlofsFilesystem *hfs = (HyprlofsFilesystem *)req->data;
 
-	ev_unref(EV_DEFAULT_UC);
+	delete req;
 	hfs->Unref();
 
 	/*
@@ -620,8 +621,6 @@ HyprlofsFilesystem::eioAsyncFini(eio_req *req)
 	callback->Call(Context::GetCurrent()->Global(), argc, argv);
 	if (try_catch.HasCaught())
 		FatalException(try_catch);
-
-	return (0);
 }
 
 /*
