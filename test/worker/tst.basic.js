@@ -3,7 +3,6 @@
  */
 
 var mod_assert = require('assert');
-var mod_path = require('path');
 
 var mod_jsprim = require('jsprim');
 var mod_vasync = require('vasync');

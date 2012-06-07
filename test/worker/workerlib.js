@@ -36,11 +36,12 @@ function createMoray()
 
 function createWorker(args)
 {
-	return (new mod_worker.mwWorker({
-	    'uuid': mod_extsprintf.sprintf('worker-%03d', idx++),
-	    'moray': args['moray'],
-	    'log': log
-	}));
+	var worker_args = Object.create(args);
+
+	worker_args['log'] = log;
+	worker_args['uuid'] = mod_extsprintf.sprintf('worker-%03d', idx++);
+
+	return (new mod_worker.mwWorker(worker_args));
 }
 
 /*
