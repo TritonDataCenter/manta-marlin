@@ -14,6 +14,11 @@
 #
 
 #
+# Tools
+#
+CATEST		 = tools/catest
+
+#
 # Files
 #
 DOC_FILES	 = index.restdown
@@ -43,6 +48,10 @@ all: $(SMF_MANIFESTS) deps
 .PHONY: deps
 deps: | $(REPO_DEPS) $(NPM_EXEC)
 	$(NPM) --no-rebuild install
+
+.PHONY: test
+test:
+	tools/catest -a
 
 DISTCLEAN_FILES += node_modules
 
