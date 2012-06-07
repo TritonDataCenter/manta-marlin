@@ -6,6 +6,7 @@
 	"private": true,
 	"dependencies": {
 		"bunyan": "0.6.8",
+		"extsprintf": "1.0.0",
 		"hyprlofs": "0.0.1",
 		"jsprim": "0.0.4",
 		"JSV": "4.0.0",
@@ -21,6 +22,7 @@
 	},
 	"bundledDependencies": [
 		"bunyan",
+		"extsprintf",
 		"hyprlofs",
 		"jsprim",
 		"JSV",
