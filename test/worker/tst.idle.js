@@ -15,7 +15,6 @@ var bktJobs = mod_worklib.jobsBucket;
 mod_vasync.pipeline({
     'funcs': [
 	setup,
-	submitJob,
 	checkJob,
 	checkJob2,
 	teardown
@@ -30,32 +29,20 @@ mod_vasync.pipeline({
 });
 
 
-var moray, worker;
+var moray, worker, jobdef;
 
 function setup(_, next)
 {
 	log.info('setup');
 
+	jobdef = mod_worklib.jobSpec1Phase;
 	moray = mod_worklib.createMoray();
 	worker = mod_worklib.createWorker({
 	    'moray': moray,
 	    'saveInterval': 8 * 1000
 	});
 	worker.start();
-	next();
-}
-
-function submitJob(_, next)
-{
-	log.info('submitJob');
-
-	moray.put(bktJobs, 'job-001', {
-	    'jobId': 'job-001',
-	    'phases': [ {} ],
-	    'inputKeys': [ 'key1', 'key2', 'key3', 'key4' ],
-	    'results': []
-	});
-
+	moray.put(bktJobs, jobdef['jobId'], jobdef);
 	next();
 }
 

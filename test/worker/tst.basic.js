@@ -16,7 +16,6 @@ var taskgroups;
 mod_vasync.pipeline({
     'funcs': [
 	setup,
-	submitJob,
 	checkJob,
 	checkTaskGroups,
 	updatePartial,
@@ -33,37 +32,27 @@ mod_vasync.pipeline({
 });
 
 
-var moray, worker;
+var moray, worker, jobdef;
 
 function setup(_, next)
 {
 	log.info('setup');
 
 	taskgroups = {};
+	jobdef = mod_worklib.jobSpec1Phase;
 	moray = mod_worklib.createMoray();
 	worker = mod_worklib.createWorker({ 'moray': moray });
 	worker.start();
+	moray.put(bktJobs, jobdef['jobId'], jobdef);
 	next();
-}
-
-function submitJob(_, next)
-{
-	log.info('submitJob');
-
-	moray.put(bktJobs, 'job-001', {
-	    'jobId': 'job-001',
-	    'phases': [ {} ],
-	    'inputKeys': [ 'key1', 'key2', 'key3', 'key4' ]
-	});
-
-	process.nextTick(next);
 }
 
 function checkJob(_, next)
 {
 	log.info('checkJob');
+
 	mod_worklib.timedCheck(10, 1000, function (callback) {
-		var job = moray.get(bktJobs, 'job-001');
+		var job = moray.get(bktJobs, jobdef['jobId']);
 		mod_assert.equal('worker-000', job['worker']);
 		mod_assert.equal('running', job['state']);
 		callback();
@@ -73,16 +62,18 @@ function checkJob(_, next)
 function checkTaskGroups(_, next)
 {
 	log.info('checkTaskGroups');
+
 	mod_worklib.timedCheck(10, 1000, function (callback) {
-		var groups = moray.list(bktTgs).map(
-		    moray.get.bind(moray, bktTgs));
+		var groups = mod_worklib.listTaskGroups(moray,
+		    jobdef['jobId'], 0);
+
 		mod_assert.equal(3, groups.length);
 		log.info('found groups', groups);
 
 		var hosts = {}, keys = {};
 
 		groups.forEach(function (group) {
-			mod_assert.equal('job-001', group['jobId']);
+			mod_assert.equal(jobdef['jobId'], group['jobId']);
 			mod_assert.equal('dispatched', group['state']);
 			mod_assert.ok(0 === group['phaseNum']);
 			mod_assert.deepEqual([], group['results']);
@@ -112,37 +103,24 @@ function checkTaskGroups(_, next)
 
 function updatePartial(_, next)
 {
-	var group, key;
-
 	log.info('updatePartial');
 
-	/*
-	 * Report partial completion for one of the task groups.
-	 */
-	for (key in taskgroups) {
-		group = taskgroups[key];
-
-		group['results'].push({
-		    'result': 'ok',
-		    'input': group['inputKeys'][0],
-		    'outputs': [ 'result1' ]
-		});
-
-		moray.put(bktTgs, key, group);
+	for (var key in taskgroups) {
+		mod_worklib.completeTaskGroup(moray, taskgroups[key], 1);
 		break;
 	}
 
 	mod_worklib.timedCheck(10, 1000, function (callback) {
-		var job = moray.get(bktJobs, 'job-001');
+		var job = moray.get(bktJobs, jobdef['jobId']);
 
-		mod_assert.equal(job['jobId'], 'job-001');
-		mod_assert.deepEqual(job['phases'], [ {} ]);
+		mod_assert.equal(job['jobId'], jobdef['jobId']);
+		mod_assert.deepEqual(job['phases'], jobdef['phases']);
 		mod_assert.deepEqual(job['inputKeys'],
 		    [ 'key1', 'key2', 'key3', 'key4' ]);
 
-		mod_assert.deepEqual(job['outputKeys'], [ 'result1' ]);
+		mod_assert.deepEqual(job['outputKeys'], [ 'key10' ]);
 
-		mod_assert.ok(worker.mw_jobs.hasOwnProperty('job-001'));
+		mod_assert.ok(worker.mw_jobs.hasOwnProperty(jobdef['jobId']));
 
 		callback();
 	}, next);
@@ -152,30 +130,22 @@ function updateRest(_, next)
 {
 	log.info('updateRest');
 
-	mod_jsprim.forEachKey(taskgroups, function (tgid, group) {
-		group['results'] = group['inputKeys'].map(function (key) {
-			return ({
-			    'result': 'ok',
-			    'input': key,
-			    'outputs': []
-			});
-		});
-
-		moray.put(bktTgs, tgid, group);
-	});
+	mod_worklib.finishPhase(moray, jobdef['jobId'], 0);
 
 	mod_worklib.timedCheck(10, 1000, function (callback) {
-		var job = moray.get(bktJobs, 'job-001');
+		var job = moray.get(bktJobs, jobdef['jobId']);
 
-		mod_assert.equal(job['jobId'], 'job-001');
+		mod_assert.equal(job['jobId'], jobdef['jobId']);
 		mod_assert.equal(job['state'], 'done');
-		mod_assert.deepEqual(job['phases'], [ {} ]);
+		mod_assert.deepEqual(job['phases'], jobdef['phases']);
 		mod_assert.deepEqual(job['inputKeys'],
 		    [ 'key1', 'key2', 'key3', 'key4' ]);
 
-		mod_assert.deepEqual(job['outputKeys'], [ 'result1' ]);
+		job['outputKeys'].sort();
+		mod_assert.deepEqual(job['outputKeys'],
+		    [ 'key10', 'key20', 'key30', 'key40' ]);
 
-		mod_assert.ok(!worker.mw_jobs.hasOwnProperty('job-001'));
+		mod_assert.ok(!worker.mw_jobs.hasOwnProperty(jobdef['jobId']));
 
 		callback();
 	}, next);

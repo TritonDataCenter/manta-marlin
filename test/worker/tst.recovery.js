@@ -32,13 +32,14 @@ mod_vasync.pipeline({
 });
 
 
-var moray, worker;
+var moray, worker, jobdef;
 
 function setup(_, next)
 {
 	log.info('setup');
 
 	taskgroups = {};
+	jobdef = mod_worklib.jobSpec3Phase;
 	moray = mod_worklib.createMoray();
 	worker = mod_worklib.createWorker({ 'moray': moray });
 	worker.start();
@@ -57,56 +58,70 @@ function submitTaskGroups(_, next)
 
 	moray.put(bktTgs, 'tg-001', {
 	    'taskGroupId': 'tg-001',
-	    'jobId': 'job-001',
+	    'jobId': jobdef['jobId'],
 	    'host': 'mynode1',
 	    'phaseNum': 0,
 	    'inputKeys': [ 'key1', 'key2', 'key3' ],
+	    'state': 'done',
 	    'results': [ {
+		'machine': 'mymac1',
 		'input': 'key1',
 		'result': 'ok',
-		'outputs': [ 'key1_out' ]
+		'outputs': [ 'key1_out' ],
+		'startTime': mod_jsprim.iso8601(new Date(Date.now() - 1)),
+		'doneTime': mod_jsprim.iso8601(new Date())
 	    }, {
+		'machine': 'mymac1',
 		'input': 'key2',
 		'result': 'ok',
-		'outputs': [ 'key2_out' ]
+		'outputs': [ 'key2_out' ],
+		'startTime': mod_jsprim.iso8601(new Date(Date.now() - 1)),
+		'doneTime': mod_jsprim.iso8601(new Date())
 	    }, {
+		'machine': 'mymac1',
 		'input': 'key3',
 		'result': 'ok',
-		'outputs': [ 'key3_out' ]
+		'outputs': [ 'key3_out' ],
+		'startTime': mod_jsprim.iso8601(new Date(Date.now() - 1)),
+		'doneTime': mod_jsprim.iso8601(new Date())
 	    } ]
 	});
 
 	moray.put(bktTgs, 'tg-002', {
 	    'taskGroupId': 'tg-002',
-	    'jobId': 'job-001',
+	    'jobId': jobdef['jobId'],
 	    'host': 'mynode2',
 	    'phaseNum': 0,
 	    'inputKeys': [ 'key4' ],
+	    'state': 'done',
 	    'results': [ {
+		'machine': 'mymac1',
 		'input': 'key4',
 		'result': 'ok',
-		'outputs': [ 'key4_out' ]
+		'outputs': [ 'key4_out' ],
+		'startTime': mod_jsprim.iso8601(new Date(Date.now() - 1)),
+		'doneTime': mod_jsprim.iso8601(new Date())
 	    } ]
 	});
 
 	moray.put(bktTgs, 'tg-003', {
 	    'taskGroupId': 'tg-003',
-	    'jobId': 'job-001',
+	    'jobId': jobdef['jobId'],
 	    'host': 'mynode3',
 	    'phaseNum': 1,
 	    'inputKeys': [ 'key1_out', 'key2_out', 'key4_out' ],
+	    'state': 'running',
 	    'results': [ {
+		'machine': 'mymac1',
 		'input': 'key1_out',
 		'result': 'ok',
-		'outputs': [ 'key1_out2' ]
+		'outputs': [ 'key1_out2' ],
+		'startTime': mod_jsprim.iso8601(new Date(Date.now() - 1)),
+		'doneTime': mod_jsprim.iso8601(new Date())
 	    } ]
 	});
 
-	moray.put(bktJobs, 'job-001', {
-	    'jobId': 'job-001',
-	    'phases': [ {}, {}, {} ],
-	    'inputKeys': [ 'key1', 'key2', 'key3', 'key4' ]
-	});
+	moray.put(bktJobs, jobdef['jobId'], jobdef);
 
 	next();
 }
@@ -116,47 +131,46 @@ function checkJob(_, next)
 	log.info('checkJob');
 
 	mod_worklib.timedCheck(10, 1000, function (callback) {
-		var job, groups, newgroup, i;
+		var job, tgids, groups, newgroup, i;
 
 		/*
 		 * Check that the worker finished assigning phase 2, and
 		 * recognized the partial assignment for phase 2.
 		 */
-		job = moray.get(bktJobs, 'job-001');
+		job = moray.get(bktJobs, jobdef['jobId']);
 		mod_assert.equal('worker-000', job['worker']);
 		mod_assert.equal('running', job['state']);
 
-		groups = moray.list(bktTgs).map(moray.get.bind(moray, bktTgs));
-		mod_assert.equal(Object.keys(groups).length, 4);
+		tgids = {};
+		groups = mod_worklib.listTaskGroups(moray, jobdef['jobId'], 1);
+		groups = groups.concat(mod_worklib.listTaskGroups(
+		    moray, jobdef['jobId'], 0));
+
+		/*
+		 * If there are too many groups here, it's likely that the
+		 * worker ignored the ones we already wrote and redispatched
+		 * them (which is wrong).  This may indicate an error validating
+		 * the task group we wrote out.
+		 */
+		mod_assert.equal(groups.length, 4);
 
 		for (i = 0; i < groups.length; i++) {
 			if (groups[i]['phaseNum'] == 1 &&
-			    groups[i]['taskGroupId'] != 'tg-003') {
+			    groups[i]['taskGroupId'] != 'tg-003')
 				newgroup = groups[i];
-				break;
-			}
+
+			tgids[groups[i]['taskGroupId']] = true;
 		}
+
+		mod_assert.ok(tgids.hasOwnProperty('tg-001'));
+		mod_assert.ok(tgids.hasOwnProperty('tg-002'));
+		mod_assert.ok(tgids.hasOwnProperty('tg-003'));
 
 		mod_assert.deepEqual(newgroup['inputKeys'], [ 'key3_out' ]);
 		mod_assert.deepEqual(newgroup['results'], []);
-		mod_assert.equal(newgroup['jobId'], 'job-001');
+		mod_assert.equal(newgroup['jobId'], jobdef['jobId']);
 
-		/*
-		 * Write records to finish phase 2.
-		 */
-		groups.forEach(function (group) {
-			group['results'] = group['inputKeys'].map(function (key)
-{
-				return ({
-				    'result': 'ok',
-				    'input': key,
-				    'outputs': [ key + '2' ]
-				});
-			});
-
-			moray.put(bktTgs, group['taskGroupId'], group);
-		});
-
+		mod_worklib.finishPhase(moray, jobdef['jobId'], 1);
 		callback();
 	}, next);
 }
@@ -171,13 +185,10 @@ function finishPhase3(_, next)
 		 */
 		var groups, keyset, keys;
 
-		groups = moray.list(bktTgs).map(moray.get.bind(moray, bktTgs));
+		groups = mod_worklib.listTaskGroups(moray, jobdef['jobId'], 2);
 		keyset = {};
 
 		groups.forEach(function (group) {
-			if (group['phaseNum'] != 2)
-				return;
-
 			group['inputKeys'].forEach(function (key) {
 				keyset[key] = true;
 			});
@@ -187,24 +198,9 @@ function finishPhase3(_, next)
 		keys.sort();
 
 		mod_assert.deepEqual(keys,
-		    [ 'key1_out2', 'key2_out2', 'key3_out2', 'key4_out2' ]);
+		    [ 'key1_out1', 'key2_out1', 'key3_out1', 'key4_out1' ]);
 
-		/*
-		 * Write records indicating these have been completed.
-		 */
-		groups.forEach(function (group) {
-			group['results'] = group['inputKeys'].map(function (key)
-{
-				return ({
-				    'result': 'ok',
-				    'input': key,
-				    'outputs': [ key + '_final' ]
-				});
-			});
-
-			moray.put(bktTgs, group['groupId'], group);
-		});
-
+		mod_worklib.finishPhase(moray, jobdef['jobId'], 2);
 		callback();
 	}, next);
 }
@@ -214,7 +210,7 @@ function checkDone(_, next)
 	log.info('checkDone');
 
 	mod_worklib.timedCheck(10, 1000, function (callback) {
-		var job = moray.get(bktJobs, 'job-001');
+		var job = moray.get(bktJobs, jobdef['jobId']);
 		mod_assert.equal(job['state'], 'done');
 		callback();
 	}, next);

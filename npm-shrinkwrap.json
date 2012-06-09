@@ -5,11 +5,14 @@
     "bunyan": {
       "version": "0.6.8"
     },
+    "extsprintf": {
+      "version": "1.0.0"
+    },
     "hyprlofs": {
       "version": "0.0.1"
     },
     "jsprim": {
-      "version": "0.0.4"
+      "version": "0.0.5"
     },
     "JSV": {
       "version": "4.0.0"
