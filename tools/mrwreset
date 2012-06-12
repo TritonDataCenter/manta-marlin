@@ -1,0 +1,31 @@
+#!/bin/bash
+
+#
+# mrwreset url: remove Marlin buckets from a given Moray instance
+#
+
+shopt -s xpg_echo
+
+if ! [[ -n "$1" ]]; then
+	echo "usage: $(basename $0) moray-url" >&2
+	echo >&2
+	echo "Removes Marlin data from a given Moray instance." >&2
+	echo "This operation is NOT reversible!" >&2
+	exit 2
+fi
+
+function fail
+{
+	echo "$*" >&2
+	exit 1
+}
+
+mrr_url="$1"
+
+echo -n "Removing marlinJobs bucket ... \c "
+curl -s -X DELETE "$mrr_url/marlinJobs" || fail "FAILED."
+echo "done."
+
+echo -n "Removing marlinTaskGroups bucket ... \c "
+curl -s -X DELETE "$mrr_url/marlinTaskGroups" || fail "FAILED."
+echo "done."

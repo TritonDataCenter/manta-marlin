@@ -2,6 +2,7 @@
  * workerlib.js: utility functions for testing the worker
  */
 
+var mod_assert = require('assert');
 var mod_path = require('path');
 
 var mod_bunyan = require('bunyan');
@@ -27,6 +28,7 @@ exports.listTaskGroups = listTaskGroups;
 exports.completeTaskGroup = completeTaskGroup;
 exports.finishPhase = finishPhase;
 exports.timedCheck = timedCheck;
+exports.tcWrap = tcWrap;
 exports.jobsBucket = mod_worker.mwConf['jobsBucket'];
 exports.taskGroupsBucket = mod_worker.mwConf['taskGroupsBucket'];
 
@@ -76,6 +78,14 @@ function createMoray()
 	props['log'] = log;
 	props['findInterval'] = 10;
 	props['taskGroupInterval'] = 10;
+
+	if (process.env['MORAY_URL']) {
+		props['url'] = process.env['MORAY_URL'];
+		log.info('using remote Moray instance at %s', props['url']);
+		return (new mod_moray.RemoteMoray(props));
+	}
+
+	log.info('using in-memory mock Moray instance');
 	return (new mod_moray.MockMoray(props));
 }
 
@@ -92,21 +102,28 @@ function createWorker(args)
 /*
  * Lists all task groups for a given job and phase.
  */
-function listTaskGroups(moray, jobid, phase)
+function listTaskGroups(moray, jobid, phase, callback)
 {
-	var groupids = moray.list(exports.taskGroupsBucket);
-	var groups = groupids.map(moray.get.bind(
-	    moray, exports.taskGroupsBucket));
-	return (groups.filter(function (g) {
-		return (g['jobId'] == jobid && g['phaseNum'] == phase);
-	}));
+	moray.listTaskGroups(jobid, function (err, groups) {
+		if (err) {
+			callback(err);
+			return;
+		}
+
+		if (phase !== undefined)
+			groups = groups.filter(function (g) {
+				return (g['phaseNum'] == phase);
+			});
+
+		callback(null, groups);
+	});
 }
 
 /*
  * Updates a given task record to indicate that it's been completed.  If limit
  * is given, only that many keys are completed.
  */
-function completeTaskGroup(moray, group, limit)
+function completeTaskGroup(moray, group, limit, callback)
 {
 	var keys = group['inputKeys'];
 
@@ -126,7 +143,8 @@ function completeTaskGroup(moray, group, limit)
 		});
 	});
 
-	moray.put(exports.taskGroupsBucket, group['taskGroupId'], group);
+	moray.put(exports.taskGroupsBucket, group['taskGroupId'], group,
+	    callback);
 }
 
 /*
@@ -135,8 +153,10 @@ function completeTaskGroup(moray, group, limit)
  */
 function finishPhase(moray, jobid, phase)
 {
-	listTaskGroups(moray, jobid, phase).forEach(function (group) {
-		completeTaskGroup(moray, group);
+	listTaskGroups(moray, jobid, phase, function (err, groups) {
+		groups.forEach(function (group) {
+			completeTaskGroup(moray, group);
+		});
 	});
 }
 
@@ -149,6 +169,9 @@ function finishPhase(moray, jobid, phase)
  */
 function timedCheck(ntries, waittime, test, onsuccess)
 {
+	mod_assert.equal(typeof (test), 'function');
+	mod_assert.equal(typeof (onsuccess), 'function');
+
 	var callback = function (err, result) {
 		if (!err) {
 			/*
@@ -176,4 +199,22 @@ function timedCheck(ntries, waittime, test, onsuccess)
 		/* Treat thrown exception exactly like a returned error. */
 		callback(ex);
 	}
+}
+
+/*
+ * Wraps the given function in a try/catch that invokes the given callback if
+ * the function throws.  This is mostly useful with timedCheck.
+ */
+function tcWrap(func, callback)
+{
+	mod_assert.ok(typeof (func) == 'function');
+	mod_assert.ok(typeof (callback) == 'function');
+
+	return (function () {
+		try {
+			func.apply(null, Array.prototype.slice.call(arguments));
+		} catch (ex) {
+			callback(ex);
+		}
+	});
 }
