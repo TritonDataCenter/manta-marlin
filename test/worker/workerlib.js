@@ -104,11 +104,14 @@ function createWorker(args)
  */
 function listTaskGroups(moray, jobid, phase, callback)
 {
-	moray.listTaskGroups(jobid, function (err, groups) {
+	moray.listTaskGroups(jobid, function (err, groupents) {
 		if (err) {
 			callback(err);
 			return;
 		}
+
+		var groups = groupents.map(
+		    function (entry) { return (entry['value']); });
 
 		if (phase !== undefined)
 			groups = groups.filter(function (g) {

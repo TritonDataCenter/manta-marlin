@@ -170,6 +170,8 @@ function checkJob(_, next)
 
 function checkJobGroups(_, next)
 {
+	log.info('checkJobGroups');
+
 	mod_worklib.timedCheck(10, 1000, function (callback) {
 		/*
 		 * Check that the worker finished assigning phase 2, and

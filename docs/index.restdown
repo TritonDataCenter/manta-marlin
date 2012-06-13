@@ -1547,7 +1547,7 @@ Today we have:
   group, including support for assets and both "generic" and "map" tasks, using
   hyprlofs to map files in.
 * a job worker that picks up unassigned jobs in Moray, executes them, and
-  can pick up partially-completed jobs
+  can pick up partially-completed jobs.  Also times out idle task groups.
 
 For an end-to-end demo, we still need:
 
@@ -1562,8 +1562,9 @@ Remaining work not necessarily required for the end-to-end demo includes:
 * agent: crash recovery (storing state on disk)
 * agent: reliable monitoring for the user's program (using contracts)
 * agent: implement "abort" (which saves all zone state)
+* agent/worker: implement explicit fail
+* agent/worker: implement retry
 * worker: locate objects in Manta
-* worker: monitor task group status (timeout, fail)
 * all: Moray record versioning
 * all: implement cancel
 * all: implement tools for observing global system state
