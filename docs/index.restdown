@@ -1562,6 +1562,7 @@ Remaining work not necessarily required for the end-to-end demo includes:
 * agent: crash recovery (storing state on disk)
 * agent: reliable monitoring for the user's program (using contracts)
 * agent: implement "abort" (which saves all zone state)
+* worker: locate objects in Manta
 * worker: monitor task group status (timeout, fail)
 * all: Moray record versioning
 * all: implement cancel
