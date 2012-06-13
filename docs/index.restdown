@@ -1538,44 +1538,32 @@ tuning # of compute zones
 The basic idea is to get a prototype up and running relatively quickly and
 build that out as needed.  This is a *very* rough draft of how to get there.
 
-Eventually, we'll need the following from Moray:
+Today we have:
 
-* an instance to test on that supports PUT, GET, DELETE of individual objects,
-  test-and-set, GET with a JSON query, etc.
-* a client-side library that supports throttling and handles the consistent
-  hashing among partitions, given some configuration in UFDS.
+* a Moray implementation that supports GET/DEL/PUT (with test-and-set) and
+  search, as well as a client-side library that supports throttling.
+* a mock Moray implementation, at least for testing the job worker
+* an agent that takes task group specifications and executes each task in the
+  group, including support for assets and both "generic" and "map" tasks, using
+  hyprlofs to map files in.
+* a job worker that picks up unassigned jobs in Moray, executes them, and
+  can pick up partially-completed jobs
 
-It will be important to be able to test each component in isolation anyway, so
-we'll want to build a "fake" Moray for testing anyway.
+For an end-to-end demo, we still need:
 
-For the CN agent, the current prototype can execute "generic" and "storage-map"
-tasks on a pool of zones, using hyprlofs to map the files in, providing input on
-stdin, and capturing stdout.  It also downloads assets from a mock manta
-instance.  Steps required to flesh this out include wiring the agent up to
-Moray, making both the in-zone and CN agent robust to transient failures by
-persisting state on disk, and implementing niceties like "cancel" and "abort"
-(the latter of which saves zone state).
+* a very simple web tier that just drops jobs in and reads state back.
+* wire up the agent up to Moray.
 
-For the job worker:
+Remaining work not necessarily required for the end-to-end demo includes:
 
-* Figure out what the in-moray data structures look like, including version
-  numbers and "expected" versions (e.g., so the agent can write updates it
-  knows the worker can read).
-* Implement a tool that reads various task state emitted by compute nodes and
-  unifies it.  This will likely be valuable for working on the agent, too.
-* Build something that polls something for new tasks and always assigns
-  tasks to the same "agent" (probably using a mock agent that reports progress
-  at some fixed rate) and otherwise processes the job completely.
-* Do the same, with a group of mock agents.
-* Implement recovery from an arbitrary point along a job.
-* Implement cancel.
-* Wire it up to Moray (implement locking protocol).
-
-For the web tier:
-
-* Implement create, get, cancel given job state as emitted by the worker.
-  These are actually relatively easy, though we may need to iterate on the job
-  representation as we build the other components, which means the "get" part
-  may change.  However, this will likely be a useful component to build before
-  implementing the worker in order to interact with the worker.
-
+* moray: search by bucket change number
+* moray client: support for consistent hashing
+* agent: automated tests
+* agent: crash recovery (storing state on disk)
+* agent: reliable monitoring for the user's program (using contracts)
+* agent: implement "abort" (which saves all zone state)
+* worker: monitor task group status (timeout, fail)
+* all: Moray record versioning
+* all: implement cancel
+* all: implement tools for observing global system state
+* all: deployment
