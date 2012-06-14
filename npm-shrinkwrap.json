@@ -6,13 +6,18 @@
       "version": "0.6.8"
     },
     "extsprintf": {
-      "version": "1.0.0"
+      "version": "1.0.1"
     },
     "hyprlofs": {
       "version": "0.0.1"
     },
     "jsprim": {
-      "version": "0.0.5"
+      "version": "0.0.5",
+      "dependencies": {
+        "extsprintf": {
+          "version": "1.0.0"
+        }
+      }
     },
     "JSV": {
       "version": "4.0.0"
@@ -83,7 +88,12 @@
               "version": "1.1.1",
               "dependencies": {
                 "verror": {
-                  "version": "1.1.0"
+                  "version": "1.1.0",
+                  "dependencies": {
+                    "extsprintf": {
+                      "version": "1.0.0"
+                    }
+                  }
                 }
               }
             }

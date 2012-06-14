@@ -1,0 +1,205 @@
+#!/usr/bin/env node
+
+/*
+ * mrstat: Marlin status tool
+ */
+
+var mod_path = require('path');
+
+var mod_bunyan = require('bunyan');
+var mod_extsprintf = require('extsprintf');
+var mod_getopt = require('posix-getopt');
+var mod_jsprim = require('jsprim');
+var mod_vasync = require('vasync');
+
+var mod_moray = require('moray-client');
+
+var ms_arg0 = mod_path.basename(process.argv[1]);
+var ms_usage = [
+    'usage: mrstat [jobid]',
+    '',
+    '    With no arguments, prints a summary of all jobs.',
+    '    With a jobid, prints a more detailed summary for the named job.',
+    '',
+    'The MORAY_URL environment variable determines which Moray instance to use.'
+].join('\n');
+
+/* static configuration */
+var msBktJobs = 'marlinJobs';
+var msBktTaskGroups = 'marlinTaskGroups';
+var msJobHeaders = [ 'JobId', 'JobName', 'State', 'Worker', 'NPh', 'NIn' ];
+var msTgHeaders = [ 'TaskGroupId', 'Ph', 'Host', 'NIn', 'State', 'NRes',
+    'MTime' ];
+
+/* runtime state */
+var msJobId;
+var msClient;
+var msLog;
+
+function usage()
+{
+	console.error(ms_usage);
+	process.exit(2);
+}
+
+
+function main()
+{
+	if (!process.env['MORAY_URL']) {
+		console.error('MORAY_URL must be set in the environment.');
+		usage();
+	}
+
+	msLog = new mod_bunyan({ 'name': ms_arg0 });
+	msClient = mod_moray.createClient({
+	    'url': process.env['MORAY_URL'],
+	    'log': msLog
+	});
+
+	if (process.argv.length > 2) {
+		msJobId = process.argv[2];
+		jobDetails(msJobId);
+	} else {
+		jobSummarizeAll();
+	}
+}
+
+function jobToRow(job)
+{
+	return ([
+	    job['jobId'],
+	    job['jobName'].substr(0, 20),
+	    job['state'],
+	    job['worker'] || '',
+	    job['phases'].length,
+	    job['inputKeys'].length
+	]);
+}
+
+function jobDetails(jobid)
+{
+	var job, tgs;
+
+	mod_vasync.pipeline({
+	    'funcs': [
+		function fetchJobRecord(_, next) {
+			msClient.get(msBktJobs, jobid,
+			    function (err, __, obj) {
+				if (err) {
+					next(err);
+					return;
+				}
+
+				job = obj;
+				next();
+			    });
+		},
+		function fetchTaskGroups(_, next) {
+			msClient.search(msBktTaskGroups,
+			    'jobId=' + job['jobId'],
+			    function (err, __, tgsbyid) {
+				if (err) {
+					next(err);
+					return;
+				}
+
+				tgs = tgsbyid;
+				next();
+			    });
+		},
+		function (_, next) { msClient.quit(next); },
+		function (_, next) {
+			jobDetailsPrint(job, tgs);
+			next();
+		}
+	    ]
+	}, function (err) {
+		if (err) {
+			console.error('error: %s', err.message);
+			process.exit(1);
+		}
+	});
+}
+
+function jobDetailsPrint(job, tgsbyid)
+{
+	emitTable(msJobHeaders, [ jobToRow(job) ], process.stdout);
+
+	var tgs = [];
+	mod_jsprim.forEachKey(tgsbyid, function (tgid, entry) {
+		var group = entry['value'];
+		tgs.push([
+		    group['taskGroupId'],
+		    group['phaseNum'],
+		    group['host'],
+		    group['inputKeys'].length,
+		    group['state'],
+		    group['results'].length,
+		    entry['mtime']
+		]);
+	});
+
+	console.log('');
+	emitTable(msTgHeaders, tgs, process.stdout);
+}
+
+function jobSummarizeAll()
+{
+	msClient.search(msBktJobs, 'jobId=*', function (err, _, jobsbyid) {
+		if (err) {
+			console.error('failed to list jobs: %s', err.message);
+			process.exit(1);
+		}
+
+		jobSummarizeJobs(jobsbyid);
+	});
+}
+
+function jobSummarizeJobs(jobsbyid)
+{
+	var jobs = [];
+	var headers = msJobHeaders.slice(0);
+	headers.push('MTime');
+
+	mod_jsprim.forEachKey(jobsbyid, function (id, record) {
+		var job = record['value'];
+		var row = jobToRow(job);
+		row.push(record['mtime']);
+		jobs.push(row);
+	});
+
+	emitTable(headers, jobs, process.stdout);
+	msClient.quit(function () {});
+}
+
+function emitTable(fields, records, out)
+{
+	/* Compute field widths */
+	var widths = fields.map(
+	    function (field) { return (field.length + 1); });
+	var formats;
+	var i;
+
+	records.forEach(function (record) {
+		for (i = 0; i < fields.length; i++) {
+			if (record[i].toString().length + 1 > widths[i])
+				widths[i] = record[i].toString().length + 1;
+		}
+	});
+
+	formats = widths.map(function (w) { return ('%-' + w + 's '); });
+
+	/* Print out the table. */
+	for (i = 0; i < fields.length; i++)
+		out.write(mod_extsprintf.sprintf(formats[i], fields[i]));
+	out.write('\n');
+
+	records.forEach(function (record) {
+		for (i = 0; i < fields.length; i++)
+			out.write(
+			    mod_extsprintf.sprintf(formats[i], record[i]));
+		out.write('\n');
+	});
+}
+
+main();

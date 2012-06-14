@@ -6,7 +6,7 @@
 	"private": true,
 	"dependencies": {
 		"bunyan": "0.6.8",
-		"extsprintf": "1.0.0",
+		"extsprintf": "1.0.1",
 		"hyprlofs": "0.0.1",
 		"jsprim": "0.0.5",
 		"JSV": "4.0.0",
