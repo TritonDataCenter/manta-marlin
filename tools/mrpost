@@ -1,0 +1,10 @@
+#!/bin/bash
+
+#
+# mrpost: submit a new job to Marlin
+# usage: mrpost < filename
+#
+
+[[ -z "$MARLIN_URL" ]] && MARLIN_URL=http://localhost:8080
+curl -is -X POST -H "Content-type: application/json" \
+    -H"Accept: application/json" -T- $MARLIN_URL/jobs | json
