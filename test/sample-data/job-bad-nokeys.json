@@ -1,0 +1,5 @@
+{
+	"jobName": "job-bad-nophases.json",
+	"inputKeys": [],
+	"phases": [ { "exec": "echo" } ]
+}

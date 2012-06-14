@@ -67,12 +67,12 @@ function main()
 function jobToRow(job)
 {
 	return ([
-	    job['jobId'],
-	    job['jobName'].substr(0, 20),
-	    job['state'],
+	    job['jobId'] || '<no job id>',
+	    (job['jobName'] || '<no job name>').substr(0, 20),
+	    job['state'] || '<no job state>',
 	    job['worker'] || '',
-	    job['phases'].length,
-	    job['inputKeys'].length
+	    (job['phases'] || []).length,
+	    (job['inputKeys'] || []).length
 	]);
 }
 

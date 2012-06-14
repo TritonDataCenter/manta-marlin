@@ -1,0 +1,5 @@
+{
+	"jobName": "job-bad-badtype.json",
+	"inputKeys": [ "key1" ],
+	"phases": { "exec": "echo" }
+}
