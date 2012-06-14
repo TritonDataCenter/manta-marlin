@@ -12,8 +12,9 @@ var mod_worklib = require('./workerlib');
 var log = mod_worklib.log;
 var bktJobs = mod_worklib.jobsBucket;
 var tcWrap = mod_worklib.tcWrap;
+var moray, worker, jobdef;
 
-mod_vasync.pipeline({
+mod_worklib.pipeline({
     'funcs': [
 	setup,
 	setupMoray,
@@ -21,17 +22,8 @@ mod_vasync.pipeline({
 	checkJob2,
 	teardown
     ]
-}, function (err) {
-	if (err) {
-		log.fatal(err, 'test failed');
-		return;
-	}
-
-	log.info('test passed');
 });
 
-
-var moray, worker, jobdef;
 
 function setup(_, next)
 {

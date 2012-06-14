@@ -12,9 +12,9 @@ var log = mod_worklib.log;
 var bktJobs = mod_worklib.jobsBucket;
 var bktTgs = mod_worklib.taskGroupsBucket;
 var tcWrap = mod_worklib.tcWrap;
-var taskgroups;
+var moray, worker, jobdef, taskgroups;
 
-mod_vasync.pipeline({
+mod_worklib.pipeline({
     'funcs': [
 	setup,
 	setupMoray,
@@ -24,17 +24,8 @@ mod_vasync.pipeline({
 	checkDone,
 	teardown
     ]
-}, function (err) {
-	if (err) {
-		log.fatal(err, 'test failed');
-		return;
-	}
-
-	log.info('test passed');
 });
 
-
-var moray, worker, jobdef;
 
 function setup(_, next)
 {

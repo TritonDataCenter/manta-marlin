@@ -9,7 +9,9 @@ var mod_bunyan = require('bunyan');
 var mod_extsprintf = require('extsprintf');
 var mod_jsprim = require('jsprim');
 var mod_uuid = require('node-uuid');
+var mod_vasync = require('vasync');
 
+var mod_config = require('../../lib/config');
 var mod_moray = require('../../lib/worker/moray.js');
 var mod_worker = require('../../lib/worker/worker.js');
 
@@ -29,8 +31,9 @@ exports.completeTaskGroup = completeTaskGroup;
 exports.finishPhase = finishPhase;
 exports.timedCheck = timedCheck;
 exports.tcWrap = tcWrap;
-exports.jobsBucket = mod_worker.mwConf['jobsBucket'];
-exports.taskGroupsBucket = mod_worker.mwConf['taskGroupsBucket'];
+exports.pipeline = pipeline;
+exports.jobsBucket = mod_config.mcBktJobs;
+exports.taskGroupsBucket = mod_config.mcBktTaskGroups;
 
 exports.jobSpec1Phase = {
 	'jobId': 'job-001',
@@ -219,5 +222,17 @@ function tcWrap(func, callback)
 		} catch (ex) {
 			callback(ex);
 		}
+	});
+}
+
+function pipeline(args)
+{
+	mod_vasync.pipeline(args, function (err) {
+		if (err) {
+			log.fatal(err, 'test failed');
+			throw (err);
+		}
+
+		log.info('test passed');
 	});
 }
