@@ -1548,11 +1548,7 @@ Today we have:
   hyprlofs to map files in.
 * a job worker that picks up unassigned jobs in Moray, executes them, and
   can pick up partially-completed jobs.  Also times out idle task groups.
-
-For an end-to-end demo, we still need:
-
-* a very simple web tier that just drops jobs in and reads state back.
-* wire up the agent up to Moray.
+* a very simple web tier that just drops jobs into Moray and reads state back.
 
 Remaining work not necessarily required for the end-to-end demo includes:
 
