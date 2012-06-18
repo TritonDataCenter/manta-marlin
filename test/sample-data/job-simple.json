@@ -1,5 +1,5 @@
 {
 	"jobName": "job-simple.json",
 	"inputKeys": [ "key1" ],
-	"phases": [ { "exec": "echo" } ]
+	"phases": [ { "exec": "echo", "type": "generic" } ]
 }

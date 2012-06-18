@@ -1,5 +1,11 @@
 {
 	"jobName": "job-multiphase.json",
 	"inputKeys": [ "key1" ],
-	"phases": [ { "exec": "echo" }, { "exec": "echo" } ]
+	"phases": [ {
+		"type": "generic",
+		"exec": "echo"
+	}, {
+		"type": "generic",
+		"exec": "echo"
+	} ]
 }

@@ -1,0 +1,5 @@
+{
+	"jobName": "job-map.json",
+	"inputKeys": [ "words", "release", "nonexistent", "sshd_config" ],
+	"phases": [ { "exec": "wc" } ]
+}
