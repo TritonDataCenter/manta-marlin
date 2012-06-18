@@ -1,0 +1,9 @@
+{
+	"jobName": "job-map-multiphase.json",
+	"inputKeys": [ "words", "release", "nonexistent", "sshd_config" ],
+	"phases": [ {
+		"exec": "wc"
+	}, {
+		"exec": "ls -lH"
+	} ]
+}
