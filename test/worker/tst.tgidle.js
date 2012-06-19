@@ -22,6 +22,7 @@ mod_worklib.pipeline({
 	wait1,
 	checkJob2,
 	checkJob3,
+	checkTaskGroupsCancelled,
 	teardown
     ]
 });
@@ -100,6 +101,20 @@ function checkJob3(_, next)
 			mod_assert.equal('done', job['state']);
 			callback();
 		}, callback));
+	}, next);
+}
+
+function checkTaskGroupsCancelled(_, next)
+{
+	mod_worklib.timedCheck(3, 1000, function (callback) {
+		mod_worklib.listTaskGroups(moray, jobdef['jobId'], 0,
+		    tcWrap(function (err, groups) {
+			mod_assert.ok(groups.length > 0);
+			groups.forEach(function (group) {
+				mod_assert.equal(group['state'], 'cancelled');
+			});
+			callback();
+		    }, callback));
 	}, next);
 }
 
