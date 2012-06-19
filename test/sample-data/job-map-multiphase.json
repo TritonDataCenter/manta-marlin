@@ -4,6 +4,6 @@
 	"phases": [ {
 		"exec": "wc"
 	}, {
-		"exec": "ls -lH"
+		"exec": "ls -lH $mc_input_file"
 	} ]
 }

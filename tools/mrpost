@@ -19,7 +19,10 @@ cat $mrp_tmpfile
 head -3 $mrp_tmpfile | tail -1 | grep "HTTP/1.1 201 Created" > /dev/null || \
     exit 1
 
-[[ $opt_f = "false" ]] && exit 0
+if [[ $opt_f = "false" ]]; then
+	rm -f $mrp_tmpfile
+	exit 0
+fi
 
 mrp_uri=$(grep '^Location:' $mrp_tmpfile | head -1 | \
     awk '{print $2}' | tr -d '\r')
@@ -27,6 +30,8 @@ if [[ -n $mpr_uri ]]; then
 	echo "couldn't find new job URI" >&2
 	exit 1
 fi
+
+rm -f $mrp_tmpfile
 
 while :; do
 	curl -s $MARLIN_URL$mrp_uri | json
