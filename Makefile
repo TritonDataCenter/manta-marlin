@@ -21,6 +21,7 @@ CATEST		 = tools/catest
 #
 # Files
 #
+BASH_FILES	 = tools/mrzone tools/mrpost tools/mrmakezone
 DOC_FILES	 = index.restdown
 JS_FILES	:= $(shell find src lib test -name '*.js')
 JS_FILES	+= cmd/dpipe cmd/mrstat

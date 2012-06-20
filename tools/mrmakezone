@@ -1,0 +1,65 @@
+#!/bin/bash
+
+#
+# mrmakezone: create a new zone on the current CN suitable for use by the
+#     Marlin agent.
+#
+
+shopt -s xpg_echo
+
+function fail
+{
+	echo "mrmakezone: $*" >&2
+	exit 1
+}
+
+type sdc-vm > /dev/null 2>&1 || fail "sdc-vm not found"
+[[ -n "$1" ]] || fail "usage: mrmakezone alias"
+
+mkz_tmpfile=/var/tmp/mrmakezone.$$
+mkz_alias="$1"						# zone alias
+mkz_image_uuid="01b2c898-945f-11e1-a523-af1afbe22822" 	# smartos 1.6.3
+mkz_owner_uuid="" 					# admin user
+mkz_network_uuid=""   					# network uuid
+
+echo "Retrieving admin customer uuid ... \c "
+mkz_owner_uuid=$(sdc-ldap search cn=Admin | grep uuid: | \
+    awk '{print $2}') || fail "failed"
+[[ -n $mkz_owner_uuid ]] || fail "not found"
+echo "$mkz_owner_uuid"
+
+echo "Retrieving external network uuid ... \c "
+mkz_network_uuid=$(sdc-napi /networks?name=external | json -H 0.uuid) || \
+    fail "failed"
+[[ -n $mkz_network_uuid ]] || fail "not found"
+echo "$mkz_network_uuid"
+
+echo "Creating zone: "
+
+cat > $mkz_tmpfile.input <<EOF
+{
+	"brand": "joyent",
+	"image_uuid": "$mkz_image_uuid",
+	"owner_uuid": "$mkz_owner_uuid",
+	"networks": [ "$mkz_network_uuid" ],
+	"alias": "$mkz_alias",
+	"ram": 256,
+	"max_swap": 512,
+	"quota": 10240,
+	"cpu_cap": 100,
+	"max_lwps": 1000,
+	"zfs_io_priority": 10
+}
+EOF
+
+sdc-vm create < $mkz_tmpfile.input
+
+mkz_zonename=$(sdc-vm list | grep -w "$mkz_alias" | awk '{print $3}') || \
+    fail "failed to fetch new machine name"
+[[ -n $mkz_zonename ]] || fail "zonename not found"
+
+echo "Creating snapshot zones/$mkz_zonename@marlin_init ... \c "
+zfs snapshot zones/$mkz_zonename@marlin_init
+echo "done."
+
+rm -f $mkz_tmpfile.input
