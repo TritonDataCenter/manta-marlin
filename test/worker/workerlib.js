@@ -85,7 +85,9 @@ function createMoray()
 	if (process.env['MORAY_URL']) {
 		props['url'] = process.env['MORAY_URL'];
 		log.info('using remote Moray instance at %s', props['url']);
-		return (new mod_moray.RemoteMoray(props));
+		var rv = new mod_moray.RemoteMoray(props);
+		rv.mantaLocate = rv.mantaLocateTest;
+		return (rv);
 	}
 
 	log.info('using in-memory mock Moray instance');

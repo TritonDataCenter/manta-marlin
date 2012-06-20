@@ -1558,6 +1558,7 @@ Remaining work not necessarily required for the end-to-end demo includes:
 * agent: crash recovery (storing state on disk)
 * agent: reliable monitoring for the user's program (using contracts)
 * agent: implement "abort" (which saves all zone state)
+* agent/worker: implement reducers
 * agent/worker: implement explicit fail
 * agent/worker: implement retry
 * worker: locate objects in Manta
