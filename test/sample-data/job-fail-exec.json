@@ -1,0 +1,5 @@
+{
+	"jobName": "job-fail-exec.json",
+	"inputKeys": [ "key1" ],
+	"phases": [ { "exec": "asdf", "type": "generic" } ]
+}
