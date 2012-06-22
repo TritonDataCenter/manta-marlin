@@ -12,6 +12,7 @@ var mod_uuid = require('node-uuid');
 var mod_vasync = require('vasync');
 
 var mod_config = require('../../lib/config');
+var mod_mautil = require('../../lib/util');
 var mod_moray = require('../../lib/worker/moray.js');
 var mod_worker = require('../../lib/worker/worker.js');
 
@@ -77,7 +78,11 @@ exports.jobSpec3Phase = {
 
 function createMoray()
 {
-	var props = Object.create(mod_worker.mwConf);
+	var conf, props;
+
+	conf = mod_mautil.readConf(log, mod_worker.mwConfSchema,
+	    mod_path.join(__dirname, '../../etc/config.json.coal'));
+	props = Object.create(conf);
 	props['log'] = log;
 	props['findInterval'] = 10;
 	props['taskGroupInterval'] = 10;
@@ -96,10 +101,15 @@ function createMoray()
 
 function createWorker(args)
 {
-	var worker_args = Object.create(args);
+	var conf, worker_args;
 
+	conf = mod_mautil.readConf(log, mod_worker.mwConfSchema,
+	    mod_path.join(__dirname, '../../etc/config.json.coal'));
+	worker_args = Object.create(conf);
 	worker_args['log'] = log;
-	worker_args['uuid'] = mod_extsprintf.sprintf('worker-%03d', idx++);
+
+	for (var key in args)
+		worker_args[key] = args[key];
 
 	return (new mod_worker.mwWorker(worker_args));
 }

@@ -14,13 +14,7 @@
 	<service_fmri value="svc:/system/filesystem/local" />
 </dependency>
 
-<exec_method type="method" name="start" exec="/opt/smartdc/marlin/build/node/bin/node /opt/smartdc/marlin/lib/worker/server.js &amp;" timeout_seconds="30">
-	<method_context>
-		<method_environment>
-			<envvar name="MORAY_URL" value="http://10.99.99.12" />
-		</method_environment>
-	</method_context>
-</exec_method>
+<exec_method type="method" name="start" exec="/opt/smartdc/marlin/build/node/bin/node /opt/smartdc/marlin/lib/worker/server.js /opt/smartdc/marlin/etc/config.json &amp;" timeout_seconds="30" />
 <exec_method type="method" name="stop" exec=":kill" timeout_seconds="30" />
 
 <instance name="default" enabled="true" />

@@ -14,6 +14,7 @@ PROTO_FILES		 =				\
     $(MG_IMAGEROOT)/build/node				\
     $(MG_IMAGEROOT)/build/docs				\
     $(MG_IMAGEROOT)/cmd					\
+    $(MG_IMAGEROOT)/etc					\
     $(MG_IMAGEROOT)/lib					\
     $(MG_IMAGEROOT)/node_modules			\
     $(MG_IMAGEROOT)/npm-shrinkwrap.json			\
