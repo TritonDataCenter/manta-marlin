@@ -12,5 +12,8 @@
 
 NPM_EXEC  ?= $(error NPM_EXEC must be defined for Makefile.node_deps.targ)
 
-node_modules/%: src/node-% | $(NPM_EXEC)
+node_modules/%: src/node-% | $(NPM_EXEC) node_modules
 	$(NPM) install $<
+
+node_modules:
+	mkdir -p $@

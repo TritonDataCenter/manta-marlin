@@ -56,6 +56,7 @@ test:
 
 DISTCLEAN_FILES += node_modules
 
+include ./Makefile.mg.targ
 include ./tools/mk/Makefile.node_deps.targ
 include ./tools/mk/Makefile.deps
 include ./tools/mk/Makefile.node.targ

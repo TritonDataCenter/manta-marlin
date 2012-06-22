@@ -6,4 +6,6 @@ docs/*.html
 cscope.in.out
 cscope.po.out
 cscope.out
-smf/manifests/*.xml
+smf/manifests/marlin-agent.xml
+smf/manifests/marlin-mock-manta.xml
+smf/manifests/marlin-zone-agent.xml

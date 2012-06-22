@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
+<!--
+	Copyright (c) 2012, Joyent, Inc. All rights reserved.
+ -->
+
+<service_bundle type="manifest" name="smartdc-ca-castashsvc">
+<service name="smartdc/marlin-worker" type="service" version="1">
+
+<dependency name="network" grouping="require_all" restart_on="error" type="service">
+	<service_fmri value="svc:/network/physical" />
+</dependency>
+<dependency name="filesystem" grouping="require_all" restart_on="error" type="service">
+	<service_fmri value="svc:/system/filesystem/local" />
+</dependency>
+
+<exec_method type="method" name="start" exec="/opt/smartdc/marlin/build/node/bin/node /opt/smartdc/marlin/lib/worker/server.js &amp;" timeout_seconds="30">
+	<method_context>
+		<method_environment>
+			<envvar name="MORAY_URL" value="http://10.99.99.12" />
+		</method_environment>
+	</method_context>
+</exec_method>
+<exec_method type="method" name="stop" exec=":kill" timeout_seconds="30" />
+
+<instance name="default" enabled="true" />
+
+<stability value='Unstable' />
+
+<template>
+	<common_name><loctext xml:lang="C">Joyent Marlin Agent</loctext></common_name>
+</template>
+
+</service>
+</service_bundle>

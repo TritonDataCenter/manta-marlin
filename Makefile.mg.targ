@@ -1,0 +1,74 @@
+#
+# Makefile.mg.targ: Marlin-specific Mountain Gorilla targets
+# This file contains two pieces: repo-specific definitions (e.g., what gets
+# copied into the proto area) and a bunch of completely generic targets that
+# should be refactored into eng.git.
+#
+
+#
+# Repo-specific configuration.
+#
+MG_NAME			 = marlin
+
+PROTO_FILES		 =				\
+    $(MG_IMAGEROOT)/build/node				\
+    $(MG_IMAGEROOT)/build/docs				\
+    $(MG_IMAGEROOT)/cmd					\
+    $(MG_IMAGEROOT)/lib					\
+    $(MG_IMAGEROOT)/node_modules			\
+    $(MG_IMAGEROOT)/npm-shrinkwrap.json			\
+    $(MG_IMAGEROOT)/package.json			\
+    $(MG_IMAGEROOT)/smf/manifests/marlin-worker.xml	\
+    $(MG_PROTO)/site/.do-not-delete-me
+
+#
+# Generic definitions and targets for installing files into the proto area into
+# paths matching their relative paths in the repo (e.g., lib/foo.js becomes
+# $(MG_PROTO)/lib/foo.js).  We depend on the dirnames of each of these, sorted
+# to remove duplicates, which causes these directories to be created first.
+#
+MG_PROTO		 = $(BUILD)/proto
+MG_IMAGEROOT		 = $(BUILD)/proto/root/opt/smartdc
+MG_RELEASE_TARBALL	 = $(MG_NAME)-pkg-$(STAMP).tar.bz2
+PROTO_TARBALL 		 = $(BUILD)/$(MG_RELEASE_TARBALL)
+BITS_TARBALL		 = $(BITS_DIR)/$(MG_NAME)/$(MG_RELEASE_TARBALL)
+PROTO_DIRS		 = $(sort $(dir $(PROTO_FILES)))
+
+CLEAN_FILES		+= $(MG_PROTO) $(BUILD)/$(MG_NAME)-pkg-*.tar.bz2
+
+$(MG_IMAGEROOT)/%: % | $(PROTO_DIRS)
+	cp -r $< $@
+
+$(MG_PROTO)/site/.do-not-delete-me: | $(PROTO_DIRS)
+	touch $@
+
+$(PROTO_DIRS):
+	mkdir -p $@
+
+#
+# "release" target copies creates a tarball of $(PROTO_FILES).
+#
+.PHONY: release
+release: $(PROTO_TARBALL)
+
+$(PROTO_TARBALL): all docs $(PROTO_FILES)
+	$(TAR) -C $(MG_PROTO) -cjf $@ root site
+
+#
+# "publish" target copies the release tarball into BITS_DIR.
+#
+.PHONY: publish
+publish: check-bitsdir $(BITS_TARBALL)
+
+.PHONY: check-bitsdir
+check-bitsdir:
+	@if [[ -z "$(BITS_DIR)" ]]; then \
+		echo "error: 'BITS_DIR' must be set for 'publish' target"; \
+		exit 1; \
+	fi
+
+$(BITS_TARBALL): $(PROTO_TARBALL) | $(dir $(BITS_TARBALL))
+	cp $< $@
+
+$(dir $(BITS_TARBALL)):
+	mkdir -p $@
