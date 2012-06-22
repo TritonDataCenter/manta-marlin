@@ -28,7 +28,7 @@ PROTO_FILES		 =				\
 # to remove duplicates, which causes these directories to be created first.
 #
 MG_PROTO		 = $(BUILD)/proto
-MG_IMAGEROOT		 = $(BUILD)/proto/root/opt/smartdc
+MG_IMAGEROOT		 = $(BUILD)/proto/root/opt/smartdc/$(MG_NAME)
 MG_RELEASE_TARBALL	 = $(MG_NAME)-pkg-$(STAMP).tar.bz2
 PROTO_TARBALL 		 = $(BUILD)/$(MG_RELEASE_TARBALL)
 BITS_TARBALL		 = $(BITS_DIR)/$(MG_NAME)/$(MG_RELEASE_TARBALL)
