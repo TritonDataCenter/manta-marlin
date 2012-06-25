@@ -143,7 +143,7 @@ function listTaskGroups(moray, jobid, phase, callback)
  */
 function completeTaskGroup(moray, group, limit, callback)
 {
-	var keys = group['inputKeys'];
+	var keys = group['inputKeys'].map(function (k) { return (k['key']); });
 
 	if (limit !== undefined)
 		keys = keys.slice(0, limit);

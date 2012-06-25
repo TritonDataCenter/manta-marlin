@@ -25,7 +25,7 @@ USAGE
 	exit 2
 }
 
-mru_svcs="marlin-agent marlin-mock-manta"
+mru_svcs="marlin-agent"
 mru_manifests=""
 mru_prefix=$1
 

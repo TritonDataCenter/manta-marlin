@@ -62,7 +62,19 @@ function submitTaskGroup1(_, next)
 	    'jobId': jobdef['jobId'],
 	    'host': 'mynode1',
 	    'phaseNum': 0,
-	    'inputKeys': [ 'key1', 'key2', 'key3' ],
+	    'inputKeys': [ {
+		'key': 'key1',
+		'objectid': 'objid1',
+		'zonename': 'fakezone0'
+	    }, {
+		'key': 'key2',
+		'objectid': 'objid2',
+		'zonename': 'fakezone1'
+	    }, {
+		'key': 'key3',
+		'objectid': 'objid3',
+		'zonename': 'fakezone2'
+	    } ],
 	    'state': 'done',
 	    'results': [ {
 		'machine': 'mymac1',
@@ -98,7 +110,11 @@ function submitTaskGroup2(_, next)
 	    'jobId': jobdef['jobId'],
 	    'host': 'mynode2',
 	    'phaseNum': 0,
-	    'inputKeys': [ 'key4' ],
+	    'inputKeys': [ {
+		'key': 'key4',
+		'objectid': 'objid4',
+		'zonename': 'fakezone3'
+	    } ],
 	    'state': 'done',
 	    'results': [ {
 		'machine': 'mymac1',
@@ -120,7 +136,19 @@ function submitTaskGroup3(_, next)
 	    'jobId': jobdef['jobId'],
 	    'host': 'mynode3',
 	    'phaseNum': 1,
-	    'inputKeys': [ 'key1_out', 'key2_out', 'key4_out' ],
+	    'inputKeys': [ {
+		'key': 'key1_out',
+		'objectid': 'objid2',
+		'zonename': 'fakezone1'
+	    }, {
+		'key': 'key2_out',
+		'objectid': 'objid2',
+		'zonename': 'fakezone1'
+	    }, {
+		'key': 'key4_out',
+		'objectid': 'objid2',
+		'zonename': 'fakezone1'
+	    } ],
 	    'state': 'running',
 	    'results': [ {
 		'machine': 'mymac1',
@@ -196,8 +224,9 @@ function checkJobGroups(_, next)
 			mod_assert.ok(tgids.hasOwnProperty('tg-002'));
 			mod_assert.ok(tgids.hasOwnProperty('tg-003'));
 
-			mod_assert.deepEqual(newgroup['inputKeys'],
-			    [ 'key3_out' ]);
+			mod_assert.equal(newgroup['inputKeys'].length, 1);
+			mod_assert.equal(newgroup['inputKeys'][0]['key'],
+			    'key3_out');
 			mod_assert.deepEqual(newgroup['results'], []);
 			mod_assert.equal(newgroup['jobId'], jobdef['jobId']);
 			mod_worklib.finishPhase(moray, jobdef['jobId'], 1);
@@ -224,7 +253,7 @@ function finishPhase3(_, next)
 				mod_assert.equal(group['phaseNum'], 2);
 
 				group['inputKeys'].forEach(function (key) {
-					keyset[key] = true;
+					keyset[key['key']] = true;
 				});
 			});
 

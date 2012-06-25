@@ -94,7 +94,13 @@ function checkTaskGroups(_, next)
 				group['inputKeys'].forEach(function (key) {
 					mod_assert.ok(
 					    !keys.hasOwnProperty(key));
-					keys[key] = true;
+					mod_assert.ok(key.hasOwnProperty(
+					    'key'));
+					mod_assert.ok(key.hasOwnProperty(
+					    'objectid'));
+					mod_assert.ok(key.hasOwnProperty(
+					    'zonename'));
+					keys[key['key']] = true;
 				});
 
 				mod_assert.ok(
@@ -126,7 +132,7 @@ function updatePartial(_, next)
 	log.info('updatePartial');
 
 	for (var key in taskgroups) {
-		if (taskgroups[key]['inputKeys'][0] == 'key1') {
+		if (taskgroups[key]['inputKeys'][0]['key'] == 'key1') {
 			mod_worklib.completeTaskGroup(
 			    moray, taskgroups[key], 1);
 			break;
