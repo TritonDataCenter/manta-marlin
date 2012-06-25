@@ -10,7 +10,7 @@
 #
 MG_NAME			 = marlin
 
-PROTO_FILES		 =				\
+IMAGEROOT_FILES =		 			\
     $(MG_IMAGEROOT)/build/node				\
     $(MG_IMAGEROOT)/build/docs				\
     $(MG_IMAGEROOT)/cmd					\
@@ -19,8 +19,7 @@ PROTO_FILES		 =				\
     $(MG_IMAGEROOT)/node_modules			\
     $(MG_IMAGEROOT)/npm-shrinkwrap.json			\
     $(MG_IMAGEROOT)/package.json			\
-    $(MG_IMAGEROOT)/smf/manifests/marlin-worker.xml	\
-    $(MG_PROTO)/site/.do-not-delete-me
+    $(MG_IMAGEROOT)/smf/manifests/marlin-worker.xml
 
 #
 # Generic definitions and targets for installing files into the proto area into
@@ -33,11 +32,12 @@ MG_IMAGEROOT		 = $(BUILD)/proto/root/opt/smartdc/$(MG_NAME)
 MG_RELEASE_TARBALL	 = $(MG_NAME)-pkg-$(STAMP).tar.bz2
 PROTO_TARBALL 		 = $(BUILD)/$(MG_RELEASE_TARBALL)
 BITS_TARBALL		 = $(BITS_DIR)/$(MG_NAME)/$(MG_RELEASE_TARBALL)
+PROTO_FILES		 = $(IMAGEROOT_FILES) $(MG_PROTO)/site/.do-not-delete-me
 PROTO_DIRS		 = $(sort $(dir $(PROTO_FILES)))
 
 CLEAN_FILES		+= $(MG_PROTO) $(BUILD)/$(MG_NAME)-pkg-*.tar.bz2
 
-$(MG_IMAGEROOT)/%: % | $(PROTO_DIRS)
+$(IMAGEROOT_FILES): $(MG_IMAGEROOT)/%: % | $(PROTO_DIRS)
 	cp -r $< $@
 
 $(MG_PROTO)/site/.do-not-delete-me: | $(PROTO_DIRS)
