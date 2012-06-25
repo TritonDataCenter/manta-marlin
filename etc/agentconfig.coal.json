@@ -1,0 +1,17 @@
+{
+	"instanceUuid": "headnode",
+	"port": 8080,
+
+	"manta": {
+		"host": "10.99.99.40",
+		"port": 8081
+	},
+
+	"moray": {
+		"url": "http://10.99.99.12"
+	},
+
+	"taskGroupInterval": 10,
+	"taskGroupSaveInterval": 100,
+	"tickInterval": 1000
+}
