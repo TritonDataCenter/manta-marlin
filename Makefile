@@ -35,8 +35,11 @@ SMF_MANIFESTS_IN = \
 
 REPO_MODULES     = src/node-hyprlofs
 
+NODE_PREBUILT_VERSION = v0.6.19
+NODE_PREBUILT_TAG = zone
+
 include ./tools/mk/Makefile.defs
-include ./tools/mk/Makefile.node.defs
+include ./tools/mk/Makefile.node_prebuilt.defs
 include ./tools/mk/Makefile.smf.defs
 include ./tools/mk/Makefile.node_deps.defs
 
@@ -51,7 +54,7 @@ deps: | $(REPO_DEPS) $(NPM_EXEC)
 	$(NPM) --no-rebuild install
 
 .PHONY: test
-test:
+test: all
 	tools/catest -a
 
 DISTCLEAN_FILES += node_modules
@@ -59,6 +62,6 @@ DISTCLEAN_FILES += node_modules
 include ./Makefile.mg.targ
 include ./tools/mk/Makefile.node_deps.targ
 include ./tools/mk/Makefile.deps
-include ./tools/mk/Makefile.node.targ
+include ./tools/mk/Makefile.node_prebuilt.targ
 include ./tools/mk/Makefile.smf.targ
 include ./tools/mk/Makefile.targ
