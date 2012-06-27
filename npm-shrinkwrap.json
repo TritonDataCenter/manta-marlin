@@ -73,6 +73,30 @@
     "mkdirp": {
       "version": "0.3.1"
     },
+    "libindex": {
+      "version": "1.0.0",
+      "from": "git+ssh://git@git.joyent.com:manta-libindex.git#master",
+      "dependencies": {
+        "assert-plus": {
+          "version": "0.1.0"
+        },
+        "bunyan": {
+          "version": "0.8.0"
+        },
+        "clone": {
+          "version": "0.1.0"
+        },
+        "fash": {
+          "version": "0.1.0",
+          "from": "git://github.com/yunong/node-fash.git",
+          "dependencies": {
+            "bignum": {
+              "version": "0.4.1"
+            }
+          }
+        }
+      }
+    },
     "moray-client": {
       "version": "1.0.0",
       "from": "git+ssh://git@git.joyent.com:moray-client.git#master",

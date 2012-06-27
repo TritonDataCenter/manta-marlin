@@ -13,6 +13,8 @@
 		"maxClients": 100
 	},
 
+	"locator": "test",
+
 	"jobsBucket": "marlinJobs",
 	"taskGroupsBucket": "marlinTaskGroups",
 

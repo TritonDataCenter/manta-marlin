@@ -1,0 +1,26 @@
+{
+	"instanceUuid": "worker-000",
+	"port": 8083,
+	"moray": {
+		"indexing": {
+			"urls": [ "http://10.99.99.12" ]
+		},
+		"storage": {
+			"url": "http://10.99.99.12"
+		},
+		"connectTimeout": 200,
+		"maxIdleTime": 1000,
+		"maxClients": 100
+	},
+
+	"locator": "mock",
+
+	"jobsBucket": "marlinJobs",
+	"taskGroupsBucket": "marlinTaskGroups",
+
+	"findInterval": 10,
+	"taskGroupInterval": 10,
+	"saveInterval": 30000,
+	"tickInterval": 1000,
+	"taskGroupIdleTime": 40000
+}

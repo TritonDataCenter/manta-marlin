@@ -12,9 +12,10 @@ var mod_uuid = require('node-uuid');
 var mod_vasync = require('vasync');
 
 var mod_config = require('../../lib/config');
+var mod_locator = require('../../lib/worker/locator');
 var mod_mautil = require('../../lib/util');
-var mod_moray = require('../../lib/worker/moray.js');
-var mod_worker = require('../../lib/worker/worker.js');
+var mod_moray = require('../../lib/worker/moray');
+var mod_worker = require('../../lib/worker/worker');
 
 var testname = mod_path.basename(process.argv[0]);
 var log = new mod_bunyan({ 'name': testname });
@@ -81,7 +82,7 @@ function createMoray()
 	var conf, props;
 
 	conf = mod_mautil.readConf(log, mod_worker.mwConfSchema,
-	    mod_path.join(__dirname, '../../etc/config.json.coal'));
+	    mod_path.join(__dirname, '../../etc/config.coal.json'));
 	props = Object.create(conf);
 	props['log'] = log;
 	props['findInterval'] = 10;
@@ -91,7 +92,6 @@ function createMoray()
 		props['url'] = process.env['MORAY_URL'];
 		log.info('using remote Moray instance at %s', props['url']);
 		var rv = new mod_moray.RemoteMoray(props);
-		rv.mantaLocate = rv.mantaLocateTest;
 		return (rv);
 	}
 
@@ -104,9 +104,11 @@ function createWorker(args)
 	var conf, worker_args;
 
 	conf = mod_mautil.readConf(log, mod_worker.mwConfSchema,
-	    mod_path.join(__dirname, '../../etc/config.json.coal'));
+	    mod_path.join(__dirname, '../../etc/config.coal.json'));
 	worker_args = Object.create(conf);
 	worker_args['log'] = log;
+	worker_args['locator'] = mod_locator.createLocator(
+	    { 'locator': 'mock' });
 
 	for (var key in args)
 		worker_args[key] = args[key];
