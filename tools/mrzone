@@ -10,4 +10,5 @@ function fail
 
 [[ -n "$1" ]] || fail "usage: $(basename $0) zonename"
 
-exec curl -X POST -is "http://10.99.99.7:8080/zones?zonename=$1" | json
+exec curl -X POST -is \
+    "${AGENT_URL:-http://10.99.99.7:8080}/zones?zonename=$1" | json
