@@ -20,7 +20,10 @@ IMAGEROOT_FILES =		 			\
     $(MG_IMAGEROOT)/npm-shrinkwrap.json			\
     $(MG_IMAGEROOT)/package.json			\
     $(MG_IMAGEROOT)/smf/manifests/marlin-agent.xml	\
-    $(MG_IMAGEROOT)/smf/manifests/marlin-worker.xml
+    $(MG_IMAGEROOT)/smf/manifests/marlin-worker.xml	\
+    $(MG_IMAGEROOT)/tools/mragentconf			\
+    $(MG_IMAGEROOT)/tools/mrmakezone			\
+    $(MG_IMAGEROOT)/tools/mrzone
 
 #
 # Generic definitions and targets for installing files into the proto area into
