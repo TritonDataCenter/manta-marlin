@@ -1,6 +1,6 @@
 {
 	"instanceUuid": "headnode",
-	"port": 8080,
+	"port": 9080,
 
 	"manta": {
 		"host": "10.99.99.40",
