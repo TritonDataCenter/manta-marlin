@@ -12,6 +12,7 @@
 	},
 
 	"taskGroupInterval": 10,
+	"taskGroupIdleInterval": 20000,
 	"taskGroupSaveInterval": 100,
 	"tickInterval": 1000
 }
