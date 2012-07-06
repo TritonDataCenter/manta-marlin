@@ -62,4 +62,6 @@ echo "Creating snapshot zones/$mkz_zonename@marlin_init ... \c "
 zfs snapshot zones/$mkz_zonename@marlin_init
 echo "done."
 
+echo $mkz_zonename
+
 rm -f $mkz_tmpfile.input

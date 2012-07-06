@@ -1,0 +1,48 @@
+#!/bin/bash
+
+#
+# mrdeploycompute: combines the steps of provisioning a new worker zone for
+#   Marlin, adding it to the agent, and saving the name in a file for pick up
+#   when the agent restarts.
+#
+
+set -o pipefail
+set -o xtrace
+
+export PATH=$PATH:/opt/smartdc/bin:/smartdc/bin
+
+mdc_arg0="$(basename $0)"
+mdc_alias="$1"
+mdc_tmpfile="/var/tmp/$mdc_arg0.$$"
+mdc_tools="$(dirname $0)"
+mdc_zonesfile="$mdc_tools/../etc/marlinzones"
+mdc_zonename=
+
+function fail
+{
+	echo "$mdc_arg0: $*" >&2
+	exit 1
+}
+
+function usage
+{
+	echo "usage: $mdc_arg0 zone_alias" >&2
+	exit 2
+}
+
+[[ -n "$mdc_alias" ]] || usage
+
+sdc-vm list | awk '{print $1}' | grep -w "$mdc_alias" && fail "duplicate alias"
+
+$mdc_tools/mrmakezone $mdc_alias | tee $mdc_tmpfile || fail "failed to make zone"
+mdc_zonename=$(tail -1 $mdc_tmpfile)
+echo "New worker zone uuid: $mdc_zonename"
+
+echo $mdc_zonename >> $mdc_zonesfile && echo "Updated $mdc_zonesfile"
+
+#
+# mrzone failure is not fatal, since compute zones can be deployed before the
+# agent is running.
+#
+$mdc_tools/mrzone $mdc_zonename
+rm -f $mdc_tmpfile
