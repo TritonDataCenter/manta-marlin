@@ -1,13 +1,20 @@
 ---
 title: Marlin
 markdown2extras: wiki-tables, code-friendly
-apisections: Job API, Task Control API
+apisections: Task Control API
 ---
 
 # Marlin
 
 Marlin is a facility for running compute jobs on Manta storage nodes.  This
 document describes the desired end state for version 1.
+
+
+# Overview and Public API
+
+For an overview of what Marlin is and how users interact with it, see the
+documentation in muskie.git.  Really, go read that first.  This document assumes
+familiarity with that, including how the rest of the Manta object store works.
 
 
 # Design goals
@@ -36,698 +43,6 @@ Marlin defines two public APIs:
 
 All DateTimes in these APIs use W3C DTF in UTC ("YYYY-MM-DDThh:mm:ss.sZ").
 
-This document assumes familiarity with the Manta object store.
-
-
-# Overview by example
-
-To explain Marlin, we'll outline how a user would implement distributed word
-count algorithm.  This is a distributed version of "wc -w".  On a single
-system, that might look like this:
-
-    $ wc -w /usr/share/dict/*
-          69 /usr/share/dict/README
-         150 /usr/share/dict/connectives
-        1323 /usr/share/dict/propernames
-      234936 /usr/share/dict/web2
-      121847 /usr/share/dict/web2a
-      234936 /usr/share/dict/words
-      593261 total
-
-Alternatively, you might do this:
-
-    $ cat /usr/share/dict/* | wc -w
-    593261
-
-The idea of the distributed version is that you'd like to do something like:
-
-    $ wc -w file1 file2 ...
-
-where file1, file2, ... may be stored on completely different systems, and get
-back summary output:
-
-    593261
-
-Let's assume the input files are already stored in Manta:
-
-* file1, file2, file4 on storage node S1
-* file3, file5 on storage node S2
-
-though the user doesn't know which files are on which nodes.
-
-To execute the word count, the user submits a Marlin **job** that includes the
-following information:
-
-    "jobName": "distributed word count example",
-    "inputKeys": [ "file1", "file2", "file3", "file4", "file5" ],
-    "phases": [ {
-        "exec": "wc -w",
-    }, {
-        "type": "reduce",
-        "exec": "awk '{sum += $1} END{ print sum; }'"
-    } ]
-
-"jobName" and "inputKeys" are pretty self-explanatory.  "phases" describes what
-to actually do with the data.  By default, phases are **map** operations, so
-in the first phase above, Marlin invokes "wc -w" once for each input file, and
-passes the files contents on stdin.  Each of these invocations is called a
-**task**.  The stdout for "wc" will become input for the next phase.
-
-Because the first phase operates on all five files, but these are stored on
-different storage nodes, Marlin splits this phase into two **task groups**, one
-for each node containing input files.  The first task group runs three
-separate **tasks** in a **compute zone** on node S1, equivalent to "wc -w &lt;
-file1", "wc -w &lt; file2", "wc -w &lt; file4".  The second task group runs two
-tasks on S2, equivalent to "wc -w &lt; file3" 'and "wc -w &lt; file5".
-
-The stdout of each of these commands becomes the input for the second phase.  As
-an implementation detail, these will be stored as temporary files in Manta, but
-this is not visible to end users.
-
-The second phase is a **reduce phase** that takes the output objects from the
-previous phase and runs the given awk script, producing a single total that's
-the sum of all words in all files.  Since there's only one task for a reduce
-phase and it combines data from many different nodes, it runs on a
-general-purpose compute node, not a Manta storage node.  The output is saved as
-a new Manta object which will become the output of the job.
-
-With this example we've covered:
-
-* *jobs*, which users submit to do work with data
-* *phases*, which describe individual processing steps of a job
-* *map phases*, which run on individual nodes where input objects are stored and
-  process one object at a time
-* *reduce phases*, which run on separate compute nodes and combine outputs from
-  previous phases
-* *tasks*, which are individual pieces of a map or reduce phase
-* *task groups*, which are the set of tasks that run on a single node
-* *compute zones*, which are the environments in which tasks run
-
-
-# Job API
-
-The Job API is a public-facing API that sits alongside the public Manta endpoint
-and lets end users submit, manage, and monitor compute jobs.
-
-
-## POST /jobs
-
-Submit a new job to be run as soon as possible under Marlin.
-
-Each job defines a set of input Manta objects to process and a set of
-**phases**, each describing what to do with each of the input objects.  Each
-phase may output any number of manta objects for input to the next phase.  The
-output from the last phase is the output of the job.
-
-Each phase of the job is divided into discrete task groups that run one piece of
-the phase.  While the job is running, users can retrieve the status of the job
-to see which tasks have completed, which tasks are running, which keys have been
-processed, and which keys are left.
-
-When all tasks complete, the job itself completes.  Failed tasks are not
-retried (though retry options may be provided in a future version of this API).
-By default, if a task fails, other tasks are unaffected.  The system continues
-running tasks until all of them either fail or complete in order to make as
-much progress as possible.  This behavior can be controlled with the "failFast"
-job option.
-
-
-### Inputs
-
-|| **Field** || **Type** || **Description** ||
-|| jobName || String || Human-readable job label (not necessarily unique). ||
-|| phases || Array&nbsp;of&nbsp;Objects || Array of compute phases.  See below.  ||
-|| phaseN.type (optional) || String: "map"&nbsp;or&nbsp;"reduce" || Map phases (the default) process individual objects and are executed on the physical system where those objects are stored.  Reduce phases process many objects at once and are generally executed on separate compute nodes. ||
-|| phaseN.count (optional) || Integer || For reduce jobs only, indicates how many reducers to use. See "Pipelined Reducers" below. ||
-|| phaseN.assets (optional) || Array of Strings || List of Manta objects that will be made available in the compute zone.  These may be scripts, binaries, libraries, or other objects used to actually run the job, not inputs to the job. ||
-|| phaseN.exec || String || Shell command to launch the task.  This are passed directly to "bash -c". ||
-|| phaseN.args (optional) || Object || User-defined task arguments.  This is just an arbitrary JSON object that will be available to each task.  Many jobs won't need this because they use shell arguments directly in the "exec" line, but complex tasks may find it easier to process a structured JSON argument. ||
-|| phaseN.datasetVersion (optional) || String || Version of compute zone dataset to use.  By default, the latest stable dataset is used. ||
-|| inputKeys || Array&nbsp;of&nbsp;Strings || List of Manta objects to process. ||
-|| failFast (optional) || Boolean || Cancel all tasks when any task fails.  Otherwise, tasks continue running even after one of them fails (in attempt to make as much progress as possible). ||
-
-Jobs can have any number of map or reduce phases.  For examples:
-
-* N &gt; 1 map phases, 0 reduce phases: file conversion (e.g., video
-  transcoding, image rendering)
-* N &gt; 1 map phases, 1 reduce phase: traditional map-reduce (e.g., word count)
-* N &gt; 1 map phases, M &gt; 1 reduce phases: MR with pipelined reducers
-* 0 map phases, N reduce phases: in-place compute
-
-To process a map phase, the system divides the phase into task groups, where
-each task group runs a piece of the overall job on a Manta node where some of
-the input objects are stored.  The task group is divided into tasks, each of
-which processes exactly one input key.  Reduce phases are also divided into
-tasks, with one task per reducer.  (But most jobs will have at most 1 reducer.)
-
-Both map and reduce tasks must report when they have succeeded or failed.  The
-system may time out map tasks that are taking too long.
-
-You specify the code that runs in each task using the "assets", "exec", and
-"args" properties of the phase.  Any Manta keys listed in "phaseN.assets" will
-be made available under "/assets" in the compute zone before the task is
-started.  This can be used to distribute applications and libraries that will
-actually process the input to each compute zone.  "assets" should *not* be used
-to specify input keys.  Use "inputKeys" for that.
-
-The task is started by invoking "phaseN.exec".  This may be any shell-style
-command, including environment variables, shell arguments, and pipelines.
-The shell variable "$mc\_input\_file" may be used to refer to input key files.
-
-Additional structured arguments may be stored in "args", which can be retrieved
-by the task's code using the Task Control API.
-
-### Returns
-
-On success, returns 201 with the URI for the job in a Location header and the
-state of the job as returned by `GET /jobs/:jobId`.
-
-### Examples
-
-Here's an example job that uses a script stored on Manta for the body of the
-task:
-
-    {
-        "jobName": "monthly log summary",
-        "phases": [ {
-            "assets": [ "bin/log_rollup" ],
-            "exec": "/assets/bin/log_rollup",
-            "args": { "reducer": "example.com/reducer" }
-        } ],
-        "inputKeys": [
-            "logs/2012-03-01.log",
-            "logs/2012-03-02.log",
-            "logs/2012-03-03.log",
-            ...
-            "logs/2012-03-31.log"
-        ]
-    }
-
-See use cases below for more examples.
-
-
-## GET /jobs
-
-Returns the list of a user's jobs.
-
-### Inputs
-
-|| **Field** || **Type** || **Description** ||
-|| state || Array of Strings || Returns only jobs in one of the given states. ||
-
-### Returns
-
-On success, returns 200 with an array of objects, each with the following
-fields:
-
-|| **Field** || **Type** || **Description** ||
-|| jobId || String || See "Inputs" to `POST /jobs`. ||
-|| jobName  || String || See "Inputs" to `POST /jobs`. ||
-|| state || String || See "Returns" for `GET /jobs/:jobId`. ||
-
-### Example
-
-Example input:
-
-    GET /jobs?state=running
-
-Example return value:
-
-    [ {
-        "jobId": "acfec1f0-7779-11e1-81f9-979db30d72bf",
-        "jobName": monthly log summary",
-        "state": "running",
-    } ]
-
-
-## POST /jobs/:jobId/cancel
-
-Asynchronously cancels the given job, if the job has not yet completed.  If the
-job has completed, this operation does nothing.  It may take several minutes to
-cancel a job.
-
-### Returns
-
-Returns 204 (no content) on success.
-
-
-## GET /jobs/:jobId
-
-Returns basic information about a submitted job.  For detailed runtime status,
-see `GET /jobs/:jobId/status`.
-
-
-### Returns
-
-Returns 200 with at least the following fields:
-
-|| **Job&nbsp;field** || **Type** || **Description** ||
-|| jobId || String || Unique identifier for this job. ||
-|| jobName || String || See "Inputs" to `POST /jobs`. ||
-|| phases || Array of Objects || See "Inputs" to `POST /jobs`. ||
-|| inputKeys || Array&nbsp;of&nbsp;Strings || See "Inputs" to `POST /jobs`. ||
-|| createTime || DateTime&nbsp;String || Job submission time. ||
-|| state || String&nbsp;(see&nbsp;below) || Describes whether the job is queued, running, or done.  See below. ||
-
-The job **state** is one of:
-
-|| **Job&nbsp;state** || **Meaning** ||
-|| queued || The job has been created but it's not yet running. That is, no tasks have been instantiated to execute the job yet. ||
-|| running || The job is currently running on at least one storage node. That is, one or more tasks have been instantiated to execute the job. Some or all of those tasks may have already completed, but not all tasks have been instantiated and completed. ||
-|| done || All of the job's tasks have completed or the job has been aborted. ||
-
-For jobs in the "done" state, these additional fields will be present:
-
-|| finishTime || DateTime&nbsp;String || Job completion time. ||
-|| result || "success" or "failure" || Describes whether the job completed successfully. ||
-|| reason || String&nbsp;(see&nbsp;below) || If the job result is "failed", this describes why the job failed. ||
-
-For failed jobs, the **reason** describes why the job failed:
-
-|| **Job&nbsp;error&nbsp;code** || **Meaning** ||
-|| jobCancelled || the job was explicitly cancelled ||
-|| taskFailed || one or more of the job's tasks failed ||
-
-
-### Example
-
-Here's example state for a job which has not yet started running:
-
-    {
-        "jobId": "acfec1f0-7779-11e1-81f9-979db30d72bf",
-        "jobName": monthly log summary",
-        "phases": [ {
-            "assets": "bin/log_rollup",
-            "exec": "/assets/bin/log_rollup"
-        } ],
-        "inputKeys": [
-            "logs/2012-03-01.log",
-            "logs/2012-03-02.log",
-            "logs/2012-03-03.log",
-            ...
-            "logs/2012-03-31.log"
-        ],
-        "createTime": "2012-03-20T17:19:26.732Z",
-        "state": "queued"
-    }
-
-Here's an example state for the same job after it has finished successfully:
-
-    {
-        "jobId": "acfec1f0-7779-11e1-81f9-979db30d72bf",
-        "jobName": monthly log summary",
-        "phases": [ {
-            "assets": "bin/log_rollup",
-            "exec": "/assets/bin/log_rollup",
-            "args": { "reducer": "example.com/reducer" }
-        } ],
-        "inputKeys": [
-            "logs/2012-03-01.log",
-            "logs/2012-03-02.log",
-            "logs/2012-03-03.log",
-            ...
-            "logs/2012-03-31.log"
-        ],
-        "createTime": "2012-03-20T17:19:26.732Z",
-        "state": "done",
-        "result": "success",
-        "finishTime": "2012-03-20T18:37:52.182Z"
-    }
-
-Here's an example where the job failed:
-
-    {
-        "jobId": "acfec1f0-7779-11e1-81f9-979db30d72bf",
-        "jobName": monthly log summary",
-        "phases": [ {
-            "assets": "bin/log_rollup",
-            "exec": "/assets/bin/log_rollup"
-        } ],
-        "inputKeys": [
-            "logs/2012-03-01.log",
-            "logs/2012-03-02.log",
-            "logs/2012-03-03.log",
-            ...
-            "logs/2012-03-31.log"
-        ],
-        "createTime": "2012-03-20T17:19:26.732Z",
-        "state": "done",
-        "result": "failed",
-        "reason": "taskFailed",
-        "finishTime": "2012-03-20T18:37:52.182Z"
-    }
-
-
-## GET /jobs/:jobId/status
-
-Retrieves detailed status information about a job.  The system makes a best
-effort to keep this information up to date, but any of the runtime state may be
-outdated or inconsistent while a job is in the "running" state.
-
-### Returns
-
-This URI returns all of the fields returned by `GET /jobs/:jobId`, plus these
-extra fields:
-
-|| **Detailed job fields** || **Type** || **Description** ||
-|| doneKeys || Array&nbsp;of&nbsp;Strings || Manta keys that have been processed successfully. ||
-|| outputKeys || Array&nbsp;of&nbsp;Strings || Manta keys output by this job. ||
-|| jobLog || Array&nbsp;of&nbsp;Objects || Log of job activity (see below). ||
-|| taskGroups || Array&nbsp;of&nbsp;Objects || Individual task group states (see below). ||
-
-#### Job log
-
-The **jobLog** field includes entries for all state changes for the job itself
-as well as all tasks associated with the job.  This is useful for understanding
-job failures and performance *postmortem*.  Each entry has the following
-fields:
-
-|| **Job&nbsp;log&nbsp;entry&nbsp;field** || **Type** || **Description** ||
-|| date || DateTime&nbsp;String || Time of log entry ||
-|| taskId&nbsp;(task&nbsp;entries&nbsp;only) || String || Identifier for a given task ||
-|| event || String || Either "stateChange" or "message" ||
-|| message || String || Human-readable message ||
-|| newState&nbsp;(state&nbsp;change&nbsp;entries&nbsp;only) || String || New state name ||
-
-#### Job progress
-
-Callers can see precisely which keys have been completed by examining
-"doneKeys".  For a rough measure of progress, callers can compare
-"doneKeys.length" to "inputKeys.length".
-
-The **taskGroups** field shows more detailed information about how the job was
-distributed to various servers and the status of each task on each server.  Each
-entry of this array describes an individual task, including:
-
-XXX This section will need more changes to reflect the change from task to task
-group.  Users may only care about tasks, though operators will likely care about
-task groups as well.
-
-|| **Task&nbsp;field** || **Type** || **Meaning** ||
-|| taskId || String || Unique identifier for this task within this job. ||
-|| host || String || Unique identifier for the physical server on which this task ran. ||
-|| machine || String || Unique identifier for the compute zone in which the task ran. ||
-|| inputKeys || Array&nbsp;of&nbsp;Strings || List of keys assigned to this task. ||
-|| startTime || DateTime&nbsp;String || When this task was started. ||
-|| state || String || Describes the current state of the task (see below). ||
-|| outputKeys || Array&nbsp;of&nbsp;Strings || List of keys output by this task. ||
-|| endTime || DateTime&nbsp;String || The time when the task finished (done tasks only). ||
-|| result || "result" or "failure" || Describes whether the task completed successfully (done tasks only). ||
-|| partialKeys || List&nbsp;of&nbsp;Strings || List of Manta objects created by the task but not committed because the task failed or is still running. ||
-
-The task **state** is one of:
-
-|| **Task&nbsp;state** || **Meaning** ||
-|| queued || The task has been planned, but has not started running yet. ||
-|| loading || Marlin is preparing the compute zone to run the task. This step includes downloading and extracting the job's assets. ||
-|| running || The task is currently running. ||
-|| done || The task is no longer running. ||
-
-For failed tasks, the **reason** indicates why the task failed:
-
-|| **Error&nbsp;code** || **Meaning** ||
-|| abnormalExit || The task exited with non-zero status, or exited without indicating that it had finished processing. ||
-|| failed || The task explicitly failed. ||
-|| timeout || The task did not complete within the alloted time interval. ||
-
-
-### Examples
-
-The response for a successfully completed job looks like this:
-
-    {
-        "jobId": "4bcf467e-4b88-4ab4-b7ab-65fad7464de9",
-        "jobName": "weekly log summary",
-        "phases": [ {
-            "assets": "bin/log_rollup",
-            "exec": "/assets/bin/log_rollup"
-        } ],
-        "inputKeys": [
-            "logs/2012-03-11.log",
-            "logs/2012-03-12.log",
-            ...
-            "logs/2012-03-17.log"
-        ],
-        "createTime": "2012-03-20T17:19:26.732Z",
-        "state": "done",
-        "finishTime": "2012-03-20T17:22:35.246Z",
-        "result": "success",
-        "doneKeys": [
-            "logs/2012-03-11.log",
-            "logs/2012-03-12.log",
-            ...
-            "logs/2012-03-17.log"
-        ],
-        "taskGroups": [ {
-            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "host": "2F16",
-            "machine": "e7b35c46-c36d-4e02-8cde-6fdf2695af15", 
-            "inputKeys": [
-                "logs/2012-03-11.log",
-                "logs/2012-03-12.log",
-                "logs/2012-03-16.log"
-            ],
-            "outputKeys": [
-                "log_summary/2012-03-11.txt",
-                "log_summary/2012-03-12.txt",
-                "log_summary/2012-03-16.txt"
-            ],
-            "startTime": "2012-03-20T17:19:30.102Z",
-            "state": "done",
-            "endTime": "2012-03-20T17:21:25.327Z",
-            "result": "success"
-        }, {
-            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "host": "2F20",
-            "machine": "b01698b6-7447-11e1-8f74-fbabac25f69a",
-            "inputKeys": [
-                "logs/2012-03-13.log",
-                "logs/2012-03-14.log",
-                "logs/2012-03-15.log",
-                "logs/2012-03-17.log"
-            ],
-            "outputKeys": [
-                "log_summary/2012-03-13.txt",
-                "log_summary/2012-03-14.txt",
-                "log_summary/2012-03-15.txt",
-                "log_summary/2012-03-17.txt"
-            ],
-            "startTime": "2012-03-20T17:19:33.302Z",
-            "state": "done",
-            "endTime": "2012-03-20T17:22:35.246Z",
-            "result": "success"
-        } ],
-        "outputKeys": [
-            "log_summary/2012-03-11.txt",
-            "log_summary/2012-03-12.txt",
-            "log_summary/2012-03-13.txt",
-            "log_summary/2012-03-14.txt",
-            "log_summary/2012-03-15.txt",
-            "log_summary/2012-03-16.txt",
-            "log_summary/2012-03-17.txt"
-        ],
-        "jobLog": [ {
-            "date": "2012-03-20T17:19:26.732Z",
-            "event": "stateChange",
-            "newState": "queued",
-            "message": "job created and queued"
-        }, {
-            "date": "2012-03-20T17:19:30.102Z",
-            "event": "stateChange",
-            "newState": "running",
-            "message": "job started running"
-        }, {
-            "date": "2012-03-20T17:19:30.102Z",
-            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "event": "stateChange",
-            "newState": "loading",
-            "message": "task started loading"
-        }, {
-            "date": "2012-03-20T17:19:33.302Z",
-            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "event": "stateChange",
-            "newState": "loading",
-            "message": "task started loading"
-        }, {
-            "date": "2012-03-20T17:19:40.102Z",
-            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "event": "stateChange",
-            "newState": "running",
-            "message": "task started running"
-        }, {
-            "date": "2012-03-20T17:19:41.502Z",
-            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "event": "stateChange",
-            "newState": "running",
-            "message": "task started running"
-        }, {
-            "date": "2012-03-20T17:21:25.327Z",
-            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "event": "stateChange",
-            "newState": "done",
-            "message": "task completed"
-        }, {
-            "date": "2012-03-20T17:22:35.246Z",
-            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "event": "stateChange",
-            "newState": "done",
-            "message": "task completed"
-        }, {
-            "date": "2012-03-20T17:22:35.246Z",
-            "event": "stateChange",
-            "newState": "done",
-            "message": "job completed"
-        } ]
-    }
-
-In this example, the job was distributed to two nodes, 2F16 and 2F20, where one
-task group was run on each node.  Each task group got a few of the 7 input
-objects.  Both task groups have completed processing all of their objects.
-
-Here's what a failed job's state looks like:
-
-    {
-        "jobId": "4bcf467e-4b88-4ab4-b7ab-65fad7464de9",
-        "jobName": "weekly log summary",
-        "phases": [ {
-            "assets": "bin/log_rollup",
-            "exec": "/assets/bin/log_rollup"
-        } ],
-        "inputKeys": [
-            "logs/2012-03-11.log",
-            "logs/2012-03-12.log",
-            "logs/2012-03-13.log",
-            "logs/2012-03-14.log",
-            "logs/2012-03-15.log",
-            "logs/2012-03-16.log",
-            "logs/2012-03-17.log"
-        ],
-        "createTime": "2012-03-20T17:19:26.732Z",
-        "state": "done",
-        "finishTime": "2012-03-20T17:22:35.246Z",
-        "result": "failed",
-        "reason": "taskFailed",
-        "doneKeys": [
-                "logs/2012-03-11.log",
-                "logs/2012-03-12.log",
-                "logs/2012-03-13.log",
-                "logs/2012-03-14.log",
-                "logs/2012-03-16.log",
-                "logs/2012-03-17.log"
-        ],
-        "taskGroups": [ {
-            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "host": "2F16",
-            "machine": "e7b35c46-c36d-4e02-8cde-6fdf2695af15", 
-            "inputKeys": [
-                "logs/2012-03-11.log",
-                "logs/2012-03-12.log",
-                "logs/2012-03-16.log"
-            ],
-            "outputKeys": [
-                "log_summary/2012-03-11.txt",
-                "log_summary/2012-03-12.txt",
-                "log_summary/2012-03-16.txt"
-            ],
-            "startTime": "2012-03-20T17:19:30.102Z",
-            "state": "done",
-            "endTime": "2012-03-20T17:21:25.327Z",
-            "result": "success"
-        }, {
-            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "host": "2F20",
-            "machine": "b01698b6-7447-11e1-8f74-fbabac25f69a",
-            "inputKeys": [
-                "logs/2012-03-13.log",
-                "logs/2012-03-14.log",
-                "logs/2012-03-17.log"
-            ],
-            "outputKeys": [
-                "log_summary/2012-03-13.txt",
-                "log_summary/2012-03-14.txt",
-                "log_summary/2012-03-17.txt"
-            ],
-            "partialKeys": [
-                "log_summary/2012-03-15.txt"
-            ]
-            "startTime": "2012-03-20T17:19:33.302Z",
-            "state": "done",
-            "endTime": "2012-03-20T17:22:35.246Z",
-            "result": "failed",
-            "reason": "failed",
-            "error": {
-                "message": "corrupt log record"
-            }
-        } ],
-        "outputKeys": [
-            "log_summary/2012-03-11.txt",
-            "log_summary/2012-03-12.txt",
-            "log_summary/2012-03-13.txt",
-            "log_summary/2012-03-14.txt",
-            "log_summary/2012-03-16.txt",
-            "log_summary/2012-03-17.txt"
-        ],
-        "jobLog": [ {
-            "date": "2012-03-20T17:19:26.732Z",
-            "event": "stateChange",
-            "newState": "queued",
-            "message": "job created and queued"
-        }, {
-            "date": "2012-03-20T17:19:30.102Z",
-            "event": "stateChange",
-            "newState": "running",
-            "message": "job started running"
-        }, {
-            "date": "2012-03-20T17:19:30.102Z",
-            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "event": "stateChange",
-            "newState": "loading",
-            "message": "task started loading"
-        }, {
-            "date": "2012-03-20T17:19:33.302Z",
-            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "event": "stateChange",
-            "newState": "loading",
-            "message": "task started loading"
-        }, {
-            "date": "2012-03-20T17:19:40.102Z",
-            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "event": "stateChange",
-            "newState": "running",
-            "message": "task started running"
-        }, {
-            "date": "2012-03-20T17:19:41.502Z",
-            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "event": "stateChange",
-            "newState": "running",
-            "message": "task started running"
-        }, {
-            "date": "2012-03-20T17:21:25.327Z",
-            "taskId": "be3559ee-713b-43eb-8deb-6ee93f441c23",
-            "event": "stateChange",
-            "newState": "done",
-            "message": "task completed"
-        }, {
-            "date": "2012-03-20T17:22:35.246Z",
-            "taskId": "50a4ec2a-7447-11e1-89c2-d7602b9e1ea2",
-            "event": "stateChange",
-            "newState": "done",
-            "message": "task failed"
-        }, {
-            "date": "2012-03-20T17:22:35.246Z",
-            "event": "stateChange",
-            "newState": "done",
-            "message": "job completed"
-        } ]
-    }
-
-In this example, we can see that the second task group failed partway through.
-We see this from both the task group state and the job log.  Since we see that
-it had started writing the summary for log\_summary/2012-03-15.txt, we know it
-failed on this file, and we could next look to see how far it got.  We also have
-the error message reported by the task group: "corrupt log record".  The more
-information the task reports, the better the chance of root causing the failure
-from the first occurrence.
 
 
 # Task Control API
@@ -873,9 +188,9 @@ processes and the entire filesystem contents will be preserved.
 
 We'll provide several facilities for dealing with common tasks in MR jobs.
 
-### mpipe: output to the next job pipeline
+### dpipe: output to the next job pipeline
 
-mpipe [&lt;manta_key&gt;] [reducer]
+dpipe [&lt;manta_key&gt;] [reducer]
 
 Reads content from stdin and outputs it from this task.  If &lt;manta\_key&gt;
 is not given, a new name will be created.
@@ -995,7 +310,7 @@ looks like this:
     }
 
 If you wanted, you could rewrite "wordfreq" as an awk one-liner and include it
-directly in the "exec" property, but this may be a bit unwieldy.
+directly in the "exec" property.
 
 ## Pipelined reducers
 
@@ -1076,6 +391,8 @@ Users would only need to reference a third party asset:
 
 ## Log analysis (MapReduce)
 
+TBD.
+
 ## Image conversion / video transcoding (Straight Map)
 
 This job uses the "convert" command that's part of the ImageMagick suite.  It
@@ -1085,7 +402,7 @@ converts image files between types based on file extension.
         "jobName": "convert GIFs to PNGs",
         "inputKeys": [ "file1.gif", "file2.gif", ... ]
         "phases": [ {
-            "exec": "output=$(basename $mc_input_file .gif).png; convert $mc_input_file $output && mpipe < $output"
+            "exec": "output=$(basename $mc_input_file .gif).png; convert $mc_input_file $output && dpipe < $output"
         }
     }
 
@@ -1098,19 +415,30 @@ TBD.
 
 TBD.
 
+## Customer records, join
+
+TBD.
+
+## Build system
+
+TBD.
+
 
 # Marlin implementation
 
 ## Marlin network architecture
 
-There are four main components in the Marlin architecture:
+Marlin makes use of two generic Manta components:
+* muskie, the Manta web tier, which handles the Jobs API (requests to POST new
+  jobs and GET job state).
+* moray, where all Marlin state is stored.
 
-* Web tier, which handles requests to GET job state and POST new jobs. 
-* Job worker tier, which assigns tasks to individual storage and compute nodes
-  and monitor task progress.
+On top of these, Marlin adds two components:
+
+* Job worker tier, which locates new and abandoned jobs in Moray, assigns task
+  groups to individual storage and compute nodes, and monitors job progress.
 * Compute node agents, which execute and monitor tasks and report progress and
   completion.
-* Moray, where all Marlin state is stored.
 
 There's a cluster of web tier workers and job workers in each datacenter, but
 there's no real DC-awareness among these components.
@@ -1131,18 +459,18 @@ implies that Moray becoming unavailable makes Marlin unavailable, and that
 Moray must be able to keep up with the Marlin workload.  See "Scalability"
 below.
 
-Jobs are stored inside a single Moray bucket called "marlin\_jobs", with
-indexed fields that allow the web tier, job workers, and agents to poll on the
-subset of jobs that they care about.
+Jobs are stored inside a single Moray bucket called "marlinJobs", with indexed
+fields that allow the web tier, job workers, and agents to poll on the subset of
+jobs that they care about.
 
 
 **Web tier**
 
-Workers retrieve current job state by querying "marlin\_jobs" for the job with
-the given jobId.
+muskie retrieves current job state by querying "marlinJobs" for the job with the
+given jobId.
 
-When a new job is submitted, the web tier allocates a new jobId and drops the
-job definition into "marlin\_jobs".
+When a new job is submitted, muskie allocates a new jobId and drops the job
+definition into "marlinJobs".
 
 
 **Job workers**
@@ -1177,11 +505,11 @@ storage nodes each key is actually stored on.
 The worker than divides the first phase of the job into **task groups**, each of
 which will run on one storage node and process whichever input keys are stored
 on that node.  These task assignments are written out to a Moray bucket called
-"marlin\_tasks" with a field identifying the hostname of the node on which the
-task will run.  The agents running on each node poll Moray for tasks assigned to
-them, process each one, and update the task object.  The job worker polls on
-these task updates, updates the global job state with job progress (so the web
-tier can see it) and advances the job when each phase completes.
+"marlinTaskGroups" with a field identifying the hostname of the node on which
+the task will run.  The agents running on each node poll Moray for tasks
+assigned to them, process each one, and update the task object.  The job worker
+polls on these task updates, updates the global job state with job progress (so
+the web tier can see it) and advances the job when each phase completes.
 
 When a phase completes (as determined by the worker when all of its tasks have
 completed), the worker begins processing the next phase in the same way it did
@@ -1191,7 +519,7 @@ individual nodes.  When all phases complete, the job is marked done.
 **Compute node agents**
 
 As described above, compute node agents monitor tasks assigned to them in
-"marlin\_tasks".  As their tasks make progress, they update the task record,
+"marlinTaskGroups".  As their tasks make progress, they update the task record,
 which is also monitored by a job worker.
 
 **Invariants and failure modes**
@@ -1200,7 +528,7 @@ Invariants:
 
 * All state is stored in Moray, so all components are stateless.
 * At most one worker can ever "own" a job.  Only the owner of a job can write
-  task assignments or update the job record in "marlin\_jobs".
+  task assignments or update the job record in "marlinJobs".
 * To a first approximation, a component is partitioned iff it cannot reach
   Moray.  This is an oversimplification because Moray itself is sharded, so it's
   theoretically possible to be partitioned from one shard but not another.
@@ -1225,10 +553,10 @@ partitioned from its Moray shard (which are indistinguishable to the outside
 world), the job worker redispatches any uncompleted work to other nodes that
 have the same data.  It does not cancel the task on the failed node.  If both
 tasks eventually complete successfully, the worker will necessarily see one's
-results first and discard the other's.  (That's why the state in "marlin\_tasks"
-is not authoritative job state, and why the worker must "commit" this state to
-the job record in "marlin\_jobs" for the web tier to see it, rather than having
-the web tier scan "marlin\_tasks" for itself.)
+results first and discard the other's.  (That's why the state in
+"marlinTaskGroups" is not authoritative job state, and why the worker must
+"commit" this state to the job record in "marlinJobs" for the web tier to see
+it, rather than having the web tier scan "marlinTaskGroups" for itself.)
 
 If a job worker fails transiently, it should be able to pick up where it left
 off, since all state is stored in Moray.  This should be invisible to the rest
@@ -1318,118 +646,17 @@ horizontally.
 ## Objects
 
 There are two types of objects stored in Moray: jobs and task group
-assignments.  Here's what an internal job record looks like:
-
-    {
-        "version": 0,                           /* versioning */
-        "jobId": "...",                         /* see API above */
-        "jobName": "...",                       /* see API above */
-        "phases": [ {                           /* see API above */
-                "type": "...",
-                "count": "...",
-                "datasetVersion": "...",
-                "assets": [ "..." ],
-                "args": { "...": "..." },
-                "exec": "..."
-        } ],
-        "inputKeys": [ "..." ],                 /* see API above */
-        "failFast": false,                      /* see API above */
-    
-        "state": "...",                         /* see API above */
-        "error": "...",                         /* see API above */
-        "createTime": "...",                    /* see API above */
-        "finishTime": "...",                    /* see API above */
-    
-        "results": [
-                [                               /* phase 1 results */
-                        {                       /* input key 1 result */
-                                "machine": "...",       /* zonename */
-                                "input": "...",         /* input key */
-                                "state": "...",         /* queued, etc. */
-                                "result": "...",        /* success? */
-                                "partial": [ "..." ],   /* only while running */
-                                "outputs": [ "..." ],   /* only on success */
-                                "discarded": [ "..." ], /* only on failure */
-                                "startTime": "...",
-                                "doneTime": "...",
-                                "error": "..."          /* only on failure */
-                        },
-                        {                       /* input key 2 result */
-                                "machine": "...",
-                                "input": "...",
-                                "state": "...",
-                                "result": "...",
-                                "partial": [ "..." ],
-                                "outputs": [ "..." ],
-                                "discarded": [ "..." ],
-                                "startTime": "...",
-                                "doneTime": "...",
-                                "error": "..."
-                        }
-                ] /* end phase 1 results */
-        ]
-    
-        "jobLog": [ "..." ],
-    
-        /* internal state */
-        "worker": "...",                        /* owner worker's uuid */
-        "lastCompletedPhase": "..."             /* index into phases, or -1 */
-    }
-
-Here's what an internal task group assignment looks like:
-
-    {
-        "version": 0,                           /* version written by worker */
-        "maxVersion": 0,                        /* max version worker accepts */
-        "jobId": "...",                         /* see API above */
-        "taskGroupId": "...",                   /* identifies this record */
-        "host": "...",                          /* destination host */
-        "inputKeys": [ "..." ],                 /* keys for this task group */
-        "phase": {                              /* phase for this task group */
-                "datasetVersion": "...",
-                "assets": [ "..." ],
-                "args": { "...": "..." },
-                "exec": "..."
-        },
-        "failFast": false,                      /* see API above */
-        "state": "...",                         /* current status */
-        "error": "...",                         /* only on failure */
-        "results": [ {                          /* see job record */
-                "machine": "...",
-                "input": "...",
-                "state": "...",
-                "result": "...",
-                "partial": [ "..." ],
-                "outputs": [ "..." ],
-                "discarded": [ "..." ],
-                "startTime": "...",
-                "doneTime": "...",
-                "error": "..."
-        }, {
-                "machine": "...",
-                "input": "...",
-                "state": "...",
-                "result": "...",
-                "partial": [ "..." ],
-                "outputs": [ "..." ],
-                "discarded": [ "..." ],
-                "startTime": "...",
-                "doneTime": "...",
-                "error": "..."
-        } ]
-    }
-
-Here are the Moray operations on these objects:
+assignments.  For the details, see the schema in lib/schema.js in marlin.git.
 
 Web tier:
 
 * POST /jobs (create new job)
 * GET /jobs/jobId (get job status)
-* PUT /jobs/jobId (rare case: use T&S to set cancelled = true)
+* PUT /jobs/jobId (rare case: use T&amp;S to set cancelled = true)
 
 Workers:
 
-* GET /jobs where worker == null or mtime < ... (pick up new jobs)
+* GET /jobs where worker == null or mtime &lt; ... (pick up new jobs)
 * PUT /jobs/jobId (update job state)
 * PUT /taskgroups/taskGroupId (create/update assignment)
 * GET /taskgroups/taskGroupId (check task group state)
@@ -1522,9 +749,6 @@ Roughly in order of importance:
   need to figure out what to do if that guy dies -- adopt the contract?)
 * What metrics do we want to provide via CA?  How will we implement these?
   What other changes must be made to CA to support Marlin and Manta?
-* What's the algorithm for assigning tasks to compute nodes? A pretty dumb one
-  will probably suffice for a while, but it might be nice if the worker kept
-  track of what everyone was working on to better distribute work.
 * Should the job log be a manta object so that user's can add their own entries?
 
 ## Management API?
@@ -1555,14 +779,11 @@ Remaining work not necessarily required for the end-to-end demo includes:
 * moray: search by bucket change number
 * moray client: support for consistent hashing
 * agent: automated tests
-* agent: crash recovery (storing state on disk)
-* agent: reliable monitoring for the user's program (using contracts)
 * agent: implement "abort" (which saves all zone state)
-* agent/worker: implement reducers
 * agent/worker: implement explicit fail
 * agent/worker: implement retry
-* worker: locate objects in Manta
 * all: Moray record versioning
 * all: implement cancel
 * all: implement tools for observing global system state
-* all: deployment
+
+plus work covered by existing MANTA tickets.
