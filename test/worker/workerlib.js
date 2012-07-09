@@ -41,6 +41,7 @@ exports.jobSpec1Phase = {
 	'jobId': 'job-001',
 	'jobName': 'job1 for ' + testname,
 	'phases': [ { 'exec': 'echo' } ],
+	'owner': 'test',
 	'inputKeys': [ 'key1', 'key2', 'key3', 'key4' ],
 	'createTime': mod_jsprim.iso8601(new Date()),
 	'state': 'queued',
@@ -53,6 +54,7 @@ exports.jobSpec2Phase = {
 	'jobId': 'job-002',
 	'jobName': 'job2 for ' + testname,
 	'phases': [ { 'exec': 'echo' }, { 'exec': 'echo' } ],
+	'owner': 'test',
 	'inputKeys': [ 'key1', 'key2', 'key3', 'key4' ],
 	'createTime': mod_jsprim.iso8601(new Date()),
 	'state': 'queued',
@@ -69,6 +71,7 @@ exports.jobSpec3Phase = {
 	    { 'exec': 'echo' },
 	    { 'exec': 'echo' }
 	],
+	'owner': 'test',
 	'inputKeys': [ 'key1', 'key2', 'key3', 'key4' ],
 	'createTime': mod_jsprim.iso8601(new Date()),
 	'state': 'queued',
