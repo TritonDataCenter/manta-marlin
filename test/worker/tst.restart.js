@@ -19,6 +19,7 @@ mod_worklib.pipeline({
 	setup,
 	setupMoray,
 	checkJob,
+	stop,
 	swtch,
 	teardown
     ]
@@ -69,10 +70,15 @@ function checkJob(_, next)
 	}, next);
 }
 
+function stop(_, next)
+{
+	log.info('stop');
+	worker.stop(next);
+}
+
 function swtch(_, next)
 {
 	log.info('swtch');
-	worker.stop();
 	worker2.start();
 	mod_worklib.timedCheck(10, 1000, function (callback) {
 		worker2.stats(tcWrap(function (err, stats) {
