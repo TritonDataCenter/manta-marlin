@@ -45,143 +45,6 @@ All DateTimes in these APIs use W3C DTF in UTC ("YYYY-MM-DDThh:mm:ss.sZ").
 
 
 
-# Task Control API
-
-The Task Control API is used by tasks (user code running in compute zones on
-Manta storage nodes) to retrieve parameters and report on progress.  The API is
-serviced not by a public endpoint, but by a small server running inside the
-task's own compute zone that's implicitly scoped to that zone's current task.
-As a result, task identifiers are not actually necessary in the task API.
-
-This API is *not* used to monitor task status; that's provided by the
-public-facing Job API.
-
-## GET /info
-
-Retrieves information about the current job and task.
-
-### Returns
-
-This field returns the entire job info (as `GET /jobs/:jobid` does) plus the
-following fields:
-
-|| **Field** || **Type** || **Description** ||
-|| taskId || String || Task identifier ||
-|| taskInputKey || Array&nbsp;of&nbsp;Strings || An array with two fields: the object key, and the full path to the corresponding file. ||
-
-Object metadata (e.g., user-specified headers) are not included in the task
-info.  Users can retrieve this by querying Manta directly.
- 
-
-## POST /commit
-
-Report that the given key has been successfully processed.  Tasks *must* report
-when they finish processing each key.
-
-This information is used for two purposes: first, it is recorded in the job
-state so that end users can see what progress is being made while the job runs.
-Second, any objects created since the last progress report are committed to the
-job.  See `PUT /object/:key`.
-
-When the key has been completed, the task may be terminated immediately,
-potentially before this request even completes.  Any cleanup the task wishes to
-complete should be done before the final call to this URI.
-
-### Input
-
-|| **Field** || **Type** || **Description** ||
-|| key || String || Key for input object successfully completed ||
-
-### Returns
-
-Returns 204 (no content) on success.
-
-### Example
-
-Request:
-
-    {
-        "key": "logs/2012-03-11.log"
-    }
-
-Response:
-
-    HTTP/1.1 204 No content
-    Access-Control-Allow-Origin: *
-    Access-Control-Allow-Methods: GET, POST
-    Connection: close
-    Date: Tue, 20 Mar 2012 17:19:26 GMT
-    X-Request-Id: 4bcf467e-4b88-4ab4-b7ab-65fad7464de9
-    X-Response-Time: 32
-
-
-## PUT /object/:key
-
-Writes a new Manta object named "key" associated with this task.  The arguments,
-semantics, and return value for this URI exactly match the Manta API for
-creating a new object, with the following additions:
-
-* Any object created using this URI since the last call to `POST /commit` will
-  be discarded if the job fails.  Such objects will not be included in the
-  job's output, but will be listed in the task state for *postmortem*
-  debugging.
-* Jobs using pipelined reducers may specify a "X-Marlin-Reducer" header whose
-  value is an integer from 0 to N - 1, where N is the number of reducers in the
-  next phase.  Any other input results in a 409 Conflict error.  This value
-  indicates which of several reducers this output file should be fed to.  If
-  this value is unspecified and there are multiple reducers in the next phase,
-  output keys will be randomly assigned to reducers.
-
-For examples, see the Manta documentation.
-
-## POST /fail
-
-Fail the current task.  Any objects created since the last call to `POST
-/commit` will be discarded (but will be linked in the task state for
-*postmortem* analysis).
-
-### Input
-
-The input should have at least the following fields:
-
-|| **message** || String || human-readable error message ||
-
-It's also recommended to include a "code" field for a machine-parseable error
-code in string form.  Other fields may also be specified up to a maximum
-request size.
-
-### Returns
-
-Returns 204 (no content) on success, but may not return at all, as the task may
-be terminated immediately.
-
-Callers can assume that this call will never fail.
-
-
-### Example
-
-Request:
-
-    {
-        "message": "corrupt log record"
-    }
-
-Response:
-
-    HTTP/1.1 204 No content
-    Access-Control-Allow-Origin: *
-    Access-Control-Allow-Methods: GET, POST
-    Connection: close
-    Date: Tue, 20 Mar 2012 17:19:26 GMT
-    X-Request-Id: 4bcf467e-4b88-4ab4-b7ab-65fad7464de9
-    X-Response-Time: 12
-
-## POST /abort
-
-Exactly like `POST /fail`, except that additional *postmortem* state will be
-kept around and linked to the job state.  Core dumps of currently running user
-processes and the entire filesystem contents will be preserved.
-
 # Streaming API
 
 This section describes a modified API based around streams, both internally and
@@ -522,6 +385,177 @@ The resulting file could be imported into a SQL database.
 
 XXX
 
+## Hadoop
+
+XXX
+
+## Build system
+
+Marlin could be an effective distributed build system, at least for Joyent
+internally.  Using Marlin this way guarantees that each repo is built in a clean
+zone with whichever dataset it requires, the builds themselves are automatically
+distributed for parallelism, and the artifacts end up in Manta where we probably
+want them anyway.
+
+The main challenge is that git repos themselves would be hard to store in Manta,
+since they're typically a whole tree of files presumably updated with partial
+writes.  But git repos can be bundled into a single file using "git bundle", and
+the resulting bundle stored in Manta.  If we add a post-commit hook to our git
+repos that save a "git bundle" into Manta, then the distributed build system is
+a pretty simple map job:
+
+    {
+        "jobName": "build SDC",
+        "phases": [ {
+            "dataset": "smartos-1.6.3",
+            "exec": "git clone $mr_input_file repo && cd repo && make &&
+                dpipe < build/dist/latest.tar.bz2"
+        } ]
+    }
+
+The input keys would be the keys identifying the git bundle for each repo in
+Manta.  If different repos needed to be built with different datasets, those
+would have to be separate jobs.
+
+
+# Task Control API
+
+The Task Control API is used by tasks (user code running in compute zones on
+Manta storage nodes) to retrieve parameters and report on progress.  The API is
+serviced not by a public endpoint, but by a small server running inside the
+task's own compute zone that's implicitly scoped to that zone's current task.
+As a result, task identifiers are not actually necessary in the task API.
+
+This API is *not* used to monitor task status; that's provided by the
+public-facing Job API.
+
+## GET /info
+
+Retrieves information about the current job and task.
+
+### Returns
+
+This field returns the entire job info (as `GET /jobs/:jobid` does) plus the
+following fields:
+
+|| **Field** || **Type** || **Description** ||
+|| taskId || String || Task identifier ||
+|| taskInputKey || Array&nbsp;of&nbsp;Strings || An array with two fields: the object key, and the full path to the corresponding file. ||
+
+Object metadata (e.g., user-specified headers) are not included in the task
+info.  Users can retrieve this by querying Manta directly.
+ 
+
+## POST /commit
+
+Report that the given key has been successfully processed.  Tasks *must* report
+when they finish processing each key.
+
+This information is used for two purposes: first, it is recorded in the job
+state so that end users can see what progress is being made while the job runs.
+Second, any objects created since the last progress report are committed to the
+job.  See `PUT /object/:key`.
+
+When the key has been completed, the task may be terminated immediately,
+potentially before this request even completes.  Any cleanup the task wishes to
+complete should be done before the final call to this URI.
+
+### Input
+
+|| **Field** || **Type** || **Description** ||
+|| key || String || Key for input object successfully completed ||
+
+### Returns
+
+Returns 204 (no content) on success.
+
+### Example
+
+Request:
+
+    {
+        "key": "logs/2012-03-11.log"
+    }
+
+Response:
+
+    HTTP/1.1 204 No content
+    Access-Control-Allow-Origin: *
+    Access-Control-Allow-Methods: GET, POST
+    Connection: close
+    Date: Tue, 20 Mar 2012 17:19:26 GMT
+    X-Request-Id: 4bcf467e-4b88-4ab4-b7ab-65fad7464de9
+    X-Response-Time: 32
+
+
+## PUT /object/:key
+
+Writes a new Manta object named "key" associated with this task.  The arguments,
+semantics, and return value for this URI exactly match the Manta API for
+creating a new object, with the following additions:
+
+* Any object created using this URI since the last call to `POST /commit` will
+  be discarded if the job fails.  Such objects will not be included in the
+  job's output, but will be listed in the task state for *postmortem*
+  debugging.
+* Jobs using pipelined reducers may specify a "X-Marlin-Reducer" header whose
+  value is an integer from 0 to N - 1, where N is the number of reducers in the
+  next phase.  Any other input results in a 409 Conflict error.  This value
+  indicates which of several reducers this output file should be fed to.  If
+  this value is unspecified and there are multiple reducers in the next phase,
+  output keys will be randomly assigned to reducers.
+
+For examples, see the Manta documentation.
+
+## POST /fail
+
+Fail the current task.  Any objects created since the last call to `POST
+/commit` will be discarded (but will be linked in the task state for
+*postmortem* analysis).
+
+### Input
+
+The input should have at least the following fields:
+
+|| **message** || String || human-readable error message ||
+
+It's also recommended to include a "code" field for a machine-parseable error
+code in string form.  Other fields may also be specified up to a maximum
+request size.
+
+### Returns
+
+Returns 204 (no content) on success, but may not return at all, as the task may
+be terminated immediately.
+
+Callers can assume that this call will never fail.
+
+
+### Example
+
+Request:
+
+    {
+        "message": "corrupt log record"
+    }
+
+Response:
+
+    HTTP/1.1 204 No content
+    Access-Control-Allow-Origin: *
+    Access-Control-Allow-Methods: GET, POST
+    Connection: close
+    Date: Tue, 20 Mar 2012 17:19:26 GMT
+    X-Request-Id: 4bcf467e-4b88-4ab4-b7ab-65fad7464de9
+    X-Response-Time: 12
+
+## POST /abort
+
+Exactly like `POST /fail`, except that additional *postmortem* state will be
+kept around and linked to the job state.  Core dumps of currently running user
+processes and the entire filesystem contents will be preserved.
+
+
 # Implementing use cases
 
 ## Built-in facilities
@@ -568,89 +602,6 @@ Example output:
 
 The "key:" bit may also be omitted.
 
-
-## Total word count
-
-Input: a bunch of text files
-
-Output: a count of the total number of words in all files
-
-    {
-        "jobName": "total word count"
-        "inputKeys": [ ... ],
-        "phases": [ {
-            "exec": "wc -w"
-        }, {
-            "type": "reduce",
-            "exec": "aggr sum"
-        } ]
-    }
-
-## Specific word count
-
-Input: a bunch of text files and a word "baseball"
-
-Output: the total number of occurences of "baseball" in all files
-
-    {
-        "jobName": "'baseball' count"
-        "inputKeys": [ ... ],
-        "phases": [ {
-            "exec": "grep -c baseball"
-        }, {
-            "type": "reduce",
-            "exec": "aggr sum"
-        } ]
-    }
-
-## Word frequency count (and using a custom asset)
-
-Input: a bunch of files
-
-Output: a text table for the frequency count of each word; e.g.:
-
-    marlin: 527
-    manta: 328
-    moray: 356
-
-For this case, you'll need a script that computes this for a given text file.
-This will do:
-
-    $ cat wordfreq
-    #!/usr/bin/perl -W
-    
-    $counts = {};
-    
-    while (<>) {
-        foreach(split) {
-            s/^\W+//;
-            s/\W+$//;
-            next unless $_;
-            $counts->{lc($\_)}++ 
-        }
-    }
-    
-    while (($word, $count) = each(%$counts)) {
-        printf("%s: %d\n", $word, $count);
-    }
-
-You'll first need to PUT this to manta, say at /dap/bin/wordfreq.  Then the job
-looks like this:
-
-    {
-        "jobName": "word frequency count"
-        "inputKeys": [ ... ],
-        "phases": [ {
-            "assets": [ "/dap/bin/wordfreq" ],
-            "exec": "/dap/bin/wordfreq"
-        }, {
-            "type": "reduce",
-            "exec": "aggr sum",
-        } ]
-    }
-
-If you wanted, you could rewrite "wordfreq" as an awk one-liner and include it
-directly in the "exec" property.
 
 ## Pipelined reducers
 
@@ -728,40 +679,6 @@ Users would only need to reference a third party asset:
         ],
         "exec": "/assets/third-party/framework/start.sh /assets/my/script" 
     } ]
-
-## Log analysis (MapReduce)
-
-TBD.
-
-## Image conversion / video transcoding (Straight Map)
-
-This job uses the "convert" command that's part of the ImageMagick suite.  It
-converts image files between types based on file extension.
-
-    {
-        "jobName": "convert GIFs to PNGs",
-        "inputKeys": [ "file1.gif", "file2.gif", ... ]
-        "phases": [ {
-            "exec": "output=$(basename $mc_input_file .gif).png; convert $mc_input_file $output && dpipe < $output"
-        }
-    }
-
-
-## Node interface
-
-TBD.
-
-## Hadoop proper
-
-TBD.
-
-## Customer records, join
-
-TBD.
-
-## Build system
-
-TBD.
 
 
 # Marlin implementation
