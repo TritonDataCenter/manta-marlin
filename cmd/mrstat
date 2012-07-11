@@ -50,7 +50,11 @@ function main()
 		usage();
 	}
 
-	msLog = new mod_bunyan({ 'name': ms_arg0 });
+	msLog = new mod_bunyan({
+	    'name': ms_arg0,
+	    'level': process.env['LOG_LEVEL'] || 'info'
+	});
+
 	msClient = mod_moray.createClient({
 	    'url': process.env['MORAY_URL'],
 	    'log': msLog

@@ -3,24 +3,20 @@
 	"port": 8083,
 	"moray": {
 		"indexing": {
-			"urls": [ "http://10.99.99.12" ]
+			"urls": [ "http://1.moray.coal.joyent.us" ],
+			"replicas": 100
 		},
 		"storage": {
-			"url": "http://10.99.99.12"
-		},
-		"connectTimeout": 200,
-		"maxIdleTime": 1000,
-		"maxClients": 100
+			"url": "http://1.moray.coal.joyent.us"
+		}
 	},
-
-	"locator": "test",
 
 	"jobsBucket": "marlinJobs",
 	"taskGroupsBucket": "marlinTaskGroups",
 
 	"jobAbandonTime": 30000,
-	"findInterval": 10,
-	"taskGroupInterval": 10,
+	"findInterval": 1000,
+	"taskGroupInterval": 1000,
 	"saveInterval": 10000,
 	"tickInterval": 1000,
 	"taskGroupIdleTime": 40000

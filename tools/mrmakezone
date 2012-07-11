@@ -38,7 +38,7 @@ echo "Creating zone: "
 
 cat > $mkz_tmpfile.input <<EOF
 {
-	"brand": "joyent",
+	"brand": "joyent-minimal",
 	"image_uuid": "$mkz_image_uuid",
 	"owner_uuid": "$mkz_owner_uuid",
 	"networks": [ "$mkz_network_uuid" ],

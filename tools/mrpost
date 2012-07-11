@@ -13,10 +13,10 @@ if [[ "$1" = "-f" ]]; then
 fi
 
 [[ -z "$MARLIN_URL" ]] && MARLIN_URL=http://localhost:8080
-curl -is -X POST -H "Content-type: application/json" \
+curl -is -X POST -H "Content-type: application/json" -H"Expect:" \
     -H"Accept: application/json" -T- $MARLIN_URL/jobs | json > $mrp_tmpfile
 cat $mrp_tmpfile
-head -3 $mrp_tmpfile | tail -1 | grep "HTTP/1.1 201 Created" > /dev/null || \
+head -3 $mrp_tmpfile | grep "HTTP/1.1 201 Created" > /dev/null || \
     exit 1
 
 if [[ $opt_f = "false" ]]; then
@@ -34,6 +34,12 @@ fi
 rm -f $mrp_tmpfile
 
 while :; do
-	curl -s $MARLIN_URL$mrp_uri | json
+	curl -s $MARLIN_URL$mrp_uri | json | tee $mrp_tmpfile
+
+	if grep '"state": "done"' $mrp_tmpfile > /dev/null; then
+		rm -f $mrp_tmpfile
+		exit 0
+	fi
+
 	sleep 1
 done
