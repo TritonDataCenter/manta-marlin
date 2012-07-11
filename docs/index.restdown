@@ -182,6 +182,346 @@ Exactly like `POST /fail`, except that additional *postmortem* state will be
 kept around and linked to the job state.  Core dumps of currently running user
 processes and the entire filesystem contents will be preserved.
 
+# Streaming API
+
+This section describes a modified API based around streams, both internally and
+externally.
+
+In this model, a job's input, output, and discarded objects are represented as
+streams rather than the "inputKeys", "outputKeys", and "discardedKeys"
+properties.  We now have the following resources:
+
+* `POST /:userid/jobs`: submit a new job (JSON)
+* `GET /:userid/jobs`: list jobs (JSON or text/plain)
+* `GET /:userid/jobs/:jobid`: retrieve current job state (JSON or text/plain?)
+* `PUT /:userid/jobs/:jobid/input`: submit input keys for a job (text/plain)
+* `GET /:userid/jobs/:jobid/output`: retrieve list of output keys for a job
+  (text/plain)
+* `GET /:userid/jobs/:jobid/phases/:i/results`: retrieves list of results for a
+  given phase. (JSON object describing each input key to the phase, the result
+  (success or failure), and any keys output or discarded.)
+
+Below are example implementations of several use cases.  In all of these
+examples, it's assumed that the input is streamed in and the output is streamed
+out.  The sequence for each of these examples is:
+
+    $ curl -i -X POST -d @input.json '-Hcontent-type: application/json' \
+        manta.joyent.us/:userid/jobs
+    
+    # extract new job URL from Location header
+
+    $ curl -X PUT -d @input_keys.txt manta.joyent.us/:userid/jobs/:jobid/input
+
+    $ curl manta.joyent.us/:userid/jobs/:jobid
+
+    # repeat above until state == "done"
+
+    $ curl -o output_keys.txt manta.joyent.us/:userid/jobs/:jobid/output
+
+Alternatively, jobs may be pipelined, so that the input keys from one job come
+from the output keys of a previous job.  To do this, use the "inputStream"
+property on the job itself, as in:
+
+    {
+        "jobName": "part two"
+        "phases": [ ... ],
+        "inputStream": "/:userid/jobs/:jobid/output"
+    }
+
+"inputStream" may refer to any other job's output stream, or any Manta object.
+The object must have type text/plain.
+
+There's no corresponding "outputStream" property, since every job has its own
+output stream at `/:userid/jobs/:jobid/output` that can be used anywhere an
+input stream or Manta file is required.
+
+The following examples include whitespace for readability, but JSON does not
+allow whitespace within strings.  To use these examples, either remove the
+newlines or save the phase contents as a file in Manta and use that file as an
+asset.
+
+
+## Total word count
+
+Input: a list of plain text objects (e.g., plaintext mailbox files, source code)
+
+Output: a single object with one line containing the total number of characters,
+words, and lines in all files (e.g., "wc" output)
+
+    {
+        "jobName": "total word count",
+        "phases": [ {
+            "exec": "wc"
+        }, {
+            "type": "reduce",
+            "exec": "awk '{ l += $1; w += $2; c += $3 } END { print l, w, c }'"
+        } ]
+    }
+
+Example output (exactly the same format as "wc"):
+
+      122919  380672 3416475
+
+
+## Word frequency count
+
+Input: a list of plain text objects.
+
+Output: a single object with one line *per whitespace-delimited* word in the
+input objects identifying how many times that word occurred in all of the input
+files.  The result should be sorted by count.
+
+    {
+        "jobName": "word frequency count",
+        "phases": [ {
+            "exec": "awk '
+                {
+                    for (i = 1; i < NF; i++) {
+                        counts[$i]++
+                    }
+                }
+                END {
+                    for (i in counts) {
+                        print i, counts[i]
+                    }
+                }'
+            "
+        }, {
+            "type": "reduce",
+            "exec": "awk '
+                {
+                    byword[$1] += $2
+                }
+                END {
+                    for (i in byword) {
+                        print i, byword[i]
+                    }
+                }' | sort -k2,2 -n"
+        } ]
+    }
+
+Example output:
+
+    aardvark: 37
+    broomstick: 318
+    métier: 1
+
+## Line count by file extension
+
+Input: a list of text files (e.g., source code)
+
+Output: a total count of lines by file extension
+
+    {
+        "jobName": "total lines by file extension",
+        "phases": [ {
+            "exec": "wc -l $mr_input_key | 
+                (read count file; echo $count ${file##*.}",
+        }, {
+            "type": "reduce",
+            "exec": "awk '
+                {
+                    byword[$2] += $1
+                }
+                END {
+                    for (word in byword) {
+                        print byword[word], word
+                    }
+                }'
+            "
+        } ]
+    }
+
+Note: we use $mr\_input\_key rather than reading from stdin so that "wc" prints
+out the filename after the word count.
+
+Example output:
+
+    12992 py
+    15773 md
+    32782 h
+    122919 js
+    186279 c
+
+## Word index
+
+Input: a list of text files (e.g., plaintext emails)
+
+Output: a file with one word per line indicating which files and lines the word
+appears in the input files.
+
+Example output:
+aardvark mail0100.txt:12,13
+curmudgeon file1.txt:30 file2.txt:10,12,14 file3.txt:15
+
+    {
+        "jobName": "word index",
+        "phases": [ {
+            "exec": "awk '
+                {
+                    for (i = 1; i <= NF; i++) {
+                        if ($i in indx) {
+                            indx[$i] = indx[$i] "," NR
+                        } else {
+                            indx[$i] = FILENAME ":" NR
+                        }   
+                    }   
+                }
+                END {
+                    for (word in indx) {
+                        print word, indx[word]
+                    }   
+                }'
+            "
+        }, {
+            "type": "reduce",
+            "exec": "awk '
+                {
+                    for (i = 2; i <= NF; i++) {
+                        indx[$1] = indx[$1] " " $i
+                    }
+                }
+                END {
+                    for (word in indx) {
+                        print word, indx[word]
+                    }
+                }'
+            "
+        } ]
+    }
+
+Example output:
+
+    And  macbeth.txt:6,10 hamlet.txt:4,25,28,30,32
+    Is  hamlet.txt:29
+    Ophelia!  hamlet.txt:33
+    Signifying  macbeth.txt:12
+    by  macbeth.txt:11 hamlet.txt:4,5
+    for  macbeth.txt:2
+    regard  hamlet.txt:31
+    shadow,  macbeth.txt:8
+    such  macbeth.txt:2
+    there's  hamlet.txt:9
+
+## Image conversion
+
+Input: list of arbitrary image files
+
+Output: list of same images converted to PNGs
+
+Assumes: ImageMagick package installed in the zone
+
+    {
+        "jobName": "convert images to PNGs",
+        "phases": [ {
+            "exec": "convert $mr_input_file ${mr_input_file##*.}.png &&
+                dpipe < ${mr_input_file##*.}.png"
+        } ]
+    }
+
+The output here is a list of keys of the converted images, as in:
+
+    img001.png
+    img002.png
+
+## Video transcoding
+
+Input: list of arbitrary video files
+
+Output: list of same videos encoded with webm using default ffmpeg presets
+
+Assumes: ffmpeg package installed in the zone
+
+    {
+        "jobName": "transcode video to webm",
+        "phases": [ {
+            "exec": "ffmpeg -i $mr_input_file ${mr_input_file##*.}.webm &&
+                dpipe < ${mr_input_file##*.}.webm"
+        } ]
+    }
+
+The output here is a list of keys of the transcoded videos, as in:
+
+    video001.webm
+    video002.webm
+
+## Ad-hoc Apache log query
+
+Input: list of logs in Apache common log format
+
+Output: count of all queries decomposed by URI
+
+Assumes: apache2json tool, which converts each Apache common log record into a
+    JSON object with named fields
+
+    {
+        "jobName": "count HTTP requests by URI"
+        "phases": [ {
+            "exec": "apache2json | json -a url"
+        }, {
+            "type": "reduce",
+            "exec": "sort | uniq -c | sort -n"
+        } ]
+    }
+
+Example output:
+
+       3 /apache_pb.gif
+       4 /kart.htm
+      13 /index.htm
+
+## Data warehousing with an intermediate database
+
+Input: list of logs in Apache common log format
+
+Output: SQL database describing all of the HTTP requests
+
+    {
+        "jobName": "aggregate HTTP requests into a SQL database",
+        "phases": [ {
+            "exec": "awk '{
+                print \"INSERT INTO Requests (SourceIP, User, URI, Status, Size)
+                  VALUES (\" $1 \",\" $3 \",\" $7 \",\" $9 \",\" $10 \");\" }'"
+        }, {
+            "type": "reduce",
+            "exec": "echo 'CREATE TABLE Requests (
+                SourceIP VARCHAR(20),
+                User VARCHAR(20),
+                URI VARCHAR(256),
+                Status VARCHAR(4),
+                Size INT(7)
+            );'; cat"
+        } ]
+    }
+
+Note: this assumes URIs have no spaces in them.  A more robust solution would
+use an actual Apache log parser in place of awk here, but the idea would be the
+same.
+
+Example output:
+
+    CREATE TABLE Requests (
+       SourceIP VARCHAR(20),
+       User VARCHAR(20),
+       URI VARCHAR(256),
+       Status VARCHAR(4),
+       Size INT(7)
+    );
+
+    INSERT INTO Requests (SourceIP, User, URI, Status, Size) VALUES
+        ("127.0.0.1", "frank", "index.htm", 200, 136);
+    INSERT INTO Requests (SourceIP, User, URI, Status, Size) VALUES
+        ("192.168.0.1",  "bob", "index.htm", 200, 136);
+    INSERT INTO Requests (SourceIP, User, URI, Status, Size) VALUES
+        ("127.0.0.1", "frank", "kart.htm", 200, 15378);
+
+The resulting file could be imported into a SQL database.
+
+
+## Finding active customers (with a join)
+
+XXX
+
 # Implementing use cases
 
 ## Built-in facilities
