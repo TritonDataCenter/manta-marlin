@@ -35,7 +35,7 @@ SMF_MANIFESTS_IN = \
 
 REPO_MODULES     = src/node-hyprlofs
 
-NODE_PREBUILT_VERSION = v0.6.19
+NODE_PREBUILT_VERSION = v0.8.2
 NODE_PREBUILT_TAG = zone
 
 include ./tools/mk/Makefile.defs
