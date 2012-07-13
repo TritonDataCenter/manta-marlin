@@ -38,6 +38,12 @@ REPO_MODULES     = src/node-hyprlofs
 NODE_PREBUILT_VERSION = v0.8.2
 NODE_PREBUILT_TAG = zone
 
+#
+# v8plus uses the CTF tools as part of its build, but they can safely be
+# overridden here so that this works in dev zones without them.
+#
+NPM_ENV		 = MAKE_OVERRIDES="CTFCONVERT=/bin/true CTFMERGE=/bin/true"
+
 include ./tools/mk/Makefile.defs
 include ./tools/mk/Makefile.node_prebuilt.defs
 include ./tools/mk/Makefile.smf.defs
@@ -51,7 +57,7 @@ all: $(SMF_MANIFESTS) deps
 
 .PHONY: deps
 deps: | $(REPO_DEPS) $(NPM_EXEC)
-	$(NPM) --no-rebuild install
+	$(NPM_ENV) $(NPM) --no-rebuild install
 
 .PHONY: test
 test: all

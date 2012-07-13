@@ -11,6 +11,14 @@
     "hyprlofs": {
       "version": "0.0.1"
     },
+    "illumos_contract": {
+      "version": "0.0.7",
+      "dependencies": {
+        "v8plus": {
+          "version": "0.0.4"
+        }
+      }
+    },
     "jsprim": {
       "version": "0.0.5",
       "dependencies": {
@@ -73,9 +81,6 @@
         }
       }
     },
-    "mkdirp": {
-      "version": "0.3.1"
-    },
     "libindex": {
       "version": "1.0.0",
       "from": "git+ssh://git@git.joyent.com:manta-libindex.git#master",
@@ -99,6 +104,9 @@
           }
         }
       }
+    },
+    "mkdirp": {
+      "version": "0.3.1"
     },
     "moray-client": {
       "version": "1.0.0",
