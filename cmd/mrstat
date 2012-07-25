@@ -4,97 +4,323 @@
  * mrstat: Marlin status tool
  */
 
+var mod_assert = require('assert');
 var mod_path = require('path');
 
 var mod_bunyan = require('bunyan');
 var mod_extsprintf = require('extsprintf');
 var mod_getopt = require('posix-getopt');
 var mod_jsprim = require('jsprim');
+var mod_tab = require('tab');
 var mod_vasync = require('vasync');
+var mod_verror = require('verror');
+var mod_wordwrap = require('wordwrap');
 
 var mod_moray = require('moray-client');
 
-var ms_arg0 = mod_path.basename(process.argv[1]);
-var ms_usage = [
-    'usage: mrstat [jobid]',
-    '',
-    '    With no arguments, prints a summary of all jobs.',
-    '    With a jobid, prints a more detailed summary for the named job.',
-    '',
-    'The MORAY_URL environment variable determines which Moray instance to use.'
-].join('\n');
+var wrap = mod_wordwrap(80);
+var wrap4 = mod_wordwrap(4, 80);
 
-/* static configuration */
+/* usage information */
+var msArg0 = mod_path.basename(process.argv[1]);
+var msUsage = mod_extsprintf.sprintf([
+    'usage: %s [-m moray_url] [-Hv] [-o field1[,field2...]] [jobid]\n',
+    '\n',
+    'With no arguments, prints a summary of all Marlin jobs.  With a jobid, ',
+    'prints a more detailed summary for the named job.  The MORAY_URL ',
+    'environment variable determines which Moray instance to use.  Its value ',
+    'can be overridden with the -m option.\n',
+    '\n',
+    'The default output mode is a human-readable (unstable) output format.  ',
+    'This can be made more verbose with -v.  ',
+    'With -H, the output is always a simple table with no header row.  ',
+    'Individual columns may be selected using -o as with ps(1) and other ',
+    'tools.  -o implies -H, and both are incompatible with -v.  '
+].join(''), msArg0);
+
+/* standard Moray bucket names */
 var msBktJobs = 'marlinJobs';
 var msBktTaskGroups = 'marlinTaskGroups';
-var msJobHeaders = [ 'JobId', 'JobName', 'State', 'Worker', 'NPh', 'NIn' ];
-var msTgHeaders = [ 'TaskGroupId', 'Ph', 'Host', 'NIn', 'State', 'NRes',
-    'MTime' ];
 
-/* runtime state */
-var msJobId;
-var msClient;
-var msLog;
+/* default set of columns for list-of-jobs and list-of-taskgroups */
+var msColsJobs = [ 'JobId', 'S', 'NPh', 'NIn', 'Modified' ];
+var msColsTaskGroups = [ 'TaskGroupId', 'Ph', 'NIn', 'NRes', 'State' ];
 
-function usage()
-{
-	console.error(ms_usage);
-	process.exit(2);
-}
+/* node-tab configuration for list-of-jobs table */
+var msFieldsJobs = {
+    'created': {
+	'label': 'CREATED',
+	'width': 24
+    },
+    'jobid': {
+	'label': 'JOBID',
+	'width': 36
+    },
+    'jobname': {
+	'label': 'JOBNAME',
+	'width': 24
+    },
+    'modified': {
+	'label': 'MODIFIED',
+	'width': 24,
+	'doc': 'last modified time'
+    },
+    'nin': {
+	'label': 'NIN',
+	'width': 3,
+	'align': 'right',
+	'doc': 'number of input keys'
+    },
+    'nph': {
+	'label': 'NPH',
+	'width': 3,
+	'align': 'right',
+	'doc': 'number of phases'
+    },
+    'owner': {
+	'label': 'OWNER',
+	'width': 36
+    },
+    's': {
+	'label': 'S',
+	'width': 1,
+	'align': 'right',
+	'doc': 'state'
+    },
+    'worker': {
+	'label': 'WORKER',
+	'width': 36
+    },
+    'url': {
+	'label': 'URL',
+	'width': 40
+    }
+};
 
+/* node-tab configuration for list-of-taskgroups */
+var msFieldsTaskGroups = {
+    'host': {
+	'label': 'HOST',
+	'width': 36
+    },
+    'modified': {
+	'label': 'MODIFIED',
+	'width': 24,
+	'doc': 'last modified time'
+    },
+    'nin': {
+	'label': 'NIN',
+	'width': 3,
+	'align': 'right',
+	'doc': 'number of input keys'
+    },
+    'nres': {
+	'label': 'NRES',
+	'width': 4,
+	'align': 'right',
+	'doc': 'number of completed results'
+    },
+    'ph': {
+	'label': 'PH',
+	'width': 2,
+	'align': 'right',
+	'doc': 'phase number'
+    },
+    's': {
+	'label': 'STATE',
+	'width': 5,
+	'doc': 'state',
+	'align': 'right'
+    },
+    'taskgroupid': {
+	'label': 'TASKGROUPID',
+	'width': 36
+    },
+    'url': {
+	'label': 'URL',
+	'width': 40
+    }
+};
+
+/*
+ * Aliases: the keys in this object may be used as field names with -o, but
+ * each one is just an alias for the corresponding value.
+ */
+var msFieldAliases = {
+    'crtime': 'created',
+    'cust': 'owner',
+    'customer': 'owner',
+    'mtime': 'modified',
+    'state': 's',
+    'tgid': 'taskgroupid'
+};
+
+/* Mapping of taskgroup state values to a shorter form for display. */
+var msTgStates = {
+    'dispatched': 'disp',
+    'running': 'run',
+    'cancelled': 'cncl',
+    'done': 'done'
+};
+
+/* Configuration and command-line options. */
+var msMorayUrl = process.env['MORAY_URL'];	/* Moray instance to use */
+var msParseable = false;		/* whether output should be parseable */
+var msVerbose = false;			/* whether output should be verbose */
+var msColumns;				/* user-specified list of columns */
+var msJobId;				/* user-specified job id */
+
+/* Runtime state. */
+var msClient;				/* Moray client */
+var msLog;				/* bunyan logger */
 
 function main()
 {
-	if (!process.env['MORAY_URL']) {
-		console.error('MORAY_URL must be set in the environment.');
+	var parser, option;
+
+	parser = new mod_getopt.BasicParser('Hvo:m:', process.argv);
+
+	while ((option = parser.getopt()) !== undefined) {
+		switch (option.option) {
+		case 'H':
+			msParseable = true;
+			break;
+
+		case 'v':
+			msVerbose = true;
+			break;
+
+		case 'm':
+			msMorayUrl = option.optarg;
+			break;
+
+		case 'o':
+			msParseable = true;
+			msColumns = option.optarg.split(',');
+			break;
+
+		default:
+			/* error message already emitted by getopt */
+			mod_assert.equal('?', option.option);
+			usage();
+			break;
+		}
+	}
+
+	if (!msMorayUrl) {
+		console.error(
+		    '%s: must set MORAY_URL in environment or use -m option',
+		    msArg0);
+		usage();
+	}
+
+	if (msVerbose && msParseable) {
+		console.error('%s: -H and -o are incompatible with -v', msArg0);
 		usage();
 	}
 
 	msLog = new mod_bunyan({
-	    'name': ms_arg0,
-	    'level': process.env['LOG_LEVEL'] || 'info'
+	    'name': msArg0,
+	    'level': process.env['LOG_LEVEL'] || 'info',
+	    'stream': process.stderr
 	});
 
 	msClient = mod_moray.createClient({
-	    'url': process.env['MORAY_URL'],
+	    'url': msMorayUrl,
 	    'log': msLog
 	});
 
-	if (process.argv.length > 2) {
-		msJobId = process.argv[2];
-		jobDetails(msJobId);
+	if (parser.optind() >= process.argv.length) {
+		if (msVerbose)
+			console.error(
+			    '%s: -v does nothing without a jobid', msArg0);
+
+		fetchAndPrintAll();
 	} else {
-		jobSummarizeAll();
+		msJobId = process.argv[parser.optind()];
+		fetchAndPrintJob(msJobId);
 	}
 }
 
-function jobToRow(job)
+/*
+ * Emit a usage message and exit the program.
+ */
+function usage()
 {
-	return ([
-	    job['jobId'] || '<no job id>',
-	    (job['jobName'] || '<no job name>').substr(0, 20),
-	    job['state'] || '<no job state>',
-	    job['worker'] || '',
-	    (job['phases'] || []).length,
-	    (job['inputKeys'] || []).length
-	]);
+	function docFields(conf, list) {
+		return (Object.keys(conf).map(function (f) {
+			var rv = conf[f]['label'];
+			if (conf[f]['doc'])
+				rv += ' (' + conf[f]['doc'] + ')';
+			return (rv);
+		}).join(', '));
+	}
+
+	console.error(
+	    wrap(msUsage + 'The following fields are available for jobs:\n'));
+	console.error(wrap4(docFields(msFieldsJobs) + '\n'));
+	console.error('The following fields are available for task groups:\n');
+	console.error(wrap4(docFields(msFieldsTaskGroups) + '\n'));
+	process.exit(2);
 }
 
-function jobDetails(jobid)
+/*
+ * Search Moray for all job records and print one line of status for each one.
+ */
+function fetchAndPrintAll()
 {
-	var job, tgs;
+	var columns, table;
+
+	columns = mapColumns(msColumns || msColsJobs, msFieldsJobs);
+	table = new mod_tab.TableOutputStream({
+	    'columns': columns,
+	    'omitHeader': msParseable
+	});
+
+	msClient.search(msBktJobs, 'jobId=*', function (err, _, jobsbyid) {
+		if (err) {
+			console.error('%s: failed to list jobs: %s',
+			    msArg0, err.message);
+			process.exit(1);
+		}
+
+		mod_jsprim.forEachKey(jobsbyid, function (id, record) {
+			table.writeRow(makeJobRow(
+			    record['value'], record['mtime']));
+		});
+
+		msClient.quit(function () {});
+	});
+}
+
+/*
+ * Fetch the given job record from Moray, along with each of its taskgroup
+ * records, and print details about the whole job.
+ */
+function fetchAndPrintJob(jobid)
+{
+	var job, mtime, tgs;
 
 	mod_vasync.pipeline({
 	    'funcs': [
 		function fetchJobRecord(_, next) {
-			msClient.get(msBktJobs, jobid,
-			    function (err, __, obj) {
+			msClient.search(msBktJobs, 'jobId=' +jobid,
+			    function (err, __, jobsbyid) {
 				if (err) {
 					next(err);
 					return;
 				}
 
-				job = obj;
+				var meta = jobsbyid[Object.keys(jobsbyid)[0]];
+
+				if (!meta) {
+					next(new mod_verror.VError('job "%s" ' +
+					    'not found', jobid));
+					return;
+				}
+
+				mtime = meta['mtime'];
+				job = meta['value'];
 				next();
 			    });
 		},
@@ -113,97 +339,266 @@ function jobDetails(jobid)
 		},
 		function (_, next) { msClient.quit(next); },
 		function (_, next) {
-			jobDetailsPrint(job, tgs);
+			printJob(job, mtime, tgs);
 			next();
 		}
 	    ]
 	}, function (err) {
 		if (err) {
-			console.error('error: %s', err.message);
+			console.error('%s: error: %s', msArg0, err.message);
 			process.exit(1);
 		}
 	});
 }
 
-function jobDetailsPrint(job, tgsbyid)
+/*
+ * Print details about the given job and task groups.
+ */
+function printJob(job, mtime, tgsbyid)
 {
-	emitTable(msJobHeaders, [ jobToRow(job) ], process.stdout);
+	var columns, table, groups;
 
-	var tgs = [];
-	mod_jsprim.forEachKey(tgsbyid, function (tgid, entry) {
+	if (!msParseable) {
+		printJobDetails(job, mtime);
+
+		if (!msVerbose)
+			console.log('');
+	}
+
+	columns = mapColumns(msColumns || msColsTaskGroups, msFieldsTaskGroups);
+	table = new mod_tab.TableOutputStream({
+	    'columns': columns,
+	    'omitHeader': msParseable || msVerbose
+	});
+
+	/* Sort the taskgroups by phase and then by uuid (which is unique). */
+	groups = Object.keys(tgsbyid);
+	groups = groups.sort(function (gid1, gid2) {
+		var g1 = tgsbyid[gid1]['value'], g2 = tgsbyid[gid2]['value'];
+
+		if (g1['phaseNum'] != g2['phaseNum'])
+			return (g1['phaseNum'] - g2['phaseNum']);
+
+		if (g1['taskGroupId'] < g2['taskGroupId'])
+			return (-1);
+
+		return (1);
+	});
+
+	groups.forEach(function (tgid) {
+		var entry = tgsbyid[tgid];
 		var group = entry['value'];
-		tgs.push([
-		    group['taskGroupId'],
-		    group['phaseNum'],
-		    group['host'],
-		    group['inputKeys'].length,
-		    group['state'],
-		    group['results'].length,
-		    entry['mtime']
-		]);
-	});
+		var row = {
+		    'TASKGROUPID': group['taskGroupId'],
+		    'PH': group['phaseNum'],
+		    'HOST': group['host'],
+		    'STATE': msTgStates[group['state']] || group['state'],
+		    'NIN': group['inputKeys'].length,
+		    'NRES': group['results'].length,
+		    'MODIFIED': entry['mtime'],
+		    'URL': morayUrl(msBktTaskGroups, tgid)
+		};
 
-	console.log('');
-	emitTable(msTgHeaders, tgs, process.stdout);
-}
-
-function jobSummarizeAll()
-{
-	msClient.search(msBktJobs, 'jobId=*', function (err, _, jobsbyid) {
-		if (err) {
-			console.error('failed to list jobs: %s', err.message);
-			process.exit(1);
+		if (msVerbose) {
+			console.log('');
+			table.writeHeader();
 		}
 
-		jobSummarizeJobs(jobsbyid);
+		table.writeRow(row);
+
+		if (msVerbose)
+			printTaskGroupDetails(group, row);
 	});
 }
 
-function jobSummarizeJobs(jobsbyid)
+/*
+ * For verbose mode, print additional details for the given job record.
+ */
+function printJobDetails(job, mtime)
 {
-	var jobs = [];
-	var headers = msJobHeaders.slice(0);
-	headers.push('MTime');
+	var row, i, pexec;
 
-	mod_jsprim.forEachKey(jobsbyid, function (id, record) {
-		var job = record['value'];
-		var row = jobToRow(job);
-		row.push(record['mtime']);
-		jobs.push(row);
+	row = makeJobRow(job, mtime);
+
+	mod_tab.emitTable({
+	    'columns': mapColumns([ 'JobID', 'JobName' ], msFieldsJobs),
+	    'rows': [ row ]
 	});
 
-	emitTable(headers, jobs, process.stdout);
-	msClient.quit(function () {});
+	mod_tab.emitTable({
+	    'columns': mapColumns([ 'Customer', 'Created' ], msFieldsJobs),
+	    'rows': [ row ]
+	});
+
+	mod_tab.emitTable({
+	    'columns': mapColumns([ 'Worker', 'Modified', 'State' ],
+		msFieldsJobs),
+	    'rows': [ row ]
+	});
+
+	console.log('URL: %s', row['URL']);
+	console.log('');
+
+	for (i = 0; i < job['phases'].length; i++) {
+		pexec = job['phases'][i]['exec'];
+		console.log('Phase ' + i + ': "' + pexec + '"');
+	}
+
+	printEntries('  Key', job['inputKeys']);
 }
 
-function emitTable(fields, records, out)
+/*
+ * For verbose mode, print additional details for the given taskgroup record.
+ */
+function printTaskGroupDetails(group, row)
 {
-	/* Compute field widths */
-	var widths = fields.map(
-	    function (field) { return (field.length + 1); });
-	var formats;
+	var table, r, i;
+
+	console.log('  Host: ', row['HOST']);
+
+	printEntries('  Key', group['inputKeys'],
+	    function (p) { return (p['key']); });
+
+	table = new mod_tab.TableOutputStream({
+	    'columns': [ {
+		'label': '',
+		'width': 1
+	    }, {
+		'label': 'RES',
+		'align': 'right',
+		'width': 3
+	    }, {
+		'label': 'STAT',
+		'align': 'right',
+		'width': 6
+	    }, {
+		'label': 'NOUT',
+		'align': 'right',
+		'width': 4
+	    }, {
+		'label': 'START',
+		'width': 24
+	    }, {
+		'label': 'DONE',
+		'width': 24
+	    }, {
+		'label': 'ECODE',
+		'width': 8
+	    } ]
+	});
+
+	r = group['results'];
+
+	function emit(k) {
+		table.writeRow([
+		    '',
+		    k,
+		    r[k]['result'],
+		    r[k]['outputs'].length,
+		    r[k]['startTime'],
+		    r[k]['doneTime'],
+		    r[k]['error'] ? r[k]['error']['code'] : '-'
+		]);
+	}
+
+	if (r.length <= 6) {
+		for (i = 0; i < r.length; i++)
+			emit(i);
+	} else if (r) {
+		for (i = 0; i < 3; i++)
+			emit(i);
+		console.log('    ...');
+		for (i = r.length - 3; i < r.length; i++)
+			emit(i);
+	}
+
+	console.log('  %s', row['URL']);
+}
+
+/*
+ * Given a raw job record and its mtime, return an object suitable for writing
+ * to a table.
+ */
+function makeJobRow(job, mtime)
+{
+	return ({
+	    'CREATED': job['createTime'] || '-',
+	    'JOBID': job['jobId'] || '-',
+	    'JOBNAME': (job['jobName'] || '-').substr(0, 16),
+	    'MODIFIED': mtime || '-',
+	    'NIN': (job['inputKeys'] || []).length,
+	    'NPH': (job['phases'] || []).length,
+	    'OWNER': job['owner'] || '-',
+	    'S': job['state'][0].toUpperCase(),
+	    'WORKER': job['worker'] || '-',
+	    'URL': morayUrl(msBktJobs, job['jobId'])
+	});
+}
+
+/*
+ * Given a collection of arbitrary length, print either all of its entries (if
+ * it's small enough) or just the first few and last few entries.  "map" can be
+ * used to modify how the entry gets printed.
+ */
+function printEntries(label, keys, map)
+{
 	var i;
 
-	records.forEach(function (record) {
-		for (i = 0; i < fields.length; i++) {
-			if (record[i].toString().length + 1 > widths[i])
-				widths[i] = record[i].toString().length + 1;
+	if (!map)
+		map = function (obj) { return (obj); };
+
+	if (keys && keys.length <= 6) {
+		for (i = 0; i < keys.length; i++)
+			console.log('%s %s: %s', label, i, map(keys[i]));
+	} else if (keys) {
+		for (i = 0; i < 3; i++)
+			console.log('%s %s: %s', label, i, map(keys[i]));
+		console.log('    ...');
+		for (i = keys.length - 3;
+		    i < keys.length; i++)
+			console.log('%s %s: %s', label, i, map(keys[i]));
+	}
+}
+
+/*
+ * Given a list of column names and an object describing a node-tab
+ * configuration, return a list of configuration objects corresopnding to each
+ * column.
+ */
+function mapColumns(names, configs)
+{
+	var i, name, conf;
+	var invalid = [], rv = [];
+
+	for (i = 0; i < names.length; i++) {
+		name = names[i].toLowerCase();
+		if (msFieldAliases.hasOwnProperty(name))
+			name = msFieldAliases[name];
+
+		if (!configs.hasOwnProperty(name))
+			invalid.push(names[i]);
+		else {
+			conf = Object.create(configs[name]);
+			conf.alias = names[i].toUpperCase();
+			rv.push(conf);
 		}
-	});
+	}
 
-	formats = widths.map(function (w) { return ('%-' + w + 's '); });
+	if (invalid.length > 0) {
+		console.error('invalid fields specified with -o: ' +
+		    invalid.join(', '));
+		usage();
+	}
 
-	/* Print out the table. */
-	for (i = 0; i < fields.length; i++)
-		out.write(mod_extsprintf.sprintf(formats[i], fields[i]));
-	out.write('\n');
+	return (rv);
+}
 
-	records.forEach(function (record) {
-		for (i = 0; i < fields.length; i++)
-			out.write(
-			    mod_extsprintf.sprintf(formats[i], record[i]));
-		out.write('\n');
-	});
+/*
+ * Return a URL that can be used to fetch the given record from Moray.
+ */
+function morayUrl(bucket, key)
+{
+	return (msMorayUrl + '/' + bucket + '/' + key);
 }
 
 main();
