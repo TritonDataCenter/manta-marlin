@@ -154,7 +154,7 @@ function submitTaskGroup3(_, next)
 		'machine': 'mymac1',
 		'input': 'key1_out',
 		'result': 'ok',
-		'outputs': [ 'key1_out2' ],
+		'outputs': [ 'key1_out1' ],
 		'startTime': mod_jsprim.iso8601(new Date(Date.now() - 1)),
 		'doneTime': mod_jsprim.iso8601(new Date())
 	    } ]
@@ -210,7 +210,9 @@ function checkJobGroups(_, next)
 			 * it's also possible that there were stale task groups
 			 * still in it.
 			 */
-			mod_assert.equal(groups.length, 4);
+			mod_assert.equal(groups.filter(function (p) {
+				return (p['phaseNum'] < 2);
+			}).length, 4);
 
 			for (i = 0; i < groups.length; i++) {
 				if (groups[i]['phaseNum'] == 1 &&

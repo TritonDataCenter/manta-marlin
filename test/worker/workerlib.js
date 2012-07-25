@@ -18,7 +18,7 @@ var mod_moray = require('../../lib/worker/moray');
 var mod_worker = require('../../lib/worker/worker');
 
 var testname = mod_path.basename(process.argv[0]);
-var log = new mod_bunyan({ 'name': testname });
+var log = new mod_bunyan({ 'name': testname, 'level': 'debug' });
 var idx = 0;
 
 /*
