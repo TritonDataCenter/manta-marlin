@@ -1,0 +1,5 @@
+{
+    "jobName": "grep job",
+    "inputKeys": [ "/dap/stor/words", "/dap/stor/release" ],
+    "phases": [ { "exec": "grep abound" } ]
+}

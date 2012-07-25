@@ -1,0 +1,5 @@
+{
+    "jobName": "sleepy job",
+    "inputKeys": [ "/dap/stor/words", "/dap/stor/release" ],
+    "phases": [ { "exec": "sleep 30 && echo hello" }, { "exec": "wc" }, { "exec": "sleep 30 && cat" } ]
+}

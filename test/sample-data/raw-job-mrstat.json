@@ -1,0 +1,18 @@
+{
+	"jobId": "859dd612-d5db-11e1-a3f7-476642ebae92",
+	"jobName": "special job record for testing mrstat"
+	"owner": "1cbdc84e-d5dd-11e1-b163-dfc7403edf9f",
+	"phases": [ {
+		"exec": "cat | awk '{print $3}' | sort | uniq -c"
+	}, {
+		"exec": "awk '{print $2}' | ls"
+	} ],
+	"inputKeys": [ "key1", "key2",
+	    "key3_012345678012345678012345678012345678999901234567890123456789",
+	    "key4", "key5", "key6", "key7", "key8" ],
+	"createTime": "2012-07-23T12:35:42Z",
+	"state": "queued",
+	"doneKeys": [],
+	"outputKeys": [],
+	"discardedKeys": []
+}
