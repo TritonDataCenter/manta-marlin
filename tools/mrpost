@@ -5,39 +5,59 @@
 # usage: mrpost [-f] < filename
 #
 
-mrp_tmpfile=/var/tmp/mrpost.$$
+function fail
+{
+	echo "$*" >&2
+	exit 1
+}
+
+mrp_tmpfilein=/var/tmp/mrpost.$$.in
+mrp_tmpfileout=/var/tmp/mrpost.$$.out
 
 opt_f=false
 if [[ "$1" = "-f" ]]; then
 	opt_f=true
 fi
 
+#
+# Surprising behavior can result if we don't set the Content-Length header.  To
+# keep things sane, we redirect our output to a new temporary file and use its
+# size for the Content-Length.
+#
+cat > $mrp_tmpfilein
+mrp_size=$(stat --printf=%s $mrp_tmpfilein) || fail "failed to get input size"
+
 [[ -z "$MARLIN_URL" ]] && MARLIN_URL=http://localhost:8080
-curl -is -X POST -H "Content-type: application/json" -H"Expect:" \
-    -H"Accept: application/json" -T- $MARLIN_URL/jobs | json > $mrp_tmpfile
-cat $mrp_tmpfile
-head -3 $mrp_tmpfile | grep "HTTP/1.1 201 Created" > /dev/null || \
-    exit 1
+curl -is -X POST			\
+    -H "Expect:"			\
+    -H "Content-length: $mrp_size"	\
+    -H "Content-type: application/json"	\
+    -H "Accept: application/json"	\
+    -T$mrp_tmpfilein $MARLIN_URL/jobs | \
+    json | tee $mrp_tmpfileout
+rm -f $mrp_tmpfilein
+head -3 $mrp_tmpfileout | grep "HTTP/1.1 201 Created" > /dev/null || \
+    fail "failed to create job (at $MARLIN_URL)"
 
 if [[ $opt_f = "false" ]]; then
-	rm -f $mrp_tmpfile
+	rm -f $mrp_tmpfileout
 	exit 0
 fi
 
-mrp_uri=$(grep '^Location:' $mrp_tmpfile | head -1 | \
+mrp_uri=$(grep '^Location:' $mrp_tmpfileout | head -1 | \
     awk '{print $2}' | tr -d '\r')
-if [[ -n $mpr_uri ]]; then
+if [[ -n $mrp_uri ]]; then
 	echo "couldn't find new job URI" >&2
 	exit 1
 fi
 
-rm -f $mrp_tmpfile
+rm -f $mrp_tmpfileout
 
 while :; do
-	curl -s $MARLIN_URL$mrp_uri | json | tee $mrp_tmpfile
+	curl -s $MARLIN_URL$mrp_uri | json | tee $mrp_tmpfileout
 
-	if grep '"state": "done"' $mrp_tmpfile > /dev/null; then
-		rm -f $mrp_tmpfile
+	if grep '"state": "done"' $mrp_tmpfileout > /dev/null; then
+		rm -f $mrp_tmpfileout
 		exit 0
 	fi
 

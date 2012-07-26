@@ -1,6 +1,6 @@
 {
 	"jobName": "job-map-multiphase.json",
-	"inputKeys": [ "words", "release", "nonexistent", "sshd_config" ],
+	"inputKeys": [ "/dap/stor/words", "/dap/stor/release", "/dap/stor/nonexistent", "/dap/stor/sshd_config" ],
 	"phases": [ {
 		"exec": "wc"
 	}, {

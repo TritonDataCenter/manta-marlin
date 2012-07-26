@@ -89,7 +89,6 @@ function createMoray()
 	props = Object.create(conf);
 	props['log'] = log;
 	props['findInterval'] = 10;
-	props['taskGroupInterval'] = 10;
 
 	if (process.env['MORAY_URL']) {
 		props['url'] = process.env['MORAY_URL'];
@@ -110,6 +109,7 @@ function createWorker(args)
 	    mod_path.join(__dirname, '../../etc/config.coal.json'));
 	worker_args = Object.create(conf);
 	worker_args['log'] = log;
+	worker_args['taskGroupInterval'] = 10;
 	worker_args['locator'] = mod_locator.createLocator(
 	    { 'locator': 'mock' });
 
