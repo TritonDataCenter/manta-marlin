@@ -46,7 +46,7 @@ fi
 
 mrp_uri=$(grep '^Location:' $mrp_tmpfileout | head -1 | \
     awk '{print $2}' | tr -d '\r')
-if [[ -n $mrp_uri ]]; then
+if [[ -z $mrp_uri ]]; then
 	echo "couldn't find new job URI" >&2
 	exit 1
 fi
