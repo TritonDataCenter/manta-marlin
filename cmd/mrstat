@@ -44,7 +44,8 @@ var msBktTaskGroups = 'marlinTaskGroups';
 
 /* default set of columns for list-of-jobs and list-of-taskgroups */
 var msColsJobs = [ 'JobId', 'S', 'NPh', 'NIn', 'Modified' ];
-var msColsTaskGroups = [ 'TaskGroupId', 'Ph', 'NIn', 'NRes', 'State' ];
+var msColsTaskGroups = [ 'TaskGroupId', 'Ph', 'State', 'NIn', 'NRes', 'NOK',
+    'NErr' ];
 
 /* node-tab configuration for list-of-jobs table */
 var msFieldsJobs = {
@@ -119,6 +120,18 @@ var msFieldsTaskGroups = {
 	'width': 4,
 	'align': 'right',
 	'doc': 'number of completed results'
+    },
+    'nok': {
+	'label': 'NOK',
+	'width': 4,
+	'align': 'right',
+	'doc': 'number of successful results'
+    },
+    'nerr': {
+	'label': 'NERR',
+	'width': 4,
+	'align': 'right',
+	'doc': 'number of error results'
     },
     'ph': {
 	'label': 'PH',
@@ -396,8 +409,17 @@ function printJob(job, mtime, tgsbyid)
 		    'NIN': group['inputKeys'].length,
 		    'NRES': group['results'].length,
 		    'MODIFIED': entry['mtime'],
-		    'URL': morayUrl(msBktTaskGroups, tgid)
+		    'URL': morayUrl(msBktTaskGroups, tgid),
+		    'NOK': 0,
+		    'NERR': 0
 		};
+
+		group['results'].forEach(function (r) {
+			if (r['result'] == 'ok')
+				row['NOK']++;
+			else if (r['result'] == 'fail')
+				row['NERR']++;
+		});
 
 		if (msVerbose) {
 			console.log('');

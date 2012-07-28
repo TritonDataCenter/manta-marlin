@@ -14,6 +14,7 @@
 	"jobsBucket": "marlinJobs",
 	"taskGroupsBucket": "marlinTaskGroups",
 
+	"locatePerTick": 25,
 	"jobAbandonTime": 30000,
 	"findInterval": 1000,
 	"taskGroupInterval": 1000,
