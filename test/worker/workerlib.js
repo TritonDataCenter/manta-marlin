@@ -40,7 +40,7 @@ exports.taskGroupsBucket = mod_config.mcBktTaskGroups;
 exports.jobSpec1Phase = {
 	'jobId': 'job-001',
 	'jobName': 'job1 for ' + testname,
-	'phases': [ { 'exec': 'echo' } ],
+	'phases': [ { 'type': 'storage-map', 'exec': 'echo' } ],
 	'owner': 'test',
 	'inputKeys': [ 'key1', 'key2', 'key3', 'key4' ],
 	'createTime': mod_jsprim.iso8601(new Date()),
@@ -53,7 +53,9 @@ exports.jobSpec1Phase = {
 exports.jobSpec2Phase = {
 	'jobId': 'job-002',
 	'jobName': 'job2 for ' + testname,
-	'phases': [ { 'exec': 'echo' }, { 'exec': 'echo' } ],
+	'phases': [
+	    { 'type': 'storage-map', 'exec': 'echo' },
+	    { 'type': 'storage-map', 'exec': 'echo' } ],
 	'owner': 'test',
 	'inputKeys': [ 'key1', 'key2', 'key3', 'key4' ],
 	'createTime': mod_jsprim.iso8601(new Date()),
@@ -67,9 +69,9 @@ exports.jobSpec3Phase = {
 	'jobId': 'job-003',
 	'jobName': 'job3 for ' + testname,
 	'phases': [
-	    { 'exec': 'echo' },
-	    { 'exec': 'echo' },
-	    { 'exec': 'echo' }
+	    { 'type': 'storage-map', 'exec': 'echo' },
+	    { 'type': 'storage-map', 'exec': 'echo' },
+	    { 'type': 'storage-map', 'exec': 'echo' }
 	],
 	'owner': 'test',
 	'inputKeys': [ 'key1', 'key2', 'key3', 'key4' ],
