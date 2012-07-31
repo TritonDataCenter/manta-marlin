@@ -683,7 +683,7 @@ Users would only need to reference a third party asset:
 
 # Marlin implementation
 
-## Marlin network architecture
+## Network architecture
 
 Marlin makes use of two generic Manta components:
 * muskie, the Manta web tier, which handles the Jobs API (requests to POST new
@@ -1001,9 +1001,6 @@ Roughly in order of importance:
 * When user code wants to write files to manta, how exactly does that work? Do
   we have a way to tell Manta to write one copy on the local box, and if so, do
   we avoid sending it across the network twice?
-* How do we monitor the user code's contract? Presumably we'll need an agent
-  in the zone that bootstraps their code and watches the contract (but then we
-  need to figure out what to do if that guy dies -- adopt the contract?)
 * What metrics do we want to provide via CA?  How will we implement these?
   What other changes must be made to CA to support Marlin and Manta?
 * Should the job log be a manta object so that user's can add their own entries?
@@ -1031,7 +1028,7 @@ Today we have:
   can pick up partially-completed jobs.  Also times out idle task groups.
 * a very simple web tier that just drops jobs into Moray and reads state back.
 
-Remaining work not necessarily required for the end-to-end demo includes:
+Remaining work not includes:
 
 * moray: search by bucket change number
 * moray client: support for consistent hashing
@@ -1039,8 +1036,130 @@ Remaining work not necessarily required for the end-to-end demo includes:
 * agent: implement "abort" (which saves all zone state)
 * agent/worker: implement explicit fail
 * agent/worker: implement retry
+* agent/worker: reducers (see below)
 * all: Moray record versioning
 * all: implement cancel
-* all: implement tools for observing global system state
 
 plus work covered by existing MANTA tickets.
+
+## Reducers
+
+Reducers are mainly different from mappers in three ways:
+
+1. Reduce tasks operate on multiple keys at once, not just one.
+2. Reduce nodes operate on data stored elsewhere in Manta, which means it must
+   be downloaded first.  (We'd actually like to be able to do this for mappers
+   too.)
+3. Reduce tasks can run in any compute zone, which means we need a mechanism for
+   discovering and choosing compute zones to run reduce tasks.
+
+Here's the current plan:
+
+* For testing purposes: have the worker assign reduce tasks to any host that it
+  knows about, and by writing the same taskgroup record it would use for "map",
+  except that there's a type field indicating "reduce".  Doing this first lets
+  us use the rest of Marlin to iterate on the agent, where the bulk of the
+  changes will be made.
+* Modify the agent to support "reduce" tasks by processing them just as it would
+  "generic" tasks except that all keys are processed in one invocation.
+* Modify the agent to support downloading input files rather than mapping them
+  in.  This should be supported for regular map tasks, too.  (This comes after
+  adding "reduce" tasks because the implementation for map tasks alone may not
+  be generalizable for reduce tasks.)
+* Once this works, modify the agent to not specify input keys on the command
+  line for reduce tasks.  (See below.)
+* Implement a real zone scheduling algorithm.
+* Rework agent/worker communication to use something other than the existing
+  task group interface for assigning work, then stress test with large numbers
+  of keys.
+
+
+### Multiple keys at once
+
+In order to process multiple keys at once, several pieces of both the global
+zone agent and in-zone agent must be generalized because they assume only one
+input key at a time, and that a sequence of input keys (tasks) make up a
+complete task group.  These changes are straightforward.
+
+There are some more serious scalability issues in processing up to millions of
+keys at once:
+
+1. Interface: It will be difficult to support a file-based (as opposed to
+   stdin-based) interface for actually invoking the reducer, since command lines
+   cannot support millions of arguments.  If we want to support a file-based
+   interface, we may have to specify the keys on stdin or some other file that's
+   passed as a command line argument.  There are other problems with this,
+   though; see below.
+2. Architecture: Today, the task group is the main unit of work inside the
+   agent, and there's no way to share state across task groups.  But task groups
+   are passed between worker and agent via Moray as JSON objects that must be
+   parsed and stringified on both ends, stored in memory, and updated in
+   entirety.  That's not going to scale well with millions of keys.
+
+
+### File access
+
+In order to deal with very large numbers of very large files, we'll need to
+stream data when possible.  In the worst case, reducers may not be able to
+physically store all of the data they will need to process.  But even in less
+severe cases it may be a grossly inefficient use of both memory (valuable ARC
+space) and disk to store all of the data at once when it could just as well be
+streamed.
+
+Streaming is relatively straightforward: the agent downloads input files and
+pipes them over stdin to the reducer, which is invoked with no actual command
+line arguments.  The agent may as well download the files sequentially, only
+parallelizing to start the next file when the current one is near completion.
+
+People may want access to files by name.  Lots of custom programs take
+filenames and don't work on stdin/stdout.  And it's not hard to imagine reduce
+tasks that by nature require random access to all of the input files.  This is
+hard, since we must wait to start the reducer until all of the input file(s)
+have been completely downloaded.  We can probably punt on this in the short
+term.  We can always add new types of tasks in the future (e.g.,
+"reduce-byfile") with different semantics, since such an abstraction is clearly
+pretty different from streaming reduce.
+
+
+### Scheduling compute zones
+
+One obvious approach is to use CNAPI to provision and deprovision compute zones
+on the general cloud as we need them.  But since we don't assume Marlin is
+available on all nodes, this would require a way to specify that we only want to
+provision on Marlin zones.  (XXX is that part of server features?)
+Additionally, it also means that the job worker has to tell the agent about a
+new zone that it didn't know about, that it should set it up as a Marlin zone,
+and then run a given task group.  This feels like a gross conflation of
+concerns, but on the other hand, we probably want the ability to add and remove
+capacity dynamically anyway, so maybe those are two separate operations: add
+capacity in the form of newly created zone Z, and dispatch a task to zone Z.
+This still involves the worker knowing what resources are available to the agent
+and picking among them, which seems to conflate concerns.
+
+Alternatively, we say that reducer zones are provisioned just like map zones:
+they're provisioned externally, and the agent maintains a pool of zones it knows
+it can use.  Much like the way storage zones report capacity, each agent
+maintains a record in Moray describing its *total* capacity broken down by
+dataset (e.g., smartos-1.6.3) and whatever other immutable zone characteristics
+users may express constraints on.  Then workers assign tasks to agents that
+appear to have capacity, and agents can resize zones as needed to make the best
+use of their available zones.
+
+
+### Scaling records
+
+Instead of using taskgroups, we may need to switch to more fine-grained records.
+
+To start with, the records that we call task groups today would be narrowed in
+scope to cover exactly one input key.  Everything else is the same: they specify
+the phase details (possibly as job + phase number for efficiency), destination
+host, state ("dispatched", "running", "cancelled", "done"), assigned machine,
+result ("ok" or "fail"), timing information, and error details.
+
+The result of processing each input key is written back to the same record, but
+each emitted output key is written out to a new record containing an identifier
+for the input record (which implicitly specifies a job, phase, host, and so on)
+and a single output key.
+
+Semantically, everything works the same as it does today, but streaming lists of
+these things from the new Moray instead processing monolithic records.
