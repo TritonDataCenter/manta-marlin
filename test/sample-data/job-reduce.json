@@ -1,12 +1,11 @@
 {
 	"jobName": "generic reduce job",
 	"inputKeys": [
-	    "/dap/stor/rkey1",
-	    "/dap/stor/rkey2",
-	    "/dap/stor/rkey3"
+	    "/dap/stor/release.out",
+	    "/dap/stor/words.out"
 	],
 	"phases": [ {
 	    "type": "reduce",
-	    "exec": "curl -i localhost:8080/task | json"
+	    "exec": "cat"
 	} ]
 }
