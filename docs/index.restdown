@@ -1123,27 +1123,9 @@ pretty different from streaming reduce.
 
 ### Scheduling compute zones
 
-One obvious approach is to use CNAPI to provision and deprovision compute zones
-on the general cloud as we need them.  But since we don't assume Marlin is
-available on all nodes, this would require a way to specify that we only want to
-provision on Marlin zones.  (XXX is that part of server features?)
-Additionally, it also means that the job worker has to tell the agent about a
-new zone that it didn't know about, that it should set it up as a Marlin zone,
-and then run a given task group.  This feels like a gross conflation of
-concerns, but on the other hand, we probably want the ability to add and remove
-capacity dynamically anyway, so maybe those are two separate operations: add
-capacity in the form of newly created zone Z, and dispatch a task to zone Z.
-This still involves the worker knowing what resources are available to the agent
-and picking among them, which seems to conflate concerns.
-
-Alternatively, we say that reducer zones are provisioned just like map zones:
-they're provisioned externally, and the agent maintains a pool of zones it knows
-it can use.  Much like the way storage zones report capacity, each agent
-maintains a record in Moray describing its *total* capacity broken down by
-dataset (e.g., smartos-1.6.3) and whatever other immutable zone characteristics
-users may express constraints on.  Then workers assign tasks to agents that
-appear to have capacity, and agents can resize zones as needed to make the best
-use of their available zones.
+For now, we're going to take the simple (simplistic?) approach of selecting a
+server at random among all known servers and sending the reduce task to that
+agent, which will run it just like a map jobs.
 
 
 ### Scaling records
