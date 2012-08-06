@@ -12,7 +12,7 @@
 		"jsprim": "0.0.5",
 		"JSV": "4.0.0",
 		"kang": "0.0.2",
-		"libindex": "git+ssh://git@git.joyent.com:manta-libindex.git#master",
+		"libindex": "git+ssh://git@git.joyent.com:manta-libindex.git#66c1881",
 		"mkdirp": "0.3.1",
 		"moray-client": "git+ssh://git@git.joyent.com:moray-client.git#master",
 		"native-dns": "0.2.1",
