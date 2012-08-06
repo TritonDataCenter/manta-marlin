@@ -3,12 +3,18 @@
 	"port": 9080,
 
 	"manta": {
-		"host": "10.99.99.40",
+		"host": "manta.coal.joyent.us",
 		"port": 8081
 	},
 
 	"moray": {
 		"url": "http://10.99.99.12"
+	},
+
+	"dns": {
+		"nameservers": [ "10.99.99.31" ],
+		"triggerInterval": 0,
+		"graceInterval": 300000
 	},
 
 	"taskGroupInterval": 10,

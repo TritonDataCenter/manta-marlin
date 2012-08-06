@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #
-# mragentconf uuid manta-url uuid moray-url name-service-1 [name-service-2 ...]
-# Reconfigures the Marlin agent with the specified moray-url and name servers.
+# mragentconf uuid manta-url moray-url name-service-1 [name-service-2 ...]
+# Reconfigures the Marlin agent with the specified URLs and name servers.
 #
 
 mac_arg0=$(basename $0)
@@ -19,26 +19,23 @@ function fail
 	exit 1
 }
 
-function dnsresolve
-{
-	host -t A $1 $2 | tail -1 | awk '{print $4}'
-}
+[[ $# -gt 3 ]] || usage
 
-[[ $# -gt 2 ]] || usage
-
-#
-# For now, the agent doesn't do DNS resolution, so use the first name server to
-# resolve the moray URL.
-#
 mac_serverid=$1
-mac_manta_host=$(dnsresolve $2 $4) || fail "failed to resolve $2"
-mac_moray_host=$(dnsresolve $3 $4) || fail "failed to resolve $3"
+mac_manta_host=$2
+mac_moray_host=$3
 mac_root=$(dirname $0)/..
 mac_zones_file=$mac_root/etc/marlinzones
 
 mac_code="instanceUuid='$mac_serverid'; zonesFile='$mac_zones_file'"
 mac_code="$mac_code; moray.url='http://$mac_moray_host'"
 mac_code="$mac_code; manta.host='$mac_manta_host'; manta.port=80"
+mac_code="$mac_code; dns.nameservers = []"
+
+shift 3
+for ns in "$@"; do
+	mac_code="$mac_code; dns.nameservers.push('$ns')"
+done
 
 json -e "$mac_code" < $mac_root/etc/agentconfig.coal.json > \
     $mac_root/etc/agentconfig.json || fail "failed to rewrite config"
