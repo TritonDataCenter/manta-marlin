@@ -4,6 +4,7 @@
 
 var mod_assert = require('assert');
 var mod_path = require('path');
+var mod_url = require('url');
 
 var mod_bunyan = require('bunyan');
 var mod_extsprintf = require('extsprintf');
@@ -84,7 +85,7 @@ exports.jobSpec3Phase = {
 
 function createMoray()
 {
-	var conf, props;
+	var conf, url, props;
 
 	conf = mod_mautil.readConf(log, mod_worker.mwConfSchema,
 	    mod_path.join(__dirname, '../../etc/config.coal.json'));
@@ -93,10 +94,11 @@ function createMoray()
 	props['findInterval'] = 10;
 
 	if (process.env['MORAY_URL']) {
-		props['url'] = process.env['MORAY_URL'];
-		log.info('using remote Moray instance at %s', props['url']);
-		var rv = new mod_moray.RemoteMoray(props);
-		return (rv);
+		url = mod_url.parse(process.env['MORAY_URL']);
+		log.info('using remote Moray instance at %s', url);
+		props['host'] = url['hostname'];
+		props['port'] = Math.floor(url['port']);
+		return (new mod_moray.RemoteMoray(props));
 	}
 
 	log.info('using in-memory mock Moray instance');

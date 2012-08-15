@@ -40,6 +40,8 @@ function setup(_, next)
 
 function setupMoray(_, next)
 {
+	log.info('setupMoray');
+
 	moray.setup(function (err) {
 		if (err)
 			throw (err);

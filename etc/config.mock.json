@@ -3,10 +3,11 @@
 	"port": 8083,
 	"moray": {
 		"indexing": {
-			"urls": [ "http://10.99.99.12" ]
+			"urls": [ "tcp://1.moray.coal.joyent.us:2020" ],
 		},
 		"storage": {
-			"url": "http://10.99.99.12"
+			"host": "1.moray.coal.joyent.us",
+			"port": 2020
 		},
 		"connectTimeout": 200,
 		"maxIdleTime": 1000,

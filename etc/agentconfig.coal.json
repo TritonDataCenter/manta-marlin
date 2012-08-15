@@ -1,18 +1,19 @@
 {
-	"instanceUuid": "headnode",
+	"instanceUuid": "testing_agent",
 	"port": 9080,
 
 	"manta": {
 		"host": "manta.coal.joyent.us",
-		"port": 8081
+		"port": 80
 	},
 
 	"moray": {
-		"url": "http://10.99.99.12"
+		"host": "1.moray.coal.joyent.us",
+		"port": 2020
 	},
 
 	"dns": {
-		"nameservers": [ "10.99.99.31" ],
+		"nameservers": [ "10.99.99.56" ],
 		"triggerInterval": 0,
 		"graceInterval": 300000
 	},

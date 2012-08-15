@@ -6,6 +6,7 @@
 
 var mod_assert = require('assert');
 var mod_path = require('path');
+var mod_url = require('url');
 
 var mod_bunyan = require('bunyan');
 var mod_extsprintf = require('extsprintf');
@@ -16,7 +17,7 @@ var mod_vasync = require('vasync');
 var mod_verror = require('verror');
 var mod_wordwrap = require('wordwrap');
 
-var mod_moray = require('moray-client');
+var mod_moray = require('moray');
 
 var wrap = mod_wordwrap(80);
 var wrap4 = mod_wordwrap(4, 80);
@@ -178,6 +179,7 @@ var msTgStates = {
 
 /* Configuration and command-line options. */
 var msMorayUrl = process.env['MORAY_URL'];	/* Moray instance to use */
+var msMorayUrlConf;				/* parsed version */
 var msParseable = false;		/* whether output should be parseable */
 var msVerbose = false;			/* whether output should be verbose */
 var msColumns;				/* user-specified list of columns */
@@ -238,21 +240,26 @@ function main()
 	    'stream': process.stderr
 	});
 
+	msMorayUrlConf = mod_url.parse(msMorayUrl);
 	msClient = mod_moray.createClient({
-	    'url': msMorayUrl,
+	    'host': msMorayUrlConf['hostname'],
+	    'port': Math.floor(msMorayUrlConf['port']),
 	    'log': msLog
 	});
 
-	if (parser.optind() >= process.argv.length) {
-		if (msVerbose)
-			console.error(
-			    '%s: -v does nothing without a jobid', msArg0);
+	msClient.on('connect', function () {
+		if (parser.optind() >= process.argv.length) {
+			if (msVerbose)
+				console.error(
+				    '%s: -v does nothing without a jobid',
+				    msArg0);
 
-		fetchAndPrintAll();
-	} else {
-		msJobId = process.argv[parser.optind()];
-		fetchAndPrintJob(msJobId);
-	}
+			fetchAndPrintAll();
+		} else {
+			msJobId = process.argv[parser.optind()];
+			fetchAndPrintJob(msJobId);
+		}
+	});
 }
 
 /*
@@ -290,19 +297,20 @@ function fetchAndPrintAll()
 	    'omitHeader': msParseable
 	});
 
-	msClient.search(msBktJobs, 'jobId=*', function (err, _, jobsbyid) {
-		if (err) {
-			console.error('%s: failed to list jobs: %s',
-			    msArg0, err.message);
-			process.exit(1);
-		}
+	var req = msClient.findObjects(msBktJobs, 'jobId=*');
 
-		mod_jsprim.forEachKey(jobsbyid, function (id, record) {
-			table.writeRow(makeJobRow(
-			    record['value'], record['mtime']));
-		});
+	req.on('error', function (err) {
+		console.error('%s: failed to list jobs: %s',
+		    msArg0, err.message);
+		process.exit(1);
+	});
 
-		msClient.quit(function () {});
+	req.on('end', function () { msClient.close(); });
+
+	req.on('record', function (record) {
+		table.writeRow(makeJobRow(
+		    record['value'],
+		    mod_jsprim.iso8601(new Date(record['_mtime']))));
 	});
 }
 
@@ -317,43 +325,42 @@ function fetchAndPrintJob(jobid)
 	mod_vasync.pipeline({
 	    'funcs': [
 		function fetchJobRecord(_, next) {
-			msClient.search(msBktJobs, 'jobId=' +jobid,
-			    function (err, __, jobsbyid) {
-				if (err) {
-					next(err);
+			var req = msClient.findObjects(msBktJobs,
+			    'jobId=' + jobid, { 'noCache': true });
+			req.once('error', function (err) { next(err); });
+			req.on('record', function (record) {
+				job = record['value'];
+				mtime = record['_mtime'];
+			});
+			req.on('end', function () {
+				if (!job) {
+					next(new mod_verror.VError(
+					    'job "%s" not found', jobid));
 					return;
 				}
 
-				var meta = jobsbyid[Object.keys(jobsbyid)[0]];
-
-				if (!meta) {
-					next(new mod_verror.VError('job "%s" ' +
-					    'not found', jobid));
-					return;
-				}
-
-				mtime = meta['mtime'];
-				job = meta['value'];
 				next();
-			    });
+			});
 		},
 		function fetchTaskGroups(_, next) {
-			msClient.search(msBktTaskGroups,
-			    'jobId=' + job['jobId'],
-			    function (err, __, tgsbyid) {
-				if (err) {
-					next(err);
-					return;
-				}
+			tgs = {};
+			var req = msClient.findObjects(msBktTaskGroups,
+			    'jobId=' + job['jobId'], { 'noCache': true });
 
-				tgs = tgsbyid;
+			req.once('error', function (err) { next(err); });
+
+			req.on('record', function (record) {
+				tgs[record['value']['taskGroupId']] = {
+				    'mtime': record['_mtime'],
+				    'value': record['value']
+				};
+			});
+
+			req.on('end', function () {
+				msClient.close();
+				printJob(job, mtime, tgs);
 				next();
-			    });
-		},
-		function (_, next) { msClient.quit(next); },
-		function (_, next) {
-			printJob(job, mtime, tgs);
-			next();
+			});
 		}
 	    ]
 	}, function (err) {
@@ -408,7 +415,7 @@ function printJob(job, mtime, tgsbyid)
 		    'STATE': msTgStates[group['state']] || group['state'],
 		    'NIN': group['inputKeys'].length,
 		    'NRES': group['results'].length,
-		    'MODIFIED': entry['mtime'],
+		    'MODIFIED': mod_jsprim.iso8601(new Date(entry['mtime'])),
 		    'URL': morayUrl(msBktTaskGroups, tgid),
 		    'NOK': 0,
 		    'NERR': 0
@@ -440,7 +447,7 @@ function printJobDetails(job, mtime)
 {
 	var row, i, pexec;
 
-	row = makeJobRow(job, mtime);
+	row = makeJobRow(job, mod_jsprim.iso8601(new Date(mtime)));
 
 	mod_tab.emitTable({
 	    'columns': mapColumns([ 'JobID', 'JobName' ], msFieldsJobs),
@@ -620,7 +627,8 @@ function mapColumns(names, configs)
  */
 function morayUrl(bucket, key)
 {
-	return (msMorayUrl + '/' + bucket + '/' + key);
+	return ('getobject -h ' + msMorayUrlConf['hostname'] + ' -p ' +
+	    msMorayUrlConf['port'] + ' ' + bucket + ' ' + key);
 }
 
 main();
