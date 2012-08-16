@@ -19,90 +19,39 @@ familiarity with that, including how the rest of the Manta object store works.
 
 # Design goals
 
-Marlin facilitates the following use cases:
+Marlin is designed to facilitate the following use cases:
 
-* MapReduce in a generic environment (e.g., log analysis)
-* MapReduce in a node-based environment (i.e., make it particularly easy for
-  node apps)
+* MapReduce in a Unix-based environment (e.g., log analysis using awk)
+* MapReduce in a node-based environment (i.e., make it easy for node apps)
 * Straight Map with no reduce (e.g., video transcoding)
 * Allowing others to run compute on your data (e.g., for government
   organizations with lots of public data, e.g.,
   http://community.topcoder.com/pds-challenge/)
 * Hadoop itself?
 
-Of course, we want this to be easy to use, monitor, and debug.  A good
-barometer is that word count, the MR equivalent of "hello world", should be
-trivial to write.
+Marlin must be easy to use, monitor, and debug.  A good barometer is that "word
+count", the MR equivalent of "hello world", should be trivial to run from the
+command line.
 
-Marlin defines two public APIs:
+# APIs
 
-* Job API: allows end users to submit, cancel, and monitor compute jobs.  This
-  will ultimately become part of the Manta API.
-* Task Control API: used by user code running inside Marlin to coordinate
-  execution and report progress.
+The **Job API** is what end users use to submit, cancel, and monitor compute
+jobs.  This is actually part of the Manta API, and is documented with the rest
+of Manta.  The rest of this document assumes familiarity with this API.
+
+The **Task Control API** is used by user code running inside Marlin to
+coordinate execution and report progress.  It's not available externally,
+since it's scoped to a particular zone.  This is discussed in detail below.
 
 All DateTimes in these APIs use W3C DTF in UTC ("YYYY-MM-DDThh:mm:ss.sZ").
 
 
-
-# Streaming API
-
-This section describes a modified API based around streams, both internally and
-externally.
-
-In this model, a job's input, output, and discarded objects are represented as
-streams rather than the "inputKeys", "outputKeys", and "discardedKeys"
-properties.  We now have the following resources:
-
-* `POST /:userid/jobs`: submit a new job (JSON)
-* `GET /:userid/jobs`: list jobs (JSON or text/plain)
-* `GET /:userid/jobs/:jobid`: retrieve current job state (JSON or text/plain?)
-* `PUT /:userid/jobs/:jobid/input`: submit input keys for a job (text/plain)
-* `GET /:userid/jobs/:jobid/output`: retrieve list of output keys for a job
-  (text/plain)
-* `GET /:userid/jobs/:jobid/phases/:i/results`: retrieves list of results for a
-  given phase. (JSON object describing each input key to the phase, the result
-  (success or failure), and any keys output or discarded.)
-
-Below are example implementations of several use cases.  In all of these
-examples, it's assumed that the input is streamed in and the output is streamed
-out.  The sequence for each of these examples is:
-
-    $ curl -i -X POST -d @input.json '-Hcontent-type: application/json' \
-        manta.joyent.us/:userid/jobs
-    
-    # extract new job URL from Location header
-
-    $ curl -X PUT -d @input_keys.txt manta.joyent.us/:userid/jobs/:jobid/input
-
-    $ curl manta.joyent.us/:userid/jobs/:jobid
-
-    # repeat above until state == "done"
-
-    $ curl -o output_keys.txt manta.joyent.us/:userid/jobs/:jobid/output
-
-Alternatively, jobs may be pipelined, so that the input keys from one job come
-from the output keys of a previous job.  To do this, use the "inputStream"
-property on the job itself, as in:
-
-    {
-        "jobName": "part two"
-        "phases": [ ... ],
-        "inputStream": "/:userid/jobs/:jobid/output"
-    }
-
-"inputStream" may refer to any other job's output stream, or any Manta object.
-The object must have type text/plain.
-
-There's no corresponding "outputStream" property, since every job has its own
-output stream at `/:userid/jobs/:jobid/output` that can be used anywhere an
-input stream or Manta file is required.
+# Example jobs
 
 The following examples include whitespace for readability, but JSON does not
 allow whitespace within strings.  To use these examples, either remove the
 newlines or save the phase contents as a file in Manta and use that file as an
 asset.
-
 
 ## Total word count
 
@@ -422,9 +371,9 @@ would have to be separate jobs.
 
 The Task Control API is used by tasks (user code running in compute zones on
 Manta storage nodes) to retrieve parameters and report on progress.  The API is
-serviced not by a public endpoint, but by a small server running inside the
-task's own compute zone that's implicitly scoped to that zone's current task.
-As a result, task identifiers are not actually necessary in the task API.
+served not by a public endpoint, but by a small server running inside the task's
+own compute zone that's implicitly scoped to that zone's current task.  As a
+result, task identifiers are not necessary in the task API.
 
 This API is *not* used to monitor task status; that's provided by the
 public-facing Job API.
@@ -556,7 +505,7 @@ kept around and linked to the job state.  Core dumps of currently running user
 processes and the entire filesystem contents will be preserved.
 
 
-# Implementing use cases
+# Advanced topics
 
 ## Built-in facilities
 
@@ -601,6 +550,9 @@ Example output:
     moray: 3
 
 The "key:" bit may also be omitted.
+
+
+### apache2json: parse Apache log records and emit JSON objects
 
 
 ## Pipelined reducers
@@ -1003,44 +955,12 @@ Roughly in order of importance:
   we avoid sending it across the network twice?
 * What metrics do we want to provide via CA?  How will we implement these?
   What other changes must be made to CA to support Marlin and Manta?
-* Should the job log be a manta object so that user's can add their own entries?
 
 ## Management API?
 
 cancel tasks, take compute zones and servers in and out of service
 initial setup: creating compute zones
 tuning # of compute zones
-
-## Rough roadmap
-
-The basic idea is to get a prototype up and running relatively quickly and
-build that out as needed.  This is a *very* rough draft of how to get there.
-
-Today we have:
-
-* a Moray implementation that supports GET/DEL/PUT (with test-and-set) and
-  search, as well as a client-side library that supports throttling.
-* a mock Moray implementation, at least for testing the job worker
-* an agent that takes task group specifications and executes each task in the
-  group, including support for assets and both "generic" and "map" tasks, using
-  hyprlofs to map files in.
-* a job worker that picks up unassigned jobs in Moray, executes them, and
-  can pick up partially-completed jobs.  Also times out idle task groups.
-* a very simple web tier that just drops jobs into Moray and reads state back.
-
-Remaining work not includes:
-
-* moray: search by bucket change number
-* moray client: support for consistent hashing
-* agent: automated tests
-* agent: implement "abort" (which saves all zone state)
-* agent/worker: implement explicit fail
-* agent/worker: implement retry
-* agent/worker: reducers (see below)
-* all: Moray record versioning
-* all: implement cancel
-
-plus work covered by existing MANTA tickets.
 
 ## Reducers
 
@@ -1131,17 +1051,364 @@ agent, which will run it just like a map jobs.
 ### Scaling records
 
 Instead of using taskgroups, we may need to switch to more fine-grained records.
+See below.
 
-To start with, the records that we call task groups today would be narrowed in
-scope to cover exactly one input key.  Everything else is the same: they specify
-the phase details (possibly as job + phase number for efficiency), destination
-host, state ("dispatched", "running", "cancelled", "done"), assigned machine,
-result ("ok" or "fail"), timing information, and error details.
+# Project: Fine-grained records
 
-The result of processing each input key is written back to the same record, but
-each emitted output key is written out to a new record containing an identifier
-for the input record (which implicitly specifies a job, phase, host, and so on)
-and a single output key.
+Following is a proposal for splitting up the existing job and taskgroup records
+into more fine-grained records.  This is necessary because processing large
+records blocks Node programs (including muskie, moray, the marlin worker, and
+the marlin agent) and other pieces in the middle.
 
-Semantically, everything works the same as it does today, but streaming lists of
-these things from the new Moray instead processing monolithic records.
+The new design constraint is that the size of every JSON record in the system
+must be bounded (and should be fairly small).  This applies to records received
+from and sent back to users as well as records used internally.
+
+## Streaming job input/output
+
+A job's input and output are represented as streams.  The input stream is a list
+of object keys in plain text, one per line.  The output stream looks just like a
+Manta directory listing.  The public API endpoints will thus look like this:
+
+* `POST /:userid/jobs`: submit a new job (JSON)
+* `GET /:userid/jobs`: list jobs (JSON)
+* `GET /:userid/jobs/:jobid`: retrieve current job state (JSON)
+* `PUT /:userid/jobs/:jobid/input`: submit input keys for a job (text/plain)
+* `GET /:userid/jobs/:jobid/output`: retrieve list of output keys for a job
+  (JSON or text/plain)
+* `GET /:userid/jobs/:jobid/phases/:i/results`: retrieves list of results for a
+  given phase. (JSON object describing each *task*, including the input key, the
+  result (success or failure), timing details, etc.)
+
+Below are example implementations of several use cases.  In all of these
+examples, it's assumed that the input is streamed in and the output is streamed
+out.  The sequence for each of these examples is:
+
+    $ curl -i -X POST -d @input.json '-Hcontent-type: application/json' \
+        manta.joyent.us/:userid/jobs
+
+    # extract new job URL from Location header
+
+    $ curl -X PUT -d @input_keys.txt manta.joyent.us/:userid/jobs/:jobid/input
+
+    $ curl manta.joyent.us/:userid/jobs/:jobid
+
+    # repeat above until state == "done"
+
+    $ curl -o output_keys.txt manta.joyent.us/:userid/jobs/:jobid/output
+
+Alternatively, jobs may be pipelined, so that the input keys from one job come
+from the output keys of a previous job.  To do this, use the "inputStream"
+property on the job itself, as in:
+
+    {
+        "jobName": "part two"
+        "phases": [ ... ],
+        "inputStream": "/:userid/jobs/:jobid/output"
+    }
+
+"inputStream" may refer to any other job's output stream, or any Manta object.
+The object must have type text/plain.  There's no corresponding "outputStream"
+property, since every job has its own output stream at
+`/:userid/jobs/:jobid/output` that can be used anywhere an input stream or Manta
+file is required.
+
+
+## Moray records
+
+The Moray records exchanged among Marlin components must also be broken up so
+that each one is bounded in size.  Primarily, this means replacing large task
+group records with individual task records, and moving output key records from
+being stored with each task to being stored separately.
+
+As described above, the general constraint is that no single record be unbounded
+in size.  Anything that contains an unbounded N of something must be split into
+a set of smaller records.
+
+
+### Jobs
+
+Each **job record** has these properties:
+
+|| **Field**       || **Type**          || **Description** ||
+|| jobId           || string            || unique identifier, assigned at job submission time ||
+|| jobName         || string            || non-unique user label for the job ||
+|| owner           || string            || user's uuid who submitted the job ||
+|| phases          || object&nbsp;array || description of what the job does ||
+|| phases.i.type   || string            || "storage-map", "generic", or "reduce" ||
+|| phases.i.exec   || string            || bash script to execute via "bash -c" ||
+|| phases.i.uarg   || object            || arbitrary user object ||
+|| phases.i.assets || string&nbsp;array || Manta objects to download into zone ||
+|| worker          || string            || worker's uuid currently processing the job  ||
+|| state           || string            || "queued", "running", or "done" ||
+|| timeCreated     || datetime          || job creation (submission) time ||
+|| timeAssigned    || datetime          || time when the job was first picked up by a worker ||
+|| timeInputDone   || datetime          || time when the user finished writing input ||
+|| timeCancelled   || datetime          || time when the user cancelled the job ||
+|| timeDone        || datetime          || job completion time ||
+
+The rules about job records are:
+
+* The job record is initially written out by muskie when the user submits a job.
+* Subsequently, muskie updates the record when the user finishes submitting
+  input or when the user cancels the job.  This is always a test-and-set
+  read-modify-write.
+* The record is also updated by a job worker, but only the one which "owns" the
+  job or one which is trying to take it over.  All writes are test-and-set based
+  on the etag.  If the write fails, muskie has updated it, and the worker
+  fetches the record, modifies it as needed, and writes it again.
+
+Writes to this record are relatively uncommon, as they happen only in response
+to one of two user actions and a small number of significant events in the
+life of the job, plus periodic "heartbeat" writes by the worker.
+
+As the user submits input, muskie also writes out immutable **job input
+records** with the following properties to describe each input key for the job's
+first phase:
+
+|| **Field**  || **Type** || **Description** ||
+|| jobId      || string   || see above ||
+|| key        || string   || Manta key for the object emitted ||
+
+These records are read by the worker to process the first phase.
+
+### Task input
+
+To process each job, workers write out **task records**.  Tasks represent atomic
+chunks of work.  For map phases, tasks correspond 1:1 with input keys (though
+not necessarily with output keys).  For reduce phases, one task covers all keys
+in the phase.  By definition, a single task cannot be parallelized, but all
+tasks within a job can in principle be executed in parallel.
+
+All task records have the following fields:
+
+|| **Field**     || **Type**          || **Description** ||
+|| jobId         || string            || see above ||
+|| taskId        || string            || unique identifier for this task ||
+|| phaseNum      || integer           || which phase of the job this task goes with ||
+|| server        || string            || server assigned to process this task ||
+|| state         || string            || dispatched, cancelled, queued, running, aborted ||
+|| machine       || string            || uuid of zonename where this task ran ||
+|| result        || string            || "ok" or "fail" ||
+|| error         || object            || describes any failure that occurred ||
+|| error.code    || string            || programmatic error code ||
+|| error.message || string            || human-readable error message ||
+|| timeQueued    || datetime          || when the task was picked up by an agent ||
+|| timeStarted   || datetime          || when the task started running ||
+|| timeDone      || datetime          || when the task completed ||
+|| timeCommitted || datetime          || when the worker committed this result to the job's output stream ||
+|| nOutput       || integer           || total number of output keys, including those contained in firstOutput ||
+|| firstOutputs  || object&nbsp;array || first N output keys (bounded N), in the same format as a task output record (see below) ||
+
+Map tasks have the following extra fields:
+
+|| **Field** || **Type** || **Description** ||
+|| key       || string   || Manta key to be processed ||
+|| objectid  || string   || unique Manta objectid for the key to be processed ||
+
+Reduce tasks have the following extra field:
+
+|| **Field**     || **Type** || **Description** ||
+|| timeInputDone || datetime || Time when all input for this task was available ||
+
+In the success case, a task assignment goes through these states:
+
+* The worker writes out the assignment in the **dispatched** state.
+* The agent quickly picks it up and puts it into the **queued** state.
+* When a zone becomes available to process the task, the agent puts it into the
+  **running** state.
+* When the task has completed, the agent puts it into the **done** state.  For
+  reduce tasks, this can't be done until all input keys have been processed,
+  which can't be known until timeInputDone has also been set.
+* When the worker sees that the task has completed, it **commits** the task,
+  meaning that its output keys are propagated to the next phase (or the job's
+  output keys, if this is the last phase).
+
+Other things can happen:
+
+* If the agent knows it will never be able to complete the task successfully, it
+  will move it to the **aborted** state.  In this case, the worker can try to
+  assign the same key again, possibly to a different server, to retry it.
+* If the job is cancelled, or the worker decides for some other reason that it
+  doesn't need the output of this task, the worker can move the task to the
+  **cancelled** state, which tells the agent to forget about it.
+
+In the case of retries, there may be more than one task for the same key (or
+phase, in the case of reduce tasks), but at most one will end up committed.  In
+the future, we could support speculative execution, in which we write out
+multiple task assignments for the same keys concurrently (e.g., to see which one
+finishes first, or in response to uncertainty about whether one of them is being
+processed).
+
+The input for map tasks is contained in the task record itself, since it's
+always one key.  Input for reduce phases is written out as a series of **reduce
+input key records**, each with the following fields:
+
+|| **Field**     || **Type**          || **Description** ||
+|| jobId         || string            || see above ||
+|| taskId        || string            || see above ||
+|| key           || string            || input object's user-facing key ||
+|| objectid      || string            || input object's unique Manta identifier ||
+|| servers       || object&nbsp;array || list of locations for this key ||
+
+The current implementation will fetch the input key from muskie, but we may well
+want to fetch it directly from remote servers, for efficiency and to make sure
+we're getting the correct objectid.
+
+While processing each task, agents update the task record with status and the
+first few output keys.  If necessary, they also write out **task output
+records**, each of which describes a single key emitted from a given task:
+
+|| **Field**  || **Type** || **Description** ||
+|| jobId      || string   || see above ||
+|| taskId     || string   || see above ||
+|| key        || string   || Manta key for the object emitted ||
+|| created    || string   || time when the object was created ||
+
+These records are immutable, written only once by the agent and subsequently
+read by the worker.
+
+## Muskie
+
+When the user **submits a job**, muskie validates it and writes out a new job
+record.
+
+When the user **submits input** for a job, muskie writes out new job key records
+for each of the new keys.  When the input is complete or the user **cancels a
+job**, muskie updates the job record using a read-modify-write-with-test-and-set
+operation.
+
+When the user **lists jobs** or **fetches a job's status**, muskie reads the job
+record, filters and sanitizes fields, and then emits the results back to the
+user.  The result includes the information initially submitted with the job, the
+current state, timing information, whether the job has been cancelled, whether
+it's waiting for input, and so on.
+
+When the user **fetches detailed job status for a given phase**, muskie first
+fetches the job record, and then fetches all task assignment records for the
+given phase.  For each task, the user can see the state of this task, the
+result, error information (if any), and timing information.  For map tasks, the
+input key is also included.  This is for reference and debugging, since
+intermediate keys are not directly available from Manta.
+
+When the user **fetches job output**, muskie first fetches the job record in
+order to see how many phases it has, then searches moray for all tasks with
+jobId = this job, phaseNum = last phase, timeCommitted not NULL (indicating this
+result has been committed).  The output keys contained within these records are
+emitted to the client.  If there are additional output keys in separate records,
+these will be fetched separately and emitted back to the client.
+
+
+## Worker
+
+Job workers will poll on Moray for new and abandoned jobs, just like they do
+today, and attempt to take them over using a test-and-set write.  This is a
+periodic query for (worker == null or mtime &lt; now - timeout).
+
+Upon picking up a job for the first time, the worker fetches all of the job
+input keys, tasks, reduce input keys, and task output keys.  It can't do
+anything else until it has all of these.  From these, it figures out what needs
+to be done.
+
+While there are first phase input keys not covered by already-saved tasks, these
+keys are first located within Manta and then assigned.  For map phases, new task
+records are saved.  For reduce phases, a reduce task is written if there isn't
+one already, and then reduce input keys are written out.
+
+While there are tasks which have completed successfully but not committed,
+commit them by simply updating the task record.
+
+While there are committed tasks for a non-final phase that have output keys
+(either in the task itself or separate output key records) that haven't been
+propagated to the next phase, do so.  This is exactly like propagating job input
+keys at the beginning of the task.
+
+While there are task records that haven't been updated within a specified
+timeout, mark them "cancelled".  (When we add retry support later, we should
+simply re-issue them without cancelling the other one until the job is done.)
+
+If the job's input stream has seen EOF, and all of the above has been completed,
+and all tasks have either aborted, cancelled, or finished, then the job is done.
+
+If the job becomes cancelled, cancel all outstanding tasks.
+
+Things we'll add later:
+
+* Chained jobs (inputStream == another job): works the same way, but instead of
+  fetching job input key records, they poll on the output of a previous job.
+  XXX should we try to assign such jobs to the same worker?
+* Retries.  Don't cancel tasks that seem abandoned, but assign new tasks for
+  them.  Do the same for tasks that have explicitly failed.  This requires more
+  bookkeeping for each key, which may now be in multiple tasks.
+* Deleting intermediate objects.  Intermediate objects can be queued for
+  deletion when a task where they're used as an input key becomes committed, or
+  when the job fails.
+
+
+## Agent
+
+Agents find work by polling for tasks with server == their uuid.  For map tasks,
+incoming tasks with the same jobId and phaseNum are grouped together, since they
+can be executed in series in the same compute zone without resetting the zone.
+For reduce tasks, the agent looks for (and polls on) reduce input key records
+with a matching taskid.  As with map tasks, these keys are combined into a
+single task group.  Thus, for both types of phases, the agent maintains a task
+group with a queue of keys to be processed in order within the same compute
+zone.
+
+The agent can start processing both map and reduce task groups as soon as any
+input keys are available.  It allocates a zone, downloads any required assets,
+and starts processing tasks.
+
+For map phases, we process the keys serially by mapping each key into the zone,
+signalling the in-zone agent to invoke the user's command, unmapping the key,
+updating the task record with the result, and moving on to the next key.  As new
+tasks arrive for the same group, we just add them to the back of the queue.  If
+the queue runs out, we can reset the zone for use by another job, or hold onto
+it for a few seconds in case more keys arrive.  (If we reset the zone and more
+keys arrive, we just start processing the new keys as a new group.)
+
+For reduce phases, there's only ever one invocation of the user's code.  We
+start downloading the first input key from Manta and stream it via the in-zone
+agent to the user's code.  As each key completes, we start downloading the next
+one and feeding its contents in.  As new keys come in, we add it to the queue to
+be downloaded and fed to the user.  Unlike with the map phase, the agent cannot
+stop executing the task until it knows all input keys have been processed and
+the user's code has received EOF.  Once the "timeInputDone" field of the reduce
+task is set (by the worker, only after writing out all reduce input keys), the
+agent makes one last query for new input keys, processes all remaining keys, and
+finishes the task.
+
+For both map and reduce tasks, as the user's code emits new objects, the task
+itself is updated and (if necessary) new task output keys are saved.
+
+To cancel tasks, the worker marks them as "cancelled".  For tasks that are
+queued, the agent simply removes them.  For tasks currently running, we reset
+the zone and then remove them.  XXX This could be a pretty expensive operation
+since the worker will have to update O(n) records -- one for each outstanding
+key to be processed.  The alternative is to have the agent watching some other
+job-wide record to notice failure.
+
+
+## mrstat (status tool)
+
+Important operations include:
+
+* list jobs with basic job status: query for job records and maybe job input
+  keys (just to count them).
+* for a job, show summary status information: query for job record, job input
+  keys, tasks, reduce input keys, and task output keys.  For each of these
+  groups, show only the first N and last N, and summary information for all of
+  them.
+* for a job, show complete information: same as above, but make available all
+  records, not just the first N and last N.  The current tool punts on this by
+  providing a command-line invocation that queries Moray for the full data.  We
+  can probably do the same.
+
+
+## Related changes
+
+As part of these changes, we should also modify the worker to have only one
+connection to Moray rather than one per job, which should simplify a bunch of
+things, and makes it possible to throttle on a per-node basis rather than
+per-job.
