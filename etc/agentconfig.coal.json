@@ -3,13 +3,15 @@
 	"port": 9080,
 
 	"manta": {
-		"host": "manta.coal.joyent.us",
-		"port": 80
+		"url": "http://manta.coal.joyent.us/"
 	},
 
 	"moray": {
-		"host": "1.moray.coal.joyent.us",
-		"port": 2020
+		"url": "tcp://1.moray.coal.joyent.us:2020/",
+		"reconnect": {
+			"maxTimeout": 30000,
+			"retries": 120
+		}
 	},
 
 	"dns": {
@@ -18,8 +20,16 @@
 		"graceInterval": 300000
 	},
 
-	"taskGroupInterval": 10,
-	"taskGroupIdleInterval": 20000,
-	"taskGroupSaveInterval": 100,
-	"tickInterval": 1000
+	"buckets": {
+		"job": "marlin_jobs",
+		"task": "marlin_tasks",
+		"taskinput": "marlin_taskinputs",
+		"taskoutput": "marlin_taskoutputs"
+	},
+
+	"tunables": {
+		"timeJobSave": 10000,
+		"timePoll": 1000,
+		"timeTick": 1000
+	}
 }

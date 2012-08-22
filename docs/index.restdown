@@ -1182,34 +1182,37 @@ tasks within a job can in principle be executed in parallel.
 
 All task records have the following fields:
 
-|| **Field**     || **Type**          || **Description** ||
-|| jobId         || string            || see above ||
-|| taskId        || string            || unique identifier for this task ||
-|| phaseNum      || integer           || which phase of the job this task goes with ||
-|| server        || string            || server assigned to process this task ||
-|| state         || string            || dispatched, cancelled, queued, running, aborted ||
-|| machine       || string            || uuid of zonename where this task ran ||
-|| result        || string            || "ok" or "fail" ||
-|| error         || object            || describes any failure that occurred ||
-|| error.code    || string            || programmatic error code ||
-|| error.message || string            || human-readable error message ||
-|| timeQueued    || datetime          || when the task was picked up by an agent ||
-|| timeStarted   || datetime          || when the task started running ||
-|| timeDone      || datetime          || when the task completed ||
-|| timeCommitted || datetime          || when the worker committed this result to the job's output stream ||
-|| nOutput       || integer           || total number of output keys, including those contained in firstOutput ||
-|| firstOutputs  || object&nbsp;array || first N output keys (bounded N), in the same format as a task output record (see below) ||
+|| **Field**      || **Type**          || **Description** ||
+|| jobId          || string            || see above ||
+|| taskId         || string            || unique identifier for this task ||
+|| phaseNum       || integer           || which phase of the job this task goes with ||
+|| server         || string            || server assigned to process this task ||
+|| state          || string            || dispatched, cancelled, queued, running, aborted ||
+|| machine        || string            || uuid of zonename where this task ran ||
+|| result         || string            || "ok" or "fail" ||
+|| error          || object            || describes any failure that occurred ||
+|| error.code     || string            || programmatic error code ||
+|| error.message  || string            || human-readable error message ||
+|| timeDispatched || datetime          || when this task was created ||
+|| timeQueued     || datetime          || when the task was picked up by an agent ||
+|| timeStarted    || datetime          || when the task started running ||
+|| timeDone       || datetime          || when the task completed ||
+|| timeCommitted  || datetime          || when the worker committed this result to the job's output stream ||
+|| nOutput        || integer           || total number of output keys, including those contained in firstOutput ||
+|| firstOutputs   || object&nbsp;array || first N output keys (bounded N), in the same format as a task output record (see below) ||
 
 Map tasks have the following extra fields:
 
 || **Field** || **Type** || **Description** ||
 || key       || string   || Manta key to be processed ||
 || objectid  || string   || unique Manta objectid for the key to be processed ||
+|| zonename  || string   || Mako zonename on remote server with a copy of this object ||
 
 Reduce tasks have the following extra field:
 
 || **Field**     || **Type** || **Description** ||
-|| timeInputDone || datetime || Time when all input for this task was available ||
+|| timeInputDone || datetime || time when all input for this task was available ||
+|| nInputs       || number   || total number of input keys ||
 
 In the success case, a task assignment goes through these states:
 
@@ -1262,11 +1265,15 @@ records**, each of which describes a single key emitted from a given task:
 || **Field**  || **Type** || **Description** ||
 || jobId      || string   || see above ||
 || taskId     || string   || see above ||
+|| error      || object   || see above ||
 || key        || string   || Manta key for the object emitted ||
 || created    || string   || time when the object was created ||
 
 These records are immutable, written only once by the agent and subsequently
-read by the worker.
+read by the worker.  Only "key" or "error" should be present: if "key", then
+that key was emitted.  If "error", then this is an error emitted.  This is only
+possible for reduce tasks, since map tasks may only have one error and can just
+include it directly in the "task" record.
 
 ## Muskie
 

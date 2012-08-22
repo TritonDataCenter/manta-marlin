@@ -1,0 +1,263 @@
+#!/usr/bin/env node
+
+/*
+ * mrjob: submit jobs directly to Marlin via Moray (i.e. not through Muskie)
+ * This is a dev tool.
+ */
+
+var mod_assert = require('assert');
+var mod_path = require('path');
+var mod_url = require('url');
+
+var mod_bunyan = require('bunyan');
+var mod_extsprintf = require('extsprintf');
+var mod_getopt = require('posix-getopt');
+var mod_jsprim = require('jsprim');
+var mod_uuid = require('node-uuid');
+var mod_vasync = require('vasync');
+var mod_wordwrap = require('wordwrap');
+var wrap = mod_wordwrap(80);
+
+var mod_marlin = require('../lib/marlin');
+
+var msArg0 = mod_path.basename(process.argv[1]);
+var msUsage = [
+    'USAGE: mrjob submit   [-i id] [-n name] [-m exec] [-r exec] ...',
+    '       mrjob addkeys  jobid [key ...]',
+    '       mrjob endinput jobid',
+    '       mrjob cancel   jobid',
+    '',
+    '    Submits a new job to Marlin via Moray, or modifies a previously ',
+    '    submitted job.',
+    '',
+    'SUBCOMMANDS',
+    '',
+    '   submit          Submit a new job without ending input.',
+    '',
+    '      -i id          Use "id" for the job\'s id',
+    '      -m exec        Append a map phase with body "exec"',
+    '      -n name        Use "name" for the job\'s name',
+    '      -r exec        Append a reduce phase with body "exec"',
+    '',
+    '      With no -m or -r options, the job gets one map phase.',
+    '',
+    '   addkeys         Submit new keys for a job.',
+    '',
+    '   endinput        Indicate that no further keys will be added for a job.',
+    '',
+    '   cancel          Mark a job job cancelled.',
+    '',
+    'EXAMPLE: Create a "word count" job',
+    '',
+    '    # mrjob submit -m wc -r "awk {sum += $1} END { print sum; }"',
+    '    34cae1fd-8f9e-48cb-9163-7e2b365fc394',
+    '',
+    '    # mrjob addkeys 34cae1fd-8f9e-48cb-9163-7e2b365fc394 key1 ...',
+    '    # mrjob endinput 34cae1fd-8f9e-48cb-9163-7e2b365fc394'
+].join('\n');
+
+var msPhases = [];
+var msJobName = 'mrsubmit job';
+var msJobId = mod_uuid.v4();
+var msMorayUrl = process.env['MORAY_URL'];
+
+var msApi;	/* marlin api */
+var msLog;	/* bunyan logger */
+var msCommands = {
+    'submit': cmdSubmit,
+    'addkeys': cmdAddkeys,
+    'endinput': cmdEndinput,
+    'cancel': cmdCancel
+};
+
+function usage()
+{
+	console.error(msUsage);
+	process.exit(2);
+}
+
+function main()
+{
+	var subcmd;
+
+	if (process.argv.length < 3)
+		usage();
+
+	subcmd = process.argv[2];
+
+	if (!msCommands.hasOwnProperty(subcmd))
+		usage();
+
+	if (!msMorayUrl) {
+		console.error('MORAY_URL must be specified in the environment');
+		process.exit(2);
+	}
+
+	msLog = new mod_bunyan({
+	    'name': msArg0,
+	    'level': process.env['LOG_LEVEL'] || 'info',
+	    'stream': process.stderr
+	});
+
+	msCommands[subcmd]();
+}
+
+function clientInit(callback)
+{
+	mod_marlin.createClient({
+	    'moray_url': msMorayUrl,
+	    'log': msLog
+	}, function (err, api) {
+		if (err) {
+			console.error('%s: %s', msArg0, err.message);
+			process.exit(1);
+		}
+
+		msApi = api;
+		callback(msApi);
+	});
+}
+
+function clientFini()
+{
+	msApi.close();
+}
+
+function cmdSubmit()
+{
+	var parser, option;
+
+	parser = new mod_getopt.BasicParser('c:i:m:n:r:',
+	    process.argv.slice(1));
+
+	while ((option = parser.getopt()) !== undefined) {
+		switch (option.option) {
+		case 'i':
+			msJobId = option.optarg;
+			break;
+
+		case 'n':
+			msJobName = option.optarg;
+			break;
+
+		case 'm':
+		case 'r':
+			msPhases.push({
+			    'type': option.option == 'm' ?
+				'storage-map' : 'reduce',
+			    'exec': option.optarg
+			});
+			break;
+
+		default:
+			/* error message already emitted by getopt */
+			mod_assert.equal('?', option.option);
+			usage();
+			break;
+		}
+	}
+
+	if (msPhases.length === 0)
+		msPhases.push({ 'type': 'storage-map', 'exec': 'echo' });
+
+	var job = {
+	    'jobId': msJobId,
+	    'jobName': msJobName,
+	    'phases': msPhases,
+	    'owner': process.env['USER']
+	};
+
+	clientInit(function (api) {
+		api.jobCreate(job, function (err, jobid) {
+			if (err) {
+				console.error('%s: %s', msArg0, err.message);
+				process.exit(1);
+			}
+
+			console.log(jobid);
+			clientFini();
+		});
+	});
+}
+
+function cmdAddkeys()
+{
+	if (process.argv.length < 4)
+		usage();
+
+	var jobid = process.argv[3];
+	var keys = process.argv.slice(4);
+
+	if (keys.length === 0)
+		return;
+
+	clientInit(function (api) {
+		mod_vasync.forEachParallel({
+		    'inputs': keys,
+		    'func': function (key, callback) {
+			api.jobAddKey(jobid, key, function (err) {
+				if (!err)
+					console.log(key);
+				else
+					console.error('%s: key "%s": %s',
+					    msArg0, key, err.message);
+				callback();
+			});
+		    }
+		}, clientFini);
+	});
+}
+
+function cmdEndinput()
+{
+	if (process.argv.length < 4)
+		usage();
+
+	clientInit(function (api) {
+		api.jobEndInput(process.argv[3], function (err, record) {
+			if (err) {
+				console.error('%s: %s', msArg0, err.message);
+				process.exit(1);
+			}
+
+			var job = record['value'];
+			if (job['timeInputDone'])
+				console.error(
+				    'warning: job\'s input already ended');
+
+			if (job['timeCancelled'])
+				console.error('warning: job already cancelled');
+
+			if (job['state'] == 'done')
+				console.error('warning: job already done');
+
+			clientFini();
+		});
+	});
+}
+
+function cmdCancel()
+{
+	if (process.argv.length < 4)
+		usage();
+
+	clientInit(function (api) {
+		api.jobCancel(process.argv[3], function (err, record) {
+			if (err) {
+				console.error('%s: %s', msArg0, err.message);
+				process.exit(1);
+			}
+
+			var job = record['value'];
+			if (job['timeCancelled'])
+				console.error('warning: job already cancelled');
+
+			if (job['state'] == 'done')
+				console.error('warning: job already done');
+
+			clientFini();
+		});
+	});
+}
+
+main();
