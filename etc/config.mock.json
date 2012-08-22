@@ -1,29 +1,34 @@
 {
 	"instanceUuid": "worker-000",
-	"port": 8083,
+	"port": 8080,
+
 	"moray": {
 		"indexing": {
 			"urls": [ "tcp://1.moray.coal.joyent.us:2020" ],
 		},
 		"storage": {
-			"host": "1.moray.coal.joyent.us",
-			"port": 2020
-		},
-		"connectTimeout": 200,
-		"maxIdleTime": 1000,
-		"maxClients": 100
+			"url": "tcp://1.moray.coal.joyent.us:2020"
+		}
 	},
 
 	"locator": "mock",
 
-	"jobsBucket": "marlinJobs",
-	"taskGroupsBucket": "marlinTaskGroups",
+	"buckets": {
+		"job": "marlin_jobs",
+		"job_input": "marlin_jobinputs",
+		"task": "marlin_tasks",
+		"taskinput": "marlin_taskinputs",
+		"taskoutput": "marlin_taskoutputs",
+	},
 
-	"locatePerTick": 25,
-	"jobAbandonTime": 30000,
-	"findInterval": 10,
-	"taskGroupInterval": 10,
-	"saveInterval": 10000,
-	"tickInterval": 1000,
-	"taskGroupIdleTime": 40000
+	"tunables": {
+		"maxPendingLocates": 25,
+		"maxPendingPuts": 25,
+		"timeJobAbandon": 30000,
+		"timeJobPoll": 10,
+		"timeJobSave": 10000,
+		"timeTaskPoll": 10,
+		"timeTaskAbandon": 40000,
+		"timeTick": 1000
+	}
 }
