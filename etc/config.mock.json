@@ -24,11 +24,10 @@
 	"tunables": {
 		"maxPendingLocates": 25,
 		"maxPendingPuts": 25,
+		"timePoll": 10,
+		"timeTick": 1000,
 		"timeJobAbandon": 30000,
-		"timeJobPoll": 10,
 		"timeJobSave": 10000,
-		"timeTaskPoll": 10,
-		"timeTaskAbandon": 40000,
-		"timeTick": 1000
+		"timeTaskAbandon": 40000
 	}
 }
