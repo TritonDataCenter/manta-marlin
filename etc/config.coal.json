@@ -27,6 +27,6 @@
 		"timeTick": 1000,
 		"timeJobAbandon": 30000,
 		"timeJobSave": 10000,
-		"timeTaskAbandon": 40000
+		"timeTaskAbandon": 10000
 	}
 }

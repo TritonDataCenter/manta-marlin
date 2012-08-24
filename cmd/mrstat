@@ -373,16 +373,19 @@ function printJob(job, mtime, records)
 	});
 
 	records['task'].forEach(function (record) {
+		if (record['value']['state'] == 'cancelled' ||
+		    record['value']['state'] == 'aborted' ||
+		    record['value']['error'])
+			nerr++;
+
 		if (record['value']['phaseNum'] != job['phases'].length - 1 ||
 		    !record['value']['timeCommitted']) {
 			ninter += record['value']['nOutput'] || 0;
 			return;
 		}
 
-		nout += record['value']['nOutput'];
-
-		if (record['value']['error'])
-			nerr++;
+		if (record['value']['nOutput'])
+			nout += record['value']['nOutput'];
 
 		taskslast.push(record);
 	});
@@ -449,7 +452,6 @@ function printJob(job, mtime, records)
 		println('NOTE: Cancelled at %s', job['timeCancelled']);
 	if (!job['timeInputDone'])
 		println('NOTE: Job is waiting for user input');
-	println('URL: %s', row['URL']);
 	println('');
 
 	table = new mod_tab.TableOutputStream({
