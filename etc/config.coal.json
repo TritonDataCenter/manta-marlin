@@ -14,10 +14,10 @@
 
 	"buckets": {
 		"job": "marlin_jobs",
-		"job_input": "marlin_jobinputs",
+		"jobinput": "marlin_jobinputs",
 		"task": "marlin_tasks",
 		"taskinput": "marlin_taskinputs",
-		"taskoutput": "marlin_taskoutputs",
+		"taskoutput": "marlin_taskoutputs"
 	},
 
 	"tunables": {

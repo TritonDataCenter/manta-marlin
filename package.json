@@ -9,7 +9,7 @@
 		"extsprintf": "1.0.1",
 		"hyprlofs": "0.0.1",
 		"illumos_contract": "0.0.7",
-		"jsprim": "0.1.0",
+		"jsprim": "0.2.0",
 		"JSV": "4.0.0",
 		"kang": "0.0.2",
 		"libindex": "git+ssh://git@git.joyent.com:manta-libindex.git#master",
