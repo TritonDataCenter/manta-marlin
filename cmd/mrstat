@@ -380,12 +380,12 @@ function printJob(job, mtime, records)
 
 		if (record['value']['phaseNum'] != job['phases'].length - 1 ||
 		    !record['value']['timeCommitted']) {
-			ninter += record['value']['nOutput'] || 0;
+			ninter += record['value']['nOutputs'] || 0;
 			return;
 		}
 
-		if (record['value']['nOutput'])
-			nout += record['value']['nOutput'];
+		if (record['value']['nOutputs'])
+			nout += record['value']['nOutputs'];
 
 		taskslast.push(record);
 	});
@@ -530,11 +530,15 @@ function printJob(job, mtime, records)
 		if (!msVerbose)
 			return;
 
+		if (record['value']['error'])
+			println('    ERROR:  %s',
+			    record['value']['error']['message']);
+
 		var taskid = record['value']['taskId'];
 
 		if (taskinputs[taskid])
 			taskinputs[taskid].forEach(function (rec) {
-				println('     INPUT: %s', rec['value']['key']);
+				println('    INPUT:  %s', rec['value']['key']);
 			});
 
 		if (record['value']['firstOutputs'])
