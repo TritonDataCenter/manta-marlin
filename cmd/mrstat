@@ -495,9 +495,12 @@ function printJob(job, mtime, records)
 		return (0);
 	});
 
-	println('\nTASKS');
+	println('');
 	table = new mod_tab.TableOutputStream({
 	    'columns': [ {
+		'label': 'TASKID',
+		'width': 36
+	    }, {
 		'label': 'PH',
 		'width': 3,
 		'align': 'right'
@@ -519,12 +522,16 @@ function printJob(job, mtime, records)
 	});
 
 	records['task'].forEach(function (record) {
+		var taskid = record['value']['taskId'];
+
 		table.writeRow([
+		    record['value']['taskId'],
 		    record['value']['phaseNum'],
 		    msTaskStates[record['value']['state']] || '????',
 		    record['value']['result'] || '-',
-		    record['value']['nOutput'] || 0,
-		    record['value']['key'] || ('(see below)')
+		    record['value']['nOutputs'] || 0,
+		    record['value']['key'] || (taskinputs[taskid] ?
+			taskinputs[taskid].length  + ' keys' : 'none')
 		]);
 
 		if (!msVerbose)
@@ -533,8 +540,6 @@ function printJob(job, mtime, records)
 		if (record['value']['error'])
 			println('    ERROR:  %s',
 			    record['value']['error']['message']);
-
-		var taskid = record['value']['taskId'];
 
 		if (taskinputs[taskid])
 			taskinputs[taskid].forEach(function (rec) {
