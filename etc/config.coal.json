@@ -5,10 +5,18 @@
 	"moray": {
 		"indexing": {
 			"urls": [ "tcp://1.moray.coal.joyent.us:2020" ],
-			"replicas": 100
+			"replicas": 100,
+			"reconnect": {
+				"maxTimeout": 30000,
+				"retries": 120
+			}
 		},
 		"storage": {
-			"url": "tcp://1.moray.coal.joyent.us:2020"
+			"url": "tcp://1.moray.coal.joyent.us:2020",
+			"reconnect": {
+				"maxTimeout": 30000,
+				"retries": 120
+			}
 		}
 	},
 

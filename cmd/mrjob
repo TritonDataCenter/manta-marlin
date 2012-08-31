@@ -138,7 +138,7 @@ function cmdSubmit()
 {
 	var parser, option;
 
-	parser = new mod_getopt.BasicParser('c:m:n:r:',
+	parser = new mod_getopt.BasicParser('c:i:m:n:r:',
 	    process.argv.slice(1));
 
 	while ((option = parser.getopt()) !== undefined) {
