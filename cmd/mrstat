@@ -17,10 +17,7 @@ var mod_vasync = require('vasync');
 var mod_verror = require('verror');
 var mod_wordwrap = require('wordwrap');
 
-var mod_moray = require('moray');
-
-var mod_mautil = require('../lib/util');
-var mod_worker = require('../lib/worker/worker');
+var mod_marlin = require('../lib/marlin');
 
 var println = function () {
 	console.log(mod_extsprintf.sprintf.apply(null,
@@ -50,9 +47,6 @@ var msUsage = mod_extsprintf.sprintf([
     'The following columns are available when listing jobs:',
     '\n'
 ].join(''), msArg0, msArg0);
-
-/* standard Moray bucket names */
-var msBuckets;
 
 /* default set of columns for list-of-jobs */
 var msColsJobs = [ 'JobId', 'S', 'NPh', 'Modified' ];
@@ -117,10 +111,6 @@ var msFieldsJobs = {
     'worker': {
 	'label': 'WORKER',
 	'width': 36
-    },
-    'url': {
-	'label': 'URL',
-	'width': 40
     }
 };
 
@@ -148,19 +138,18 @@ var msTaskStates = {
 
 /* Configuration and command-line options. */
 var msMorayUrl = process.env['MORAY_URL'];	/* Moray instance to use */
-var msMorayUrlConf;				/* parsed version */
 var msParseable = false;		/* whether output should be parseable */
 var msVerbose = false;			/* whether output should be verbose */
 var msColumns;				/* user-specified list of columns */
 var msJobId;				/* user-specified job id */
 
 /* Runtime state. */
-var msClient;				/* Moray client */
+var msApi;				/* Marlin API */
 var msLog;				/* bunyan logger */
 
 function main()
 {
-	var parser, option, conf;
+	var parser, option;
 
 	parser = new mod_getopt.BasicParser('Hvo:m:', process.argv);
 
@@ -209,23 +198,19 @@ function main()
 	    'stream': process.stderr
 	});
 
-	conf = mod_mautil.readConf(msLog, mod_worker.mwConfSchema,
-	    mod_path.join(__dirname, '../etc/config.coal.json'));
-	msBuckets = conf['buckets'];
-	mod_assert.ok(msBuckets['job']);
-	mod_assert.ok(msBuckets['jobinput']);
-	mod_assert.ok(msBuckets['task']);
-	mod_assert.ok(msBuckets['taskinput']);
-	mod_assert.ok(msBuckets['taskoutput']);
+	var filename = mod_path.join(__dirname, '../etc/config.coal.json');
+	mod_marlin.createClient({
+	    'config_filename': filename,
+	    'log': msLog,
+	    'moray_url': msMorayUrl
+	}, function (err, api) {
+		if (err) {
+			console.error('%s: %s', msArg0, err.message);
+			process.exit(1);
+		}
 
-	msMorayUrlConf = mod_url.parse(msMorayUrl);
-	msClient = mod_moray.createClient({
-	    'host': msMorayUrlConf['hostname'],
-	    'port': Math.floor(msMorayUrlConf['port']),
-	    'log': msLog
-	});
+		msApi = api;
 
-	msClient.on('connect', function () {
 		if (parser.optind() >= process.argv.length) {
 			if (msVerbose)
 				console.error(
@@ -273,7 +258,7 @@ function fetchAndPrintAll()
 	    'omitHeader': msParseable
 	});
 
-	req = msClient.findObjects(msBuckets['job'], 'jobId=*');
+	req = msApi.jobsList();
 
 	req.on('error', function (err) {
 		console.error('%s: failed to list jobs: %s',
@@ -281,7 +266,7 @@ function fetchAndPrintAll()
 		process.exit(1);
 	});
 
-	req.on('end', function () { msClient.close(); });
+	req.on('end', function () { msApi.close(); });
 
 	req.on('record', function (record) {
 		table.writeRow(makeJobRow(
@@ -293,7 +278,6 @@ function fetchAndPrintAll()
 /*
  * For full details:
  *   - print basic job info, just like today
- *   - print URLs for fetching all jobinput, task, task{in,out}put records
  *   - print counts of each type of record, # of output keys, and # of errors
  *   - print {all, first 3 and last 3} jobinput records
  *   - print {all, first 3 and last 3} task records in phase order
@@ -302,45 +286,18 @@ function fetchAndPrintAll()
  */
 function fetchAndPrintJob(jobid)
 {
-	var records = {};
-
-	msClient.getObject(msBuckets['job'], jobid, { 'noCache': true },
-	    function (err, record) {
+	msApi.jobFetchDetails(jobid, function (err, records) {
 		if (err) {
-			console.error('%s: failed to retrieve job: %s',
-			    msArg0, err.message);
-			process.exit(1);
-			return;
+			console.error('%s: %s', msArg0, err.message);
+
+			if (!records)
+				process.exit(1);
 		}
 
-		var job = record['value'];
-		var mtime = record['_mtime'];
-
-		mod_vasync.forEachParallel({
-		    'inputs': [ 'jobinput', 'task', 'taskinput', 'taskoutput' ],
-		    'func': function (bucket, callback) {
-			var req;
-
-			records[bucket] = [];
-
-			req = msClient.findObjects(msBuckets[bucket],
-			    'jobId=' + jobid, { 'noCache': true });
-
-			req.on('error', function (suberr) {
-				console.error('%s: error fetching "%s" ' +
-				    'records: %s', msArg0, bucket,
-				    suberr.message);
-				callback();
-			});
-
-			req.on('record', function (subrecord) {
-				records[bucket].push(subrecord);
-			});
-
-			req.on('end', callback);
-		    }
-		}, function () { printJob(job, mtime, records); });
-	    });
+		var job = records['job']['value'];
+		var mtime = records['job']['_mtime'];
+		printJob(job, mtime, records);
+	});
 }
 
 function printJob(job, mtime, records)
@@ -480,7 +437,7 @@ function printJob(job, mtime, records)
 	});
 
 	if (!msVerbose) {
-		msClient.close();
+		msApi.close();
 		return;
 	}
 
@@ -557,7 +514,7 @@ function printJob(job, mtime, records)
 			});
 	});
 
-	msClient.close();
+	msApi.close();
 }
 
 /*
@@ -588,8 +545,7 @@ function makeJobRow(job, mtime)
 	    'NPH': (job['phases'] || []).length,
 	    'OWNER': job['owner'] || '-',
 	    'S': state,
-	    'WORKER': job['worker'] || '-',
-	    'URL': morayUrl(msBuckets['job'], job['jobId'])
+	    'WORKER': job['worker'] || '-'
 	});
 }
 
@@ -624,15 +580,6 @@ function mapColumns(names, configs)
 	}
 
 	return (rv);
-}
-
-/*
- * Return a URL that can be used to fetch the given record from Moray.
- */
-function morayUrl(bucket, key)
-{
-	return ('getobject -h ' + msMorayUrlConf['hostname'] + ' -p ' +
-	    msMorayUrlConf['port'] + ' ' + bucket + ' ' + key);
 }
 
 main();

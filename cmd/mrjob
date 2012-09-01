@@ -18,9 +18,7 @@ var mod_vasync = require('vasync');
 var mod_wordwrap = require('wordwrap');
 var wrap = mod_wordwrap(80);
 
-var mod_mautil = require('../lib/util');
-var mod_moray = require('moray');
-var mod_worker = require('../lib/worker/worker');
+var mod_marlin = require('../lib/marlin');
 
 var msArg0 = mod_path.basename(process.argv[1]);
 var msUsage = [
@@ -63,10 +61,8 @@ var msJobName = 'mrsubmit job';
 var msJobId = mod_uuid.v4();
 var msMorayUrl = process.env['MORAY_URL'];
 
-var msBuckets;	/* bucket names */
-var msClient;	/* Moray client */
+var msApi;	/* marlin api */
 var msLog;	/* bunyan logger */
-var msUrlConf;	/* Moray URL configuration */
 var msCommands = {
     'submit': cmdSubmit,
     'addkeys': cmdAddkeys,
@@ -82,7 +78,7 @@ function usage()
 
 function main()
 {
-	var subcmd, conf;
+	var subcmd;
 
 	if (process.argv.length < 3)
 		usage();
@@ -97,41 +93,37 @@ function main()
 		process.exit(2);
 	}
 
-	/* XXX commonize with mrstat */
 	msLog = new mod_bunyan({
 	    'name': msArg0,
 	    'level': process.env['LOG_LEVEL'] || 'info',
 	    'stream': process.stderr
 	});
 
-	conf = mod_mautil.readConf(msLog, mod_worker.mwConfSchema,
-	    mod_path.join(__dirname, '../etc/config.coal.json'));
-	msBuckets = conf['buckets'];
-	mod_assert.ok(msBuckets['job']);
-	mod_assert.ok(msBuckets['jobinput']);
-	mod_assert.ok(msBuckets['task']);
-	mod_assert.ok(msBuckets['taskinput']);
-	mod_assert.ok(msBuckets['taskoutput']);
-
-	msUrlConf = mod_url.parse(msMorayUrl);
-
 	msCommands[subcmd]();
 }
 
 function clientInit(callback)
 {
-	msClient = mod_moray.createClient({
-	    'host': msUrlConf['hostname'],
-	    'port': parseInt(msUrlConf['port'], 10),
-	    'log': msLog
-	});
+	var filename = mod_path.join(__dirname, '../etc/config.coal.json');
 
-	msClient.on('connect', callback);
+	mod_marlin.createClient({
+	    'config_filename': filename,
+	    'moray_url': msMorayUrl,
+	    'log': msLog
+	}, function (err, api) {
+		if (err) {
+			console.error('%s: %s', msArg0, err.message);
+			process.exit(1);
+		}
+
+		msApi = api;
+		callback(msApi);
+	});
 }
 
 function clientFini()
 {
-	msClient.close();
+	msApi.close();
 }
 
 function cmdSubmit()
@@ -171,27 +163,23 @@ function cmdSubmit()
 	if (msPhases.length === 0)
 		msPhases.push({ 'type': 'storage-map', 'exec': 'echo' });
 
-	var now = mod_jsprim.iso8601(Date.now());
 	var job = {
 	    'jobId': msJobId,
 	    'jobName': msJobName,
-	    'owner': process.env['USER'] || 'nobody',
 	    'phases': msPhases,
-	    'state': 'queued',
-	    'timeCreated': now
+	    'owner': process.env['USER']
 	};
 
-	clientInit(function () {
-		msClient.putObject(msBuckets['job'], msJobId, job,
-		    function (err) {
+	clientInit(function (api) {
+		api.jobCreate(job, function (err, jobid) {
 			if (err) {
 				console.error('%s: %s', msArg0, err.message);
 				process.exit(1);
 			}
 
-			console.log(msJobId);
+			console.log(jobid);
 			clientFini();
-		    });
+		});
 	});
 }
 
@@ -206,21 +194,19 @@ function cmdAddkeys()
 	if (keys.length === 0)
 		return;
 
-	clientInit(function () {
+	clientInit(function (api) {
 		mod_vasync.forEachParallel({
+		    'inputs': keys,
 		    'func': function (key, callback) {
-			var keyid = mod_uuid.v4();
-			msClient.putObject(msBuckets['jobinput'], keyid,
-			    { 'jobId': jobid, 'key': key }, function (err) {
+			api.jobAddKey(jobid, key, function (err) {
 				if (!err)
 					console.log(key);
 				else
 					console.error('%s: key "%s": %s',
 					    msArg0, key, err.message);
 				callback();
-			    });
-		    },
-		    'inputs': keys
+			});
+		    }
 		}, clientFini);
 	});
 }
@@ -230,17 +216,26 @@ function cmdEndinput()
 	if (process.argv.length < 4)
 		usage();
 
-	jobReadModifyWrite(process.argv[3], function (job) {
-		if (job['timeInputDone'])
-			console.error('warning: job\'s input already ended');
+	clientInit(function (api) {
+		api.jobEndInput(process.argv[3], function (err, record) {
+			if (err) {
+				console.error('%s: %s', msArg0, err.message);
+				process.exit(1);
+			}
 
-		if (job['timeCancelled'])
-			console.error('warning: job already cancelled');
+			var job = record['value'];
+			if (job['timeInputDone'])
+				console.error(
+				    'warning: job\'s input already ended');
 
-		if (job['state'] == 'done')
-			console.error('warning: job already done');
+			if (job['timeCancelled'])
+				console.error('warning: job already cancelled');
 
-		job['timeInputDone'] = mod_jsprim.iso8601(Date.now());
+			if (job['state'] == 'done')
+				console.error('warning: job already done');
+
+			clientFini();
+		});
 	});
 }
 
@@ -249,46 +244,22 @@ function cmdCancel()
 	if (process.argv.length < 4)
 		usage();
 
-	jobReadModifyWrite(process.argv[3], function (job) {
-		if (job['timeCancelled'])
-			console.error('warning: job already cancelled');
+	clientInit(function (api) {
+		api.jobCancel(process.argv[3], function (err, record) {
+			if (err) {
+				console.error('%s: %s', msArg0, err.message);
+				process.exit(1);
+			}
 
-		if (job['state'] == 'done')
-			console.error('warning: job already done');
+			var job = record['value'];
+			if (job['timeCancelled'])
+				console.error('warning: job already cancelled');
 
-		job['timeCancelled'] = mod_jsprim.iso8601(Date.now());
-	});
-}
+			if (job['state'] == 'done')
+				console.error('warning: job already done');
 
-function jobReadModifyWrite(jobid, modifycb)
-{
-	var record;
-
-	mod_vasync.pipeline({
-	    'funcs': [
-		function (_, callback) {
-			clientInit(callback);
-		},
-		function (_, callback) {
-			msClient.getObject(msBuckets['job'], jobid,
-			    { 'noCache': true }, function (err, rec) {
-				record = rec;
-				callback(err, rec);
-			    });
-		},
-		function (_, callback) {
-			modifycb(record['value']);
-			msClient.putObject(msBuckets['job'], jobid,
-			    record['value'], { 'etag': record['_etag'] },
-			    callback);
-		},
-		clientFini
-	    ]
-	}, function (err) {
-		if (err) {
-			console.error('%s: %s', msArg0, err.message);
-			process.exit(1);
-		}
+			clientFini();
+		});
 	});
 }
 
