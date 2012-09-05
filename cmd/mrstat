@@ -194,13 +194,13 @@ function main()
 
 	msLog = new mod_bunyan({
 	    'name': msArg0,
-	    'level': process.env['LOG_LEVEL'] || 'info',
+	    'level': process.env['LOG_LEVEL'] || 'warn',
 	    'stream': process.stderr
 	});
 
 	mod_marlin.createClient({
 	    'log': msLog,
-	    'moray_url': msMorayUrl
+	    'moray': { 'url': msMorayUrl }
 	}, function (err, api) {
 		if (err) {
 			console.error('%s: %s', msArg0, err.message);

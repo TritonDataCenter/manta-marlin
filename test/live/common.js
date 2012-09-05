@@ -37,9 +37,7 @@ exports.log = log;
 function setup(callback)
 {
 	mod_marlin.createClient({
-	    'config_filename': mod_path.join(__dirname,
-		'../../etc/config.coal.json'),
-	    'moray_url': process.env['MORAY_URL'],
+	    'moray': { 'url': process.env['MORAY_URL'] },
 	    'log': log.child({ 'component': 'marlin-client' })
 	}, function (err, api) {
 		if (err) {

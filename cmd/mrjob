@@ -95,7 +95,7 @@ function main()
 
 	msLog = new mod_bunyan({
 	    'name': msArg0,
-	    'level': process.env['LOG_LEVEL'] || 'info',
+	    'level': process.env['LOG_LEVEL'] || 'warn',
 	    'stream': process.stderr
 	});
 
@@ -105,7 +105,7 @@ function main()
 function clientInit(callback)
 {
 	mod_marlin.createClient({
-	    'moray_url': msMorayUrl,
+	    'moray': { 'url': msMorayUrl },
 	    'log': msLog
 	}, function (err, api) {
 		if (err) {
