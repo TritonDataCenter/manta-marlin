@@ -4,6 +4,7 @@
 	"version": "0.0.2",
 	"author": "Joyent (joyent.com)",
 	"private": true,
+	"main": "lib/marlin.js",
 	"dependencies": {
 		"bunyan": "0.13.0",
 		"extsprintf": "1.0.1",
