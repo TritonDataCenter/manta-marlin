@@ -104,10 +104,7 @@ function main()
 
 function clientInit(callback)
 {
-	var filename = mod_path.join(__dirname, '../etc/config.coal.json');
-
 	mod_marlin.createClient({
-	    'config_filename': filename,
 	    'moray_url': msMorayUrl,
 	    'log': msLog
 	}, function (err, api) {

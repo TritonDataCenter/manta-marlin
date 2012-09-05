@@ -198,9 +198,7 @@ function main()
 	    'stream': process.stderr
 	});
 
-	var filename = mod_path.join(__dirname, '../etc/config.coal.json');
 	mod_marlin.createClient({
-	    'config_filename': filename,
 	    'log': msLog,
 	    'moray_url': msMorayUrl
 	}, function (err, api) {

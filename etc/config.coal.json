@@ -1,6 +1,6 @@
 {
 	"instanceUuid": "worker-000",
-	"port": 8080,
+	"port": 8081,
 
 	"moray": {
 		"indexing": {
