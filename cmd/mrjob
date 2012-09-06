@@ -13,10 +13,18 @@ var mod_bunyan = require('bunyan');
 var mod_extsprintf = require('extsprintf');
 var mod_getopt = require('posix-getopt');
 var mod_jsprim = require('jsprim');
+var mod_tab = require('tab');
 var mod_uuid = require('node-uuid');
+var mod_verror = require('verror');
 var mod_vasync = require('vasync');
 var mod_wordwrap = require('wordwrap');
+
 var wrap = mod_wordwrap(80);
+var wrap4 = mod_wordwrap(4, 80);
+var println = function () {
+	console.log(mod_extsprintf.sprintf.apply(null,
+	    Array.prototype.slice.call(arguments)));
+};
 
 var mod_marlin = require('../lib/marlin');
 
@@ -26,26 +34,51 @@ var msUsage = [
     '       mrjob addkeys  jobid [key ...]',
     '       mrjob endinput jobid',
     '       mrjob cancel   jobid',
+    '       mrjob list     [-H] [-o field1[,field2...]]',
+    '       mrjob get      [-v] jobid',
     '',
-    '    Submits a new job to Marlin via Moray, or modifies a previously ',
-    '    submitted job.',
+    '    Manages Marlin jobs via Moray.',
     '',
     'SUBCOMMANDS',
     '',
-    '   submit          Submit a new job without ending input.',
+    '   submit [-i id] [-n name] [-m exec] [-r exec]',
     '',
-    '      -i id          Use "id" for the job\'s id',
-    '      -m exec        Append a map phase with body "exec"',
-    '      -n name        Use "name" for the job\'s name',
-    '      -r exec        Append a reduce phase with body "exec"',
+    '      Submit a new job without ending input.',
+    '',
+    '          -i id          Use "id" for the job\'s id',
+    '          -m exec        Append a map phase with body "exec"',
+    '          -n name        Use "name" for the job\'s name',
+    '          -r exec        Append a reduce phase with body "exec"',
     '',
     '      With no -m or -r options, the job gets one map phase.',
     '',
-    '   addkeys         Submit new keys for a job.',
+    '   addkeys jobid [key ...]',
     '',
-    '   endinput        Indicate that no further keys will be added for a job.',
+    '       Submit new keys for a job (which may or may not already exist).',
     '',
-    '   cancel          Mark a job job cancelled.',
+    '   endinput jobid',
+    '',
+    '       Indicate that no further keys will be added for a job.',
+    '',
+    '   cancel jobid',
+    '',
+    '       Mark a job job cancelled.',
+    '',
+    '   list [-H] [-o field1[,field2...]]',
+    '',
+    '       Lists all jobs.  The default output mode is a human-readable, ',
+    '       unstable output format.  With -H, the output is a simple table ',
+    '       with no header row.  Individual columns may be selected using -o',
+    '       as with ps(1) and other tools.  -o implies -H.',
+    '',
+    '   get [-v] jobid',
+    '',
+    '       Fetch details about the given job.',
+    '',
+    'MORAY',
+    '',
+    '   The remote Moray instance to use must be specified via the MORAY_URL ',
+    '   environment variable, which should have the form "tcp://host:port/"',
     '',
     'EXAMPLE: Create a "word count" job',
     '',
@@ -53,13 +86,20 @@ var msUsage = [
     '    34cae1fd-8f9e-48cb-9163-7e2b365fc394',
     '',
     '    # mrjob addkeys 34cae1fd-8f9e-48cb-9163-7e2b365fc394 key1 ...',
-    '    # mrjob endinput 34cae1fd-8f9e-48cb-9163-7e2b365fc394'
+    '    # mrjob endinput 34cae1fd-8f9e-48cb-9163-7e2b365fc394',
+    '',
+    'COLUMNS',
+    '',
+    '    The following columns are available when listing jobs:'
 ].join('\n');
 
 var msPhases = [];
 var msJobName = 'mrsubmit job';
 var msJobId = mod_uuid.v4();
 var msMorayUrl = process.env['MORAY_URL'];
+var msParseable = false;		/* whether output should be parseable */
+var msVerbose = false;			/* whether output should be verbose */
+var msColumns;				/* user-specified list of columns */
 
 var msApi;	/* marlin api */
 var msLog;	/* bunyan logger */
@@ -67,12 +107,112 @@ var msCommands = {
     'submit': cmdSubmit,
     'addkeys': cmdAddkeys,
     'endinput': cmdEndinput,
-    'cancel': cmdCancel
+    'cancel': cmdCancel,
+    'list': cmdList,
+    'get': cmdGet
+};
+
+/* default set of columns for list-of-jobs */
+var msColsJobs = [ 'JobId', 'S', 'NPh', 'Modified' ];
+
+/* node-tab configuration for list-of-jobs table */
+var msFieldsJobs = {
+    'assigned': {
+	'label': 'ASSIGNED',
+	'width': 24
+    },
+    'cancelled': {
+	'label': 'CANCELLED',
+	'width': 24
+    },
+    'created': {
+	'label': 'CREATED',
+	'width': 24
+    },
+    'done': {
+	'label': 'DONE',
+	'width': 24
+    },
+    'inputdone': {
+	'label': 'INPUTDONE',
+	'width': 24
+    },
+    'jobid': {
+	'label': 'JOBID',
+	'width': 36
+    },
+    'jobname': {
+	'label': 'JOBNAME',
+	'width': 24
+    },
+    'modified': {
+	'label': 'MODIFIED',
+	'width': 24,
+	'doc': 'last modified time'
+    },
+    'nin': {
+	/* XXX remove? */
+	'label': 'NIN',
+	'width': 5,
+	'align': 'right'
+    },
+    'nph': {
+	'label': 'NPH',
+	'width': 3,
+	'align': 'right',
+	'doc': 'number of phases'
+    },
+    'owner': {
+	'label': 'OWNER',
+	'width': 36
+    },
+    's': {
+	'label': 'S',
+	'width': 5,
+	'align': 'right',
+	'doc': 'state'
+    },
+    'worker': {
+	'label': 'WORKER',
+	'width': 36
+    }
+};
+
+/*
+ * Aliases: the keys in this object may be used as field names with -o, but
+ * each one is just an alias for the corresponding value.
+ */
+var msFieldAliases = {
+    'crtime': 'created',
+    'cust': 'owner',
+    'customer': 'owner',
+    'mtime': 'modified',
+    'state': 's',
+    'user': 'owner'
+};
+
+/* Mapping of task state values to a shorter form for display. */
+var msTaskStates = {
+    'aborted': 'abrt',
+    'dispatched': 'disp',
+    'running': 'run',
+    'cancelled': 'cncl',
+    'done': 'done'
 };
 
 function usage()
 {
+	function docFields(conf, list) {
+		return (Object.keys(conf).map(function (f) {
+			var rv = conf[f]['label'];
+			if (conf[f]['doc'])
+				rv += ' (' + conf[f]['doc'] + ')';
+			return (rv);
+		}).join(', '));
+	}
+
 	console.error(msUsage);
+	console.error(wrap4(docFields(msFieldsJobs) + '\n'));
 	process.exit(2);
 }
 
@@ -257,6 +397,380 @@ function cmdCancel()
 
 			clientFini();
 		});
+	});
+}
+
+function cmdList()
+{
+	var argv, parser, option;
+
+	argv = process.argv.slice(1);
+	parser = new mod_getopt.BasicParser('Ho:', argv);
+
+	while ((option = parser.getopt()) !== undefined) {
+		switch (option.option) {
+		case 'H':
+			msParseable = true;
+			break;
+
+		case 'o':
+			msParseable = true;
+			msColumns = option.optarg.split(',');
+			break;
+
+		default:
+			/* error message already emitted by getopt */
+			mod_assert.equal('?', option.option);
+			usage();
+			break;
+		}
+	}
+
+	clientInit(function (api) {
+		var columns = mapColumns(msColumns || msColsJobs, msFieldsJobs);
+
+		var table = new mod_tab.TableOutputStream({
+		    'columns': columns,
+		    'omitHeader': msParseable
+		});
+
+		var req = msApi.jobsList();
+
+		req.on('error', function (err) {
+			console.error('%s: failed to list jobs: %s',
+			    msArg0, err.message);
+			process.exit(1);
+		});
+
+		req.on('end', clientFini);
+
+		req.on('record', function (record) {
+			table.writeRow(makeJobRow(record['value'],
+			    mod_jsprim.iso8601(new Date(record['_mtime']))));
+		});
+	});
+}
+
+/*
+ * Given a list of column names and an object describing a node-tab
+ * configuration, return a list of configuration objects corresopnding to each
+ * column.
+ */
+function mapColumns(names, configs)
+{
+	var i, name, conf;
+	var invalid = [], rv = [];
+
+	for (i = 0; i < names.length; i++) {
+		name = names[i].toLowerCase();
+		if (msFieldAliases.hasOwnProperty(name))
+			name = msFieldAliases[name];
+
+		if (!configs.hasOwnProperty(name))
+			invalid.push(names[i]);
+		else {
+			conf = Object.create(configs[name]);
+			conf.alias = names[i].toUpperCase();
+			rv.push(conf);
+		}
+	}
+
+	if (invalid.length > 0) {
+		console.error('invalid fields specified with -o: ' +
+		    invalid.join(', '));
+		usage();
+	}
+
+	return (rv);
+}
+
+/*
+ * Given a raw job record and its mtime, return an object suitable for writing
+ * to a table.
+ */
+function makeJobRow(job, mtime)
+{
+	var state = '';
+
+	state = job['state'][0].toUpperCase();
+
+	if (job['timeCancelled'])
+		state = 'C' + state;
+	else if (!job['timeInputDone'])
+		state = 'W' + state;
+
+	return ({
+	    'ASSIGNED': job['timeAssigned'] || '-',
+	    'CANCELLED': job['timeCancelled'] || '-',
+	    'CREATED': job['timeCreated'] || '-',
+	    'DONE': job['timeDONE'] || '-',
+	    'INPUTDONE': job['timeInputDone'] || '-',
+	    'JOBID': job['jobId'] || '-',
+	    'JOBNAME': (job['jobName'] || '-').substr(0, 16),
+	    'MODIFIED': mtime || '-',
+	    'NIN': '-',
+	    'NPH': (job['phases'] || []).length,
+	    'OWNER': job['owner'] || '-',
+	    'S': state,
+	    'WORKER': job['worker'] || '-'
+	});
+}
+
+function cmdGet()
+{
+	var argv, parser, option;
+
+	argv = process.argv.slice(1);
+	parser = new mod_getopt.BasicParser('v', argv);
+
+	while ((option = parser.getopt()) !== undefined) {
+		switch (option.option) {
+		case 'v':
+			msVerbose = true;
+			break;
+
+		default:
+			/* error message already emitted by getopt */
+			mod_assert.equal('?', option.option);
+			usage();
+			break;
+		}
+	}
+
+	if (parser.optind() >= argv.length)
+		usage();
+
+	msJobId = argv[parser.optind()];
+
+	clientInit(function (api) {
+		api.jobFetchDetails(msJobId, function (err, records) {
+			if (err) {
+				console.error('%s: %s', msArg0, err.message);
+
+				if (!records)
+					process.exit(1);
+			}
+
+			printJobDetails(records);
+			clientFini();
+		});
+	});
+}
+
+function printJobDetails(records)
+{
+	var job = records['job']['value'];
+	var mtime = records['job']['_mtime'];
+	var taskinputs = {};
+	var taskoutputs = {};
+	var taskslast = [];
+	var nout = 0, ninter = 0, nerr = 0;
+	var table, row, i, phase;
+
+	records['taskinput'].forEach(function (record) {
+		var taskid = record['value']['taskId'];
+
+		if (!taskinputs[taskid])
+			taskinputs[taskid] = [];
+
+		taskinputs[taskid].push(record);
+	});
+
+	records['taskoutput'].forEach(function (record) {
+		var taskid = record['value']['taskId'];
+
+		if (!taskoutputs[taskid])
+			taskoutputs[taskid] = [];
+
+		if (record['value']['error'])
+			nerr++;
+
+		taskoutputs[taskid].push(record);
+	});
+
+	records['task'].forEach(function (record) {
+		if (record['value']['state'] == 'cancelled' ||
+		    record['value']['state'] == 'aborted' ||
+		    record['value']['error'])
+			nerr++;
+
+		if (record['value']['phaseNum'] != job['phases'].length - 1 ||
+		    !record['value']['timeCommitted']) {
+			ninter += record['value']['nOutputs'] || 0;
+			return;
+		}
+
+		if (record['value']['nOutputs'])
+			nout += record['value']['nOutputs'];
+
+		taskslast.push(record);
+	});
+
+	row = makeJobRow(job, mod_jsprim.iso8601(new Date(mtime)));
+
+	mod_tab.emitTable({
+	    'columns': mapColumns([ 'JobID', 'JobName' ], msFieldsJobs),
+	    'rows': [ row ]
+	});
+
+	mod_tab.emitTable({
+	    'columns': mapColumns([ 'User', 'Created' ], msFieldsJobs),
+	    'rows': [ row ]
+	});
+
+	mod_tab.emitTable({
+	    'columns': mapColumns([ 'Worker', 'Modified' ], msFieldsJobs),
+	    'rows': [ row ]
+	});
+
+	mod_tab.emitTable({
+	    'columns': [ {
+		'label': 'STATE',
+		'width': 15
+	    }, {
+		'label': 'NPHASES',
+		'width': 7,
+		'align': 'right'
+	    }, {
+		'label': 'NINPUT',
+		'width': 10,
+		'align': 'right'
+	    }, {
+		'label': 'NTASKS',
+		'width': 10,
+		'align': 'right'
+	    }, {
+		'label': 'NINTERMED',
+		'width': 10,
+		'align': 'right'
+	    }, {
+		'label': 'NOUTPUT',
+		'width': 10,
+		'align': 'right'
+	    }, {
+		'label': 'NERRORS',
+		'width': 7,
+		'align': 'right'
+	    } ],
+	    'rows': [ {
+		/* XXX # of errors */
+		'STATE': job['state'],
+		'NPHASES': job['phases'].length,
+		'NINPUT': records['jobinput'].length,
+		'NTASKS': records['task'].length,
+		'NINTERMED': ninter,
+		'NOUTPUT': nout,
+		'NERRORS': nerr
+	    } ]
+	});
+
+	if (job['timeCancelled'])
+		println('NOTE: Cancelled at %s', job['timeCancelled']);
+	if (!job['timeInputDone'])
+		println('NOTE: Job is waiting for user input');
+	println('');
+
+	table = new mod_tab.TableOutputStream({
+	    'columns': [ {
+		'label': 'PHASE',
+		'width': 5,
+		'align': 'right'
+	    }, {
+		'label': 'TYPE',
+		'width': 12
+	    }, {
+		'label': 'EXEC'
+	    } ]
+	});
+
+	for (i = 0; i < job['phases'].length; i++) {
+		phase = job['phases'][i];
+		table.writeRow([ i, phase['type'] || 'storage-map',
+		    '"' + phase['exec'] + '"' ]);
+	}
+
+	println('\nJOB INPUT OBJECTS', records['jobinput'].length);
+
+	records['jobinput'].forEach(function (record) {
+		println('    %s', record['value']['key']);
+	});
+
+	if (!msVerbose) {
+		msApi.close();
+		return;
+	}
+
+	records['task'].sort(function (a, b) {
+		var r1 = a['value']['phaseNum'] - b['value']['phaseNum'];
+		if (r1 != 0)
+			return (r1);
+		if (a['value']['key'] < b['value']['key'])
+			return (-1);
+		if (a['value']['key'] > b['value']['keky'])
+			return (1);
+		return (0);
+	});
+
+	println('');
+	table = new mod_tab.TableOutputStream({
+	    'columns': [ {
+		'label': 'TASKID',
+		'width': 36
+	    }, {
+		'label': 'PH',
+		'width': 3,
+		'align': 'right'
+	    }, {
+		'label': 'S',
+		'width': 4,
+		'align': 'right'
+	    }, {
+		'label': 'RSLT',
+		'width': 4,
+		'align': 'right'
+	    }, {
+		'label': 'NOUT',
+		'width': 4,
+		'align': 'right'
+	    }, {
+		'label': 'KEY'
+	    } ]
+	});
+
+	records['task'].forEach(function (record) {
+		var taskid = record['value']['taskId'];
+
+		table.writeRow([
+		    record['value']['taskId'],
+		    record['value']['phaseNum'],
+		    msTaskStates[record['value']['state']] || '????',
+		    record['value']['result'] || '-',
+		    record['value']['nOutputs'] || 0,
+		    record['value']['key'] || (taskinputs[taskid] ?
+			taskinputs[taskid].length  + ' keys' : 'none')
+		]);
+
+		if (!msVerbose)
+			return;
+
+		if (record['value']['error'])
+			println('    ERROR:  %s',
+			    record['value']['error']['message']);
+
+		if (taskinputs[taskid])
+			taskinputs[taskid].forEach(function (rec) {
+				println('    INPUT:  %s', rec['value']['key']);
+			});
+
+		if (record['value']['firstOutputs'])
+			record['value']['firstOutputs'].forEach(function (out) {
+				println('    OUTPUT: %s', out['key']);
+			});
+
+		if (taskoutputs[taskid])
+			taskoutputs[taskid].forEach(function (rec) {
+				println('    OUTPUT: %s', rec['value']['key']);
+			});
 	});
 }
 
