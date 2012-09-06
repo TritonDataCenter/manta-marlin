@@ -1,5 +1,5 @@
 {
-  "name": "manta-compute",
+  "name": "marlin",
   "version": "0.0.2",
   "dependencies": {
     "bunyan": {
@@ -7,9 +7,6 @@
     },
     "extsprintf": {
       "version": "1.0.1"
-    },
-    "hyprlofs": {
-      "version": "0.0.1"
     },
     "illumos_contract": {
       "version": "0.0.7",
@@ -25,18 +22,15 @@
       }
     },
     "jsprim": {
-      "version": "0.2.0",
+      "version": "0.3.0",
       "dependencies": {
         "extsprintf": {
           "version": "1.0.0"
         },
-        "verror": {
-          "version": "1.0.1"
+        "json-schema": {
+          "version": "0.2.2"
         }
       }
-    },
-    "JSV": {
-      "version": "4.0.0"
     },
     "kang": {
       "version": "0.0.2",
@@ -323,6 +317,9 @@
     "zsock": {
       "version": "1.2.0",
       "from": "git://github.com/mcavage/node-zsock.git"
+    },
+    "hyprlofs": {
+      "version": "0.0.1"
     }
   }
 }
