@@ -1,5 +1,5 @@
 /*
- * test/live/common.js: Marlin integration functional test suite
+ * test/common.js: Marlin integration functional test suite
  *
  * The tests contained under test/live are designed to test functionality
  * against a live, running Marlin instance (as opposed to the unit tests that
@@ -14,7 +14,7 @@ var mod_path = require('path');
 var mod_vasync = require('vasync');
 var mod_bunyan = require('bunyan');
 
-var mod_marlin = require('../../lib/marlin');
+var mod_marlin = require('../lib/marlin');
 
 var testname = mod_path.basename(process.argv[1]);
 

@@ -2,7 +2,7 @@
  * tst.basic.js: basic functional testing
  */
 
-var test = require('./common');
+var test = require('../common');
 var jobs = require('./jobs');
 var client;
 

@@ -5,7 +5,7 @@
 var mod_assert = require('assert');
 var mod_vasync = require('vasync');
 var mod_verror = require('verror');
-var mod_testcommon = require('./common');
+var mod_testcommon = require('../common');
 
 var VError = mod_verror.VError;
 var exnAsync = mod_testcommon.exnAsync;
