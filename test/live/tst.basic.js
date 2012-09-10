@@ -8,6 +8,7 @@ var client;
 
 test.pipeline({ 'funcs': [
     setup,
+    putData,
     runTest,
     teardown
 ] });
@@ -20,12 +21,17 @@ function setup(_, next)
 	});
 }
 
-function teardown(_, next)
+function putData(_, next)
 {
-	test.teardown(client, next);
+	jobs.populateData(jobs.jobM['inputs'], next);
 }
 
 function runTest(_, next)
 {
 	jobs.jobTestRun(client, jobs.jobM, next);
+}
+
+function teardown(_, next)
+{
+	test.teardown(client, next);
 }

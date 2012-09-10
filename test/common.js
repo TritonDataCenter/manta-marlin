@@ -26,6 +26,7 @@ var log = new mod_bunyan({
 /* Public interface */
 exports.setup = setup;
 exports.teardown = teardown;
+exports.resetBucket = resetBucket;
 
 exports.pipeline = pipeline;
 exports.timedCheck = timedCheck;
@@ -53,6 +54,18 @@ function teardown(api, callback)
 {
 	api.close();
 	callback();
+}
+
+function resetBucket(client, bucket, options, callback)
+{
+	client.delBucket(bucket, function (err) {
+		if (err && !/does not exist/.test(err.message)) {
+			callback(err);
+			return;
+		}
+
+		client.putBucket(bucket, options, callback);
+	});
 }
 
 function pipeline(args)

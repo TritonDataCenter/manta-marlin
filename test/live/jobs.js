@@ -3,8 +3,12 @@
  */
 
 var mod_assert = require('assert');
+var mod_http = require('http');
+var mod_jsprim = require('jsprim');
+var mod_url = require('url');
 var mod_vasync = require('vasync');
 var mod_verror = require('verror');
+
 var mod_testcommon = require('../common');
 
 var VError = mod_verror.VError;
@@ -13,6 +17,7 @@ var log = mod_testcommon.log;
 
 exports.jobTestRun = jobTestRun;
 exports.jobSubmit = jobSubmit;
+exports.populateData = populateData;
 
 exports.jobM = {
     'job': {
@@ -85,7 +90,7 @@ function jobSubmit(api, testspec, callback)
 
 	funcs = [
 	    function (_, stepcb) {
-		log.debug('submitting job', jobdef);
+		log.info('submitting job', jobdef);
 		api.jobCreate(jobdef, function (err, result) {
 			jobid = result;
 			stepcb(err);
@@ -95,18 +100,18 @@ function jobSubmit(api, testspec, callback)
 
 	testspec['inputs'].forEach(function (key) {
 		funcs.push(function (_, stepcb) {
-			log.debug('job "%s": adding key %s', jobid, key);
+			log.info('job "%s": adding key %s', jobid, key);
 			api.jobAddKey(jobid, key, stepcb);
 		});
 	});
 
 	funcs.push(function (_, stepcb) {
-		log.debug('job "%s": ending input', jobid);
+		log.info('job "%s": ending input', jobid);
 		api.jobEndInput(jobid, stepcb);
 	});
 
 	mod_vasync.pipeline({ 'funcs': funcs }, function (err) {
-		log.debug('job "%s": job submission complete', jobid);
+		log.info('job "%s": job submission complete', jobid);
 		callback(err, jobid);
 	});
 }
@@ -137,11 +142,68 @@ function jobTestVerify(api, testspec, jobid, callback)
 		mod_assert.ok(job['timeInputDone'] >= job['timeCreated']);
 		mod_assert.ok(job['timeDone'] >= job['timeCreated']);
 
+		var outputs = [];
+
+		mod_jsprim.forEachKey(jobresult['task'],
+		    function (taskid, record) {
+			if (record['value']['phaseNum'] !=
+			    testspec['job']['phases'].length - 1)
+				return;
+
+			if (!record['value']['timeCommitted'] ||
+			    record['value']['result'] != 'ok')
+				return;
+
+			record['value']['firstOutputs'].forEach(function (out) {
+				outputs.push(out['key']);
+			});
+		    });
+
+		var expected_outputs = testspec['expected_outputs'].slice(0);
+		mod_assert.deepEqual(outputs.sort(), expected_outputs.sort());
+
+		/* XXX check expected tasks */
+
 		if (testspec['verify'])
 			testspec['verify'](testspec, jobresult);
 
 		callback();
 	}, callback));
+}
+
+function populateData(keys, callback)
+{
+	if (!process.env['MANTA_URL']) {
+		callback(new Error('MANTA_URL env var must be set.'));
+		return;
+	}
+
+	var url = mod_url.parse(process.env['MANTA_URL']);
+	mod_vasync.forEachParallel({
+	    'inputs': keys,
+	    'func': function (key, subcallback) {
+		var data = 'sample data for key ' + key;
+		var req = mod_http.request({
+		    'method': 'put',
+		    'host': url['hostname'],
+		    'port': parseInt(url['port'], 10) || 80,
+		    'path': key,
+		    'headers': {
+			'content-length': data.length
+		    }
+		});
+		req.write(data);
+		req.on('response', function (response) {
+			if (response.statusCode == 204) {
+				subcallback();
+				return;
+			}
+
+			subcallback(new Error('wrong status code for key ' +
+			    key + ': ' + response.statusCode));
+		});
+	    }
+	}, callback);
 }
 
 /*
