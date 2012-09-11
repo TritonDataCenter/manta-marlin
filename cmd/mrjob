@@ -353,8 +353,15 @@ function cmdEndinput()
 	if (process.argv.length < 4)
 		usage();
 
+	var opts = {
+	    'retry': {
+		'retries': 1,
+		'maxTimeout': 1000
+	    }
+	};
+
 	clientInit(function (api) {
-		api.jobEndInput(process.argv[3], function (err, record) {
+		api.jobEndInput(process.argv[3], opts, function (err, record) {
 			if (err) {
 				console.error('%s: %s', msArg0, err.message);
 				process.exit(1);
@@ -381,8 +388,15 @@ function cmdCancel()
 	if (process.argv.length < 4)
 		usage();
 
+	var opts = {
+	    'retry': {
+		'retries': 1,
+		'maxTimeout': 1000
+	    }
+	};
+
 	clientInit(function (api) {
-		api.jobCancel(process.argv[3], function (err, record) {
+		api.jobCancel(process.argv[3], opts, function (err, record) {
 			if (err) {
 				console.error('%s: %s', msArg0, err.message);
 				process.exit(1);

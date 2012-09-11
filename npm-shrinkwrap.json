@@ -73,9 +73,6 @@
             "qs": {
               "version": "0.4.2"
             },
-            "retry": {
-              "version": "0.6.0"
-            },
             "semver": {
               "version": "1.0.13"
             }
@@ -138,9 +135,6 @@
                   "version": "0.3.0"
                 }
               }
-            },
-            "retry": {
-              "version": "0.6.0"
             }
           }
         }
@@ -187,9 +181,6 @@
             },
             "qs": {
               "version": "0.5.0"
-            },
-            "retry": {
-              "version": "0.6.0"
             },
             "semver": {
               "version": "1.0.14"
@@ -274,13 +265,13 @@
         "qs": {
           "version": "0.4.2"
         },
-        "retry": {
-          "version": "0.6.0"
-        },
         "semver": {
           "version": "1.0.13"
         }
       }
+    },
+    "retry": {
+      "version": "0.6.0"
     },
     "tab": {
       "version": "0.0.2",
