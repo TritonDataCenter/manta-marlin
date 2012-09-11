@@ -20,21 +20,27 @@ function main()
 		process.exit(2);
 	}
 
-	log = new mod_bunyan({ 'name': 'mlocate' });
-	conf = mod_util.readConf(log, mod_worker.mwConfSchema, process.argv[2]);
-	locator = mod_locator.createLocator(conf);
-
-	locator.locate(process.argv.slice(3), function (err, results) {
-		if (err) {
-			console.error(err.message);
-			return;
-		}
-
-		console.log(JSON.stringify(results, null, 4));
+	log = new mod_bunyan({
+	    'name': 'mlocate',
+	    'level': process.env['LOG_LEVEL'] || 'info'
 	});
+	conf = mod_util.readConf(log, mod_worker.mwConfSchema, process.argv[2]);
+	locator = mod_locator.createLocator(conf, { 'log': log });
 
-	if (locator.cleanup)
-		locator.cleanup();
+	locator.on('ready', function () {
+		locator.locate(process.argv.slice(3), function (err, results) {
+			if (err) {
+				console.error(err.message);
+				process.exit(1);
+				return;
+			}
+
+			console.log(JSON.stringify(results, null, 4));
+
+			if (locator.cleanup)
+				locator.cleanup();
+		});
+	});
 }
 
 main();
