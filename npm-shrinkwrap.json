@@ -8,6 +8,9 @@
     "extsprintf": {
       "version": "1.0.1"
     },
+    "hiredis": {
+      "version": "0.1.14"
+    },
     "illumos_contract": {
       "version": "0.0.7",
       "dependencies": {
@@ -88,13 +91,13 @@
       "from": "git+ssh://git@git.joyent.com:manta-libindex.git#master",
       "dependencies": {
         "assert-plus": {
-          "version": "0.1.0"
+          "version": "0.1.1"
         },
         "bunyan": {
-          "version": "0.10.0"
+          "version": "0.13.5"
         },
         "clone": {
-          "version": "0.1.0"
+          "version": "0.1.1"
         },
         "fash": {
           "version": "0.1.1",
@@ -225,6 +228,9 @@
     },
     "posix-getopt": {
       "version": "1.0.0"
+    },
+    "redis": {
+      "version": "0.8.0"
     },
     "restify": {
       "version": "1.4.1",

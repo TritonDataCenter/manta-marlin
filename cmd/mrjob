@@ -783,6 +783,8 @@ function printJobDetails(records)
 
 		if (taskoutputs[taskid])
 			taskoutputs[taskid].forEach(function (rec) {
+				if (rec['value']['error'])
+					return;
 				println('    OUTPUT: %s', rec['value']['key']);
 			});
 	});

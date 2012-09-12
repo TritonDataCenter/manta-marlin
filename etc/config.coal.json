@@ -20,6 +20,14 @@
 		}
 	},
 
+	"auth": {
+		"host": "auth.coal.joyent.us",
+		"port": 6379,
+		"options": {
+			"enable_offline_queue": false
+		}
+	},
+
 	"buckets": {
 		"job": "marlin_jobs",
 		"jobinput": "marlin_jobinputs",
@@ -29,6 +37,7 @@
 	},
 
 	"tunables": {
+		"maxPendingAuths": 1000,
 		"maxPendingLocates": 25,
 		"maxPendingPuts": 25,
 		"timePoll": 1000,

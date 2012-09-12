@@ -19,6 +19,14 @@
 		}
 	},
 
+	"auth": {
+		"host": "auth.coal.joyent.us",
+		"port": 6379,
+		"options": {
+			"enable_offline_queue": false
+		}
+	},
+
 	"locator": "mock",
 
 	"buckets": {
@@ -30,6 +38,7 @@
 	},
 
 	"tunables": {
+		"maxPendingAuths": 1000,
 		"maxPendingLocates": 25,
 		"maxPendingPuts": 25,
 		"timePoll": 10,
