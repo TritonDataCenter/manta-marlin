@@ -761,9 +761,6 @@ function printJobDetails(records)
 		    taskinputs[taskid].length  + ' keys' : 'none');
 		println('    INPUT:  %s', input);
 
-		if (msVerbose === 0)
-			return;
-
 		if (record['value']['error']) {
 			var message = record['value']['error']['message'] ||
 			    '(no error specified)';
