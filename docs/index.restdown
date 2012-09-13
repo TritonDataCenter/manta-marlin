@@ -1204,8 +1204,9 @@ All task records have the following fields:
 Map tasks have the following extra fields:
 
 || **Field** || **Type** || **Description** ||
-|| key       || string   || Manta key to be processed ||
-|| objectid  || string   || unique Manta objectid for the key to be processed ||
+|| key       || string   || Manta key to be processed.  This is the user-visible key name, which means it contains the user's login name rather than the account uuid ||
+|| account   || string   || Account uuid for the user owning the key.  This is used at the agent to actually locate the key. ||
+|| objectid  || string   || Unique Manta objectid for the key to be processed ||
 || zonename  || string   || Mako zonename on remote server with a copy of this object ||
 
 Reduce tasks have the following extra field:
@@ -1251,6 +1252,7 @@ input key records**, each with the following fields:
 || jobId         || string            || see above ||
 || taskId        || string            || see above ||
 || key           || string            || input object's user-facing key ||
+|| account       || string            || account uuid for key ||
 || objectid      || string            || input object's unique Manta identifier ||
 || servers       || object&nbsp;array || list of locations for this key ||
 
@@ -1266,7 +1268,7 @@ records**, each of which describes a single key emitted from a given task:
 || jobId      || string   || see above ||
 || taskId     || string   || see above ||
 || error      || object   || see above ||
-|| key        || string   || Manta key for the object emitted ||
+|| key        || string   || Manta key for the object emitted (with login name, not account uuid) ||
 || created    || string   || time when the object was created ||
 
 These records are immutable, written only once by the agent and subsequently
