@@ -98,7 +98,7 @@ var msJobName = 'mrsubmit job';
 var msJobId = mod_uuid.v4();
 var msMorayUrl = process.env['MORAY_URL'];
 var msParseable = false;		/* whether output should be parseable */
-var msVerbose = false;			/* whether output should be verbose */
+var msVerbose = 0;			/* whether output should be verbose */
 var msColumns;				/* user-specified list of columns */
 
 var msApi;	/* marlin api */
@@ -540,7 +540,7 @@ function cmdGet()
 	while ((option = parser.getopt()) !== undefined) {
 		switch (option.option) {
 		case 'v':
-			msVerbose = true;
+			msVerbose++;
 			break;
 
 		default:
@@ -705,14 +705,11 @@ function printJobDetails(records)
 
 	println('\nJOB INPUT OBJECTS', records['jobinput'].length);
 
-	records['jobinput'].forEach(function (record) {
+	iterList(records['jobinput'], 3, function (record) {
 		println('    %s', record['value']['key']);
+	}, function () {
+		println('    ...');
 	});
-
-	if (!msVerbose) {
-		msApi.close();
-		return;
-	}
 
 	records['task'].sort(function (a, b) {
 		var r1 = a['value']['phaseNum'] - b['value']['phaseNum'];
@@ -746,12 +743,10 @@ function printJobDetails(records)
 		'label': 'NOUT',
 		'width': 4,
 		'align': 'right'
-	    }, {
-		'label': 'KEY'
 	    } ]
 	});
 
-	records['task'].forEach(function (record) {
+	iterList(records['task'], 3, function (record) {
 		var taskid = record['value']['taskId'];
 
 		table.writeRow([
@@ -759,17 +754,21 @@ function printJobDetails(records)
 		    record['value']['phaseNum'],
 		    msTaskStates[record['value']['state']] || '????',
 		    record['value']['result'] || '-',
-		    record['value']['nOutputs'] || 0,
-		    record['value']['key'] || (taskinputs[taskid] ?
-			taskinputs[taskid].length  + ' keys' : 'none')
+		    record['value']['nOutputs'] || 0
 		]);
 
-		if (!msVerbose)
+		var input = record['value']['key'] || (taskinputs[taskid] ?
+		    taskinputs[taskid].length  + ' keys' : 'none');
+		println('    INPUT:  %s', input);
+
+		if (msVerbose === 0)
 			return;
 
-		if (record['value']['error'])
-			println('    ERROR:  %s',
-			    record['value']['error']['message']);
+		if (record['value']['error']) {
+			var message = record['value']['error']['message'] ||
+			    '(no error specified)';
+			println('    ERROR:  %s', message);
+		}
 
 		if (taskinputs[taskid])
 			taskinputs[taskid].forEach(function (rec) {
@@ -787,7 +786,19 @@ function printJobDetails(records)
 					return;
 				println('    OUTPUT: %s', rec['value']['key']);
 			});
-	});
+	}, function () { println('\n...\n'); });
+}
+
+function iterList(list, count, func, separator)
+{
+	if (msVerbose >= 1 || list.length <= 2 * count)
+		list.forEach(func);
+	else {
+		list.slice(0, count).forEach(func);
+		if (separator)
+			separator();
+		list.slice(list.length - count).forEach(func);
+	}
 }
 
 main();
