@@ -768,9 +768,9 @@ function printJobDetails(records)
 		}
 
 		if (taskinputs[taskid])
-			taskinputs[taskid].forEach(function (rec) {
+			iterList(taskinputs[taskid], 3, function (rec) {
 				println('    INPUT:  %s', rec['value']['key']);
-			});
+			}, function () { println('    ...'); });
 
 		if (record['value']['firstOutputs'])
 			record['value']['firstOutputs'].forEach(function (out) {
