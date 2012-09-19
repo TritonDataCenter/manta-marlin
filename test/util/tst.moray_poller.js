@@ -142,6 +142,12 @@ function setupClient(_, next)
 	    'name': 'testbucket',
 	    'bucket': bucket,
 	    'mkfilter': mkfilter,
+	    'options': {
+		'sort': {
+		    'attribute': 'name',
+		    'order': 'ASC'
+		}
+	    },
 	    'interval': 0
 	});
 }
@@ -196,12 +202,19 @@ function check(_, next)
 	wait_time = Date.now();
 	waiter = function () {
 		mod_assert.equal(records.length, Object.keys(saved).length);
+		var prev;
+
 		while (records.length > 0) {
 			var record = records.shift();
 			var key = record['key'];
 			var expected = typeof (saved[key]) == 'object' ?
 			    saved[key] : objects[key];
 			mod_assert.deepEqual(record['value'], expected);
+
+			if (prev)
+				mod_assert.ok(record['value']['name'] >= prev);
+
+			prev = record['value']['name'];
 			delete (saved[key]);
 		}
 
