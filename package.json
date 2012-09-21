@@ -9,7 +9,7 @@
 		"bunyan": "0.13.0",
 		"extsprintf": "1.0.1",
                 "hiredis": "0.1.14",
-		"illumos_contract": "0.0.7",
+		"illumos_contract": "0.0.8",
 		"jsprim": "0.3.0",
 		"kang": "0.0.2",
 		"libindex": "git+ssh://git@git.joyent.com:manta-libindex.git#master",
