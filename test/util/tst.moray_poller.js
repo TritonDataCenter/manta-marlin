@@ -117,6 +117,39 @@ function setupClient(_, next)
 	});
 
 	client.on('connect', next);
+}
+
+/*
+ * Function that generates Moray filter.
+ */
+function mkfilter(last_id)
+{
+	return ('&(_id>=' + (last_id + 1) + ')(name=*)');
+}
+
+function setupBucket(_, next)
+{
+	var config = {
+	    'index': {
+		'name': { 'type': 'string' },
+		'age':  { 'type': 'number' }
+	    }
+	};
+
+	if (mutable) {
+		config['options'] = { 'trackModification': true };
+		bucket = bucket + 'mutable'; /* workaround MANTA-274 */
+	}
+
+	saved = {};
+	client.delBucket(bucket, function (err) {
+		if (err && !/does not exist/.test(err.message)) {
+			next(err);
+			return;
+		}
+
+		client.putBucket(bucket, config, next);
+	});
 
 	poller = new mod_mamoray.MorayPoller({
 	    'log': mod_common.log.child({ 'component': 'poller' }),
@@ -149,36 +182,6 @@ function setupClient(_, next)
 		}
 	    },
 	    'interval': 0
-	});
-}
-
-/*
- * Function that generates Moray filter.  We test two schemes here: for the
- * first bunch of tests, where objects are assumed to be immutable, we filter on
- * the id.  For the second bunch, we use the mtime.
- */
-function mkfilter(last_mtime, last_id)
-{
-	if (!mutable)
-		return ('&(_id>=' + (last_id + 1) + ')(name=*)');
-	return ('&(_mtime>=' + last_mtime + ')(name=*)');
-}
-
-function setupBucket(_, next)
-{
-	var schema = {
-	    'name': { 'type': 'string' },
-	    'age':  { 'type': 'number' }
-	};
-
-	saved = {};
-	client.delBucket(bucket, function (err) {
-		if (err && !/does not exist/.test(err.message)) {
-			next(err);
-			return;
-		}
-
-		client.putBucket(bucket, { 'index': schema }, next);
 	});
 }
 
