@@ -189,7 +189,8 @@ function populateData(keys, callback)
 		    'port': parseInt(url['port'], 10) || 80,
 		    'path': key,
 		    'headers': {
-			'content-length': data.length
+			'content-length': data.length,
+			'x-marlin': true
 		    }
 		});
 		req.write(data);
