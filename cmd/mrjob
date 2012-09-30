@@ -32,6 +32,7 @@ var msArg0 = mod_path.basename(process.argv[1]);
 var msUsage = [
     'USAGE: mrjob submit   [-i id] [-n name] [-m exec] [-r exec] ...',
     '       mrjob addkeys  jobid [key ...]',
+    '       mrjob listkeys jobid',
     '       mrjob endinput jobid',
     '       mrjob cancel   jobid',
     '       mrjob list     [-H] [-o field1[,field2...]]',
@@ -55,6 +56,10 @@ var msUsage = [
     '   addkeys jobid [key ...]',
     '',
     '       Submit new keys for a job (which may or may not already exist).',
+    '',
+    '   listkeys jobid',
+    '',
+    '       Lists all keys submitted for a job.',
     '',
     '   endinput jobid',
     '',
@@ -106,6 +111,7 @@ var msLog;	/* bunyan logger */
 var msCommands = {
     'submit': cmdSubmit,
     'addkeys': cmdAddkeys,
+    'listkeys': cmdListkeys,
     'endinput': cmdEndinput,
     'cancel': cmdCancel,
     'list': cmdList,
@@ -345,6 +351,30 @@ function cmdAddkeys()
 			});
 		    }
 		}, clientFini);
+	});
+}
+
+function cmdListkeys()
+{
+	if (process.argv.length < 4)
+		usage();
+
+	var jobid = process.argv[3];
+
+	clientInit(function (api) {
+		var rv = api.jobFetchInputs(jobid);
+
+		rv.on('error', function (err) {
+			console.error('%s: job "%s": failed to list inputs: %s',
+			    msArg0, jobid, err.message);
+			process.exit(1);
+		});
+
+		rv.on('key', function (key) {
+			console.log(key);
+		});
+
+		rv.on('end', clientFini);
 	});
 }
 
