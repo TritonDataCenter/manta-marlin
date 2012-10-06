@@ -8,8 +8,11 @@ var client;
 
 test.pipeline({ 'funcs': [
     setup,
-    putData,
-    runTest,
+    runTest.bind(null, jobs.jobM),
+    runTest.bind(null, jobs.jobR),
+    runTest.bind(null, jobs.jobMM),
+    runTest.bind(null, jobs.jobMR),
+    runTest.bind(null, jobs.jobMMRR),
     teardown
 ] });
 
@@ -21,14 +24,11 @@ function setup(_, next)
 	});
 }
 
-function putData(_, next)
+function runTest(testjob, _, next)
 {
-	jobs.populateData(jobs.jobM['inputs'], next);
-}
-
-function runTest(_, next)
-{
-	jobs.jobTestRun(client, jobs.jobM, next);
+	jobs.populateData(testjob['inputs'], function () {
+		jobs.jobTestRun(client, testjob, next);
+	});
 }
 
 function teardown(_, next)

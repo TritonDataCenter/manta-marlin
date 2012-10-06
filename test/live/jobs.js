@@ -40,26 +40,254 @@ exports.jobM = {
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': '/test/stor/obj1.out'
+	'firstOutputs': [ '/test/stor/obj1.out' ]
     }, {
 	'phaseNum': 0,
 	'key': '/test/stor/obj2',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': '/test/stor/obj2.out'
+	'firstOutputs': [ '/test/stor/obj2.out' ]
     }, {
 	'phaseNum': 0,
 	'key': '/test/stor/obj3',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': '/test/stor/obj3.out'
+	'firstOutputs': [ '/test/stor/obj3.out' ]
     } ],
     'verify': function (testspec, jobresult) {
 	mod_assert.equal(jobresult['taskinput'].length, 0);
 	mod_assert.equal(jobresult['taskoutput'].length, 0);
 	mod_assert.equal(jobresult['task'].length, 3);
+	mod_assert.equal(jobresult['jobinput'].length, 3);
+    }
+};
+
+exports.jobMM = {
+    'job': {
+	'phases': [
+	    { 'type': 'storage-map', 'exec': 'wc' },
+	    { 'type': 'storage-map', 'exec': 'wc' }
+	]
+    },
+    'inputs': [
+	'/test/stor/obj1',
+	'/test/stor/obj2',
+	'/test/stor/obj3'
+    ],
+    'timeout': 30 * 1000,
+    'expected_outputs': [
+	'/test/stor/obj1.out.out',
+	'/test/stor/obj2.out.out',
+	'/test/stor/obj3.out.out'
+    ],
+    'expected_tasks': [ {
+	'phaseNum': 0,
+	'key': '/test/stor/obj1',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/test/stor/obj1.out' ]
+    }, {
+	'phaseNum': 0,
+	'key': '/test/stor/obj2',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/test/stor/obj2.out' ]
+    }, {
+	'phaseNum': 0,
+	'key': '/test/stor/obj3',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/test/stor/obj3.out' ]
+    }, {
+	'phaseNum': 1,
+	'key': '/test/stor/obj1.out',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/test/stor/obj1.out.out' ]
+    }, {
+	'phaseNum': 1,
+	'key': '/test/stor/obj2.out',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/test/stor/obj2.out.out' ]
+    }, {
+	'phaseNum': 1,
+	'key': '/test/stor/obj3.out',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/test/stor/obj3.out.out' ]
+    } ],
+    'verify': function (testspec, jobresult) {
+	mod_assert.equal(jobresult['taskinput'].length, 0);
+	mod_assert.equal(jobresult['taskoutput'].length, 0);
+	mod_assert.equal(jobresult['jobinput'].length, 3);
+    }
+};
+
+exports.jobR = {
+    'job': {
+	'phases': [ { 'type': 'reduce', 'exec': 'wc' } ]
+    },
+    'inputs': [
+	'/test/stor/obj1',
+	'/test/stor/obj2',
+	'/test/stor/obj3'
+    ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [
+	/\/test\/stor\/.*\.out/
+    ],
+    'expected_tasks': [ {
+	'phaseNum': 0,
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ /\/test\/stor\/.*.out/ ]
+    } ],
+    'verify': function (testspec, jobresult) {
+	mod_assert.equal(jobresult['taskinput'].length, 3);
+	mod_assert.equal(jobresult['taskoutput'].length, 0);
+	mod_assert.equal(jobresult['task'].length, 1);
+	mod_assert.equal(jobresult['jobinput'].length, 3);
+    }
+};
+
+exports.jobMR = {
+    'job': {
+	'phases': [
+	    { 'type': 'storage-map', 'exec': 'wc' },
+	    { 'type': 'reduce', 'exec': 'wc' }
+	]
+    },
+    'inputs': [
+	'/test/stor/obj1',
+	'/test/stor/obj2',
+	'/test/stor/obj3'
+    ],
+    'timeout': 30 * 1000,
+    'expected_outputs': [
+	/\/test\/stor\/.*\.out/
+    ],
+    'expected_tasks': [ {
+	'phaseNum': 0,
+	'key': '/test/stor/obj1',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/test/stor/obj1.out' ]
+    }, {
+	'phaseNum': 0,
+	'key': '/test/stor/obj2',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/test/stor/obj2.out' ]
+    }, {
+	'phaseNum': 0,
+	'key': '/test/stor/obj3',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/test/stor/obj3.out' ]
+    }, {
+	'phaseNum': 1,
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ /\/test\/stor\/.*.out/ ]
+    } ],
+    'verify': function (testspec, jobresult) {
+	mod_assert.equal(jobresult['taskinput'].length, 3);
+	mod_assert.equal(jobresult['taskoutput'].length, 0);
+	mod_assert.equal(jobresult['task'].length, 4);
+	mod_assert.equal(jobresult['jobinput'].length, 3);
+    }
+};
+
+exports.jobMMRR = {
+    'job': {
+	'phases': [
+	    { 'type': 'storage-map', 'exec': 'wc' },
+	    { 'type': 'storage-map', 'exec': 'wc' },
+	    { 'type': 'reduce', 'exec': 'wc' },
+	    { 'type': 'reduce', 'exec': 'wc' }
+	]
+    },
+    'inputs': [
+	'/test/stor/obj1',
+	'/test/stor/obj2',
+	'/test/stor/obj3'
+    ],
+    'timeout': 60 * 1000,
+    'expected_outputs': [
+	/\/test\/stor\/.*\.out/
+    ],
+    'expected_tasks': [ {
+	'phaseNum': 0,
+	'key': '/test/stor/obj1',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/test/stor/obj1.out' ]
+    }, {
+	'phaseNum': 0,
+	'key': '/test/stor/obj2',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/test/stor/obj2.out' ]
+    }, {
+	'phaseNum': 0,
+	'key': '/test/stor/obj3',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/test/stor/obj3.out' ]
+    }, {
+	'phaseNum': 1,
+	'key': '/test/stor/obj1.out',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/test/stor/obj1.out.out' ]
+    }, {
+	'phaseNum': 1,
+	'key': '/test/stor/obj2.out',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/test/stor/obj2.out.out' ]
+    }, {
+	'phaseNum': 1,
+	'key': '/test/stor/obj3.out',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/test/stor/obj3.out.out' ]
+    }, {
+	'phaseNum': 2,
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ /\/test\/stor\/.*\.out/ ]
+    }, {
+	'phaseNum': 3,
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ /\/test\/stor\/.*\.out/ ]
+    } ],
+    'verify': function (testspec, jobresult) {
+	mod_assert.equal(jobresult['taskinput'].length, 4);
+	mod_assert.equal(jobresult['taskoutput'].length, 0);
 	mod_assert.equal(jobresult['jobinput'].length, 3);
     }
 };
@@ -142,6 +370,7 @@ function jobTestVerify(api, testspec, jobid, callback)
 		mod_assert.ok(job['timeInputDone'] >= job['timeCreated']);
 		mod_assert.ok(job['timeDone'] >= job['timeCreated']);
 
+		/* Check expected job outputs. */
 		var outputs = [];
 
 		mod_jsprim.forEachKey(jobresult['task'],
@@ -159,16 +388,72 @@ function jobTestVerify(api, testspec, jobid, callback)
 			});
 		    });
 
-		var expected_outputs = testspec['expected_outputs'].slice(0);
-		mod_assert.deepEqual(outputs.sort(), expected_outputs.sort());
+		outputs.sort();
 
-		/* XXX check expected tasks */
+		var expected_outputs = testspec['expected_outputs'].slice(0);
+		expected_outputs.sort();
+
+		mod_assert.equal(outputs.length, expected_outputs.length);
+		for (var i = 0; i < outputs.length; i++) {
+			if (typeof (expected_outputs[i]) == 'string')
+				mod_assert.equal(expected_outputs[i],
+				    outputs[i],
+				    'output ' + i + ' doesn\'t match');
+			else
+				mod_assert.ok(
+				    expected_outputs[i].test(outputs[i]));
+		}
+
+		/* Check expected task records. */
+		var ntasks = Object.keys(jobresult['task']).length;
+		var expected_tasks = testspec['expected_tasks'].slice(0);
+		expected_tasks.forEach(function (etask) {
+			for (var key in jobresult['task']) {
+				var task = jobresult['task'][key]['value'];
+				if (jobTaskMatches(etask, task))
+					return;
+			}
+
+			throw (new VError('no matching task for %j (of %j)',
+			    etask, jobresult['task']));
+		});
+
+		mod_assert.equal(ntasks, expected_tasks.length);
 
 		if (testspec['verify'])
 			testspec['verify'](testspec, jobresult);
 
 		callback();
 	}, callback));
+}
+
+function jobTaskMatches(etask, task)
+{
+	for (var prop in etask) {
+		if (prop != 'firstOutputs') {
+			if (etask[prop] !== task[prop])
+				return (false);
+			continue;
+		}
+
+		var expected = etask[prop];
+		var actual = task[prop];
+		if (expected.length != actual.length)
+			return (false);
+
+		actual.sort();
+		expected.sort();
+
+		for (var i = 0; i < expected.length; i++) {
+			if ((typeof (expected[i]) == 'string' &&
+			    expected[i] != actual[i]['key']) ||
+			    (typeof (expected[i]) != 'string' &&
+			    !expected[i].test(actual[i]['key'])))
+				return (false);
+		}
+	}
+
+	return (true);
 }
 
 function populateData(keys, callback)
@@ -209,11 +494,6 @@ function populateData(keys, callback)
 
 /*
  * TODO more test cases:
- * - Job configurations:
- *   - two-map-phase job
- *   - map-reduce job
- *   - map-map-reduce-reduce job
- *   - single-phase reduce job
  * - Input variations:
  *   - 0 input keys
  *   - non-existent key
