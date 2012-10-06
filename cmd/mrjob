@@ -35,6 +35,7 @@ var msUsage = [
     '       mrjob listkeys jobid',
     '       mrjob endinput jobid',
     '       mrjob cancel   jobid',
+    '       mrjob failed   jobid',
     '       mrjob list     [-H] [-o field1[,field2...]]',
     '       mrjob get      [-v] jobid',
     '',
@@ -68,6 +69,14 @@ var msUsage = [
     '   cancel jobid',
     '',
     '       Mark a job job cancelled.',
+    '',
+    '   failed jobid',
+    '',
+    '       Lists job input keys whose processing failed, either during the ',
+    '       first phase or a subsequent phase.  Note that failures during or ',
+    '       after any reduce phase cannot be tracked back to the original ',
+    '       input key, so such failures will not be represented in this ',
+    '       output.',
     '',
     '   list [-H] [-o field1[,field2...]]',
     '',
@@ -115,6 +124,7 @@ var msCommands = {
     'endinput': cmdEndinput,
     'cancel': cmdCancel,
     'list': cmdList,
+    'failed': cmdFailed,
     'get': cmdGet
 };
 
@@ -441,6 +451,30 @@ function cmdCancel()
 
 			clientFini();
 		});
+	});
+}
+
+function cmdFailed()
+{
+	if (process.argv.length < 4)
+		usage();
+
+	var jobid = process.argv[3];
+
+	clientInit(function (api) {
+		var rv = api.jobFetchFailedJobInputs(jobid);
+
+		rv.on('error', function (err) {
+			console.error('%s: job "%s": failed to list failed: %s',
+			    msArg0, jobid, err.message);
+			process.exit(1);
+		});
+
+		rv.on('key', function (key) {
+			console.log(key);
+		});
+
+		rv.on('end', clientFini);
 	});
 }
 
