@@ -24,37 +24,37 @@ exports.jobM = {
 	'phases': [ { 'type': 'storage-map', 'exec': 'wc' } ]
     },
     'inputs': [
-	'/test/stor/obj1',
-	'/test/stor/obj2',
-	'/test/stor/obj3'
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj2',
+	'/poseidon/stor/obj3'
     ],
     'timeout': 15 * 1000,
     'expected_outputs': [
-	'/test/stor/obj1.out',
-	'/test/stor/obj2.out',
-	'/test/stor/obj3.out'
+	'/poseidon/stor/obj1.out',
+	'/poseidon/stor/obj2.out',
+	'/poseidon/stor/obj3.out'
     ],
     'expected_tasks': [ {
 	'phaseNum': 0,
-	'key': '/test/stor/obj1',
+	'key': '/poseidon/stor/obj1',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj1.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj1.out' ]
     }, {
 	'phaseNum': 0,
-	'key': '/test/stor/obj2',
+	'key': '/poseidon/stor/obj2',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj2.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj2.out' ]
     }, {
 	'phaseNum': 0,
-	'key': '/test/stor/obj3',
+	'key': '/poseidon/stor/obj3',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj3.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj3.out' ]
     } ],
     'verify': function (testspec, jobresult) {
 	mod_assert.equal(jobresult['taskinput'].length, 0);
@@ -72,58 +72,58 @@ exports.jobMM = {
 	]
     },
     'inputs': [
-	'/test/stor/obj1',
-	'/test/stor/obj2',
-	'/test/stor/obj3'
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj2',
+	'/poseidon/stor/obj3'
     ],
     'timeout': 30 * 1000,
     'expected_outputs': [
-	'/test/stor/obj1.out.out',
-	'/test/stor/obj2.out.out',
-	'/test/stor/obj3.out.out'
+	'/poseidon/stor/obj1.out.out',
+	'/poseidon/stor/obj2.out.out',
+	'/poseidon/stor/obj3.out.out'
     ],
     'expected_tasks': [ {
 	'phaseNum': 0,
-	'key': '/test/stor/obj1',
+	'key': '/poseidon/stor/obj1',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj1.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj1.out' ]
     }, {
 	'phaseNum': 0,
-	'key': '/test/stor/obj2',
+	'key': '/poseidon/stor/obj2',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj2.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj2.out' ]
     }, {
 	'phaseNum': 0,
-	'key': '/test/stor/obj3',
+	'key': '/poseidon/stor/obj3',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj3.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj3.out' ]
     }, {
 	'phaseNum': 1,
-	'key': '/test/stor/obj1.out',
+	'key': '/poseidon/stor/obj1.out',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj1.out.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj1.out.out' ]
     }, {
 	'phaseNum': 1,
-	'key': '/test/stor/obj2.out',
+	'key': '/poseidon/stor/obj2.out',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj2.out.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj2.out.out' ]
     }, {
 	'phaseNum': 1,
-	'key': '/test/stor/obj3.out',
+	'key': '/poseidon/stor/obj3.out',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj3.out.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj3.out.out' ]
     } ],
     'verify': function (testspec, jobresult) {
 	mod_assert.equal(jobresult['taskinput'].length, 0);
@@ -137,20 +137,20 @@ exports.jobR = {
 	'phases': [ { 'type': 'reduce', 'exec': 'wc' } ]
     },
     'inputs': [
-	'/test/stor/obj1',
-	'/test/stor/obj2',
-	'/test/stor/obj3'
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj2',
+	'/poseidon/stor/obj3'
     ],
     'timeout': 15 * 1000,
     'expected_outputs': [
-	/\/test\/stor\/.*\.out/
+	/\/poseidon\/stor\/.*\.out/
     ],
     'expected_tasks': [ {
 	'phaseNum': 0,
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ /\/test\/stor\/.*.out/ ]
+	'firstOutputs': [ /\/poseidon\/stor\/.*.out/ ]
     } ],
     'verify': function (testspec, jobresult) {
 	mod_assert.equal(jobresult['taskinput'].length, 3);
@@ -168,41 +168,41 @@ exports.jobMR = {
 	]
     },
     'inputs': [
-	'/test/stor/obj1',
-	'/test/stor/obj2',
-	'/test/stor/obj3'
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj2',
+	'/poseidon/stor/obj3'
     ],
     'timeout': 30 * 1000,
     'expected_outputs': [
-	/\/test\/stor\/.*\.out/
+	/\/poseidon\/stor\/.*\.out/
     ],
     'expected_tasks': [ {
 	'phaseNum': 0,
-	'key': '/test/stor/obj1',
+	'key': '/poseidon/stor/obj1',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj1.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj1.out' ]
     }, {
 	'phaseNum': 0,
-	'key': '/test/stor/obj2',
+	'key': '/poseidon/stor/obj2',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj2.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj2.out' ]
     }, {
 	'phaseNum': 0,
-	'key': '/test/stor/obj3',
+	'key': '/poseidon/stor/obj3',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj3.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj3.out' ]
     }, {
 	'phaseNum': 1,
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ /\/test\/stor\/.*.out/ ]
+	'firstOutputs': [ /\/poseidon\/stor\/.*.out/ ]
     } ],
     'verify': function (testspec, jobresult) {
 	mod_assert.equal(jobresult['taskinput'].length, 3);
@@ -222,68 +222,68 @@ exports.jobMMRR = {
 	]
     },
     'inputs': [
-	'/test/stor/obj1',
-	'/test/stor/obj2',
-	'/test/stor/obj3'
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj2',
+	'/poseidon/stor/obj3'
     ],
     'timeout': 60 * 1000,
     'expected_outputs': [
-	/\/test\/stor\/.*\.out/
+	/\/poseidon\/stor\/.*\.out/
     ],
     'expected_tasks': [ {
 	'phaseNum': 0,
-	'key': '/test/stor/obj1',
+	'key': '/poseidon/stor/obj1',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj1.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj1.out' ]
     }, {
 	'phaseNum': 0,
-	'key': '/test/stor/obj2',
+	'key': '/poseidon/stor/obj2',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj2.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj2.out' ]
     }, {
 	'phaseNum': 0,
-	'key': '/test/stor/obj3',
+	'key': '/poseidon/stor/obj3',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj3.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj3.out' ]
     }, {
 	'phaseNum': 1,
-	'key': '/test/stor/obj1.out',
+	'key': '/poseidon/stor/obj1.out',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj1.out.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj1.out.out' ]
     }, {
 	'phaseNum': 1,
-	'key': '/test/stor/obj2.out',
+	'key': '/poseidon/stor/obj2.out',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj2.out.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj2.out.out' ]
     }, {
 	'phaseNum': 1,
-	'key': '/test/stor/obj3.out',
+	'key': '/poseidon/stor/obj3.out',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/test/stor/obj3.out.out' ]
+	'firstOutputs': [ '/poseidon/stor/obj3.out.out' ]
     }, {
 	'phaseNum': 2,
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ /\/test\/stor\/.*\.out/ ]
+	'firstOutputs': [ /\/poseidon\/stor\/.*\.out/ ]
     }, {
 	'phaseNum': 3,
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ /\/test\/stor\/.*\.out/ ]
+	'firstOutputs': [ /\/poseidon\/stor\/.*\.out/ ]
     } ],
     'verify': function (testspec, jobresult) {
 	mod_assert.equal(jobresult['taskinput'].length, 4);
@@ -335,7 +335,7 @@ function jobSubmit(api, testspec, callback)
 
 	funcs.push(function (_, stepcb) {
 		log.info('job "%s": ending input', jobid);
-		api.jobEndInput(jobid, stepcb);
+		api.jobEndInput(jobid, { 'retry': { 'retries': 3 } }, stepcb);
 	});
 
 	mod_vasync.pipeline({ 'funcs': funcs }, function (err) {
