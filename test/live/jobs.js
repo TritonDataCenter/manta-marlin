@@ -30,9 +30,9 @@ exports.jobM = {
     ],
     'timeout': 15 * 1000,
     'expected_outputs': [
-	'/poseidon/stor/obj1.out',
-	'/poseidon/stor/obj2.out',
-	'/poseidon/stor/obj3.out'
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
     ],
     'expected_tasks': [ {
 	'phaseNum': 0,
@@ -40,21 +40,27 @@ exports.jobM = {
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj1.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+	]
     }, {
 	'phaseNum': 0,
 	'key': '/poseidon/stor/obj2',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj2.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./
+	]
     }, {
 	'phaseNum': 0,
 	'key': '/poseidon/stor/obj3',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj3.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
+	]
     } ],
     'verify': function (testspec, jobresult) {
 	mod_assert.equal(jobresult['taskinput'].length, 0);
@@ -78,9 +84,9 @@ exports.jobMM = {
     ],
     'timeout': 30 * 1000,
     'expected_outputs': [
-	'/poseidon/stor/obj1.out.out',
-	'/poseidon/stor/obj2.out.out',
-	'/poseidon/stor/obj3.out.out'
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.1\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.1\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.1\./
     ],
     'expected_tasks': [ {
 	'phaseNum': 0,
@@ -88,42 +94,54 @@ exports.jobMM = {
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj1.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+	]
     }, {
 	'phaseNum': 0,
 	'key': '/poseidon/stor/obj2',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj2.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./
+	]
     }, {
 	'phaseNum': 0,
 	'key': '/poseidon/stor/obj3',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj3.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
+	]
     }, {
 	'phaseNum': 1,
-	'key': '/poseidon/stor/obj1.out',
+	'key': /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj1.out.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.1\./
+	]
     }, {
 	'phaseNum': 1,
-	'key': '/poseidon/stor/obj2.out',
+	'key': /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj2.out.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.1\./
+	]
     }, {
 	'phaseNum': 1,
-	'key': '/poseidon/stor/obj3.out',
+	'key': /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj3.out.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.1\./
+	]
     } ],
     'verify': function (testspec, jobresult) {
 	mod_assert.equal(jobresult['taskinput'].length, 0);
@@ -143,14 +161,14 @@ exports.jobR = {
     ],
     'timeout': 15 * 1000,
     'expected_outputs': [
-	/\/poseidon\/stor\/.*\.out/
+	/\/poseidon\/jobs\/.*\/stor\/reduce\.0\./
     ],
     'expected_tasks': [ {
 	'phaseNum': 0,
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ /\/poseidon\/stor\/.*.out/ ]
+	'firstOutputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.0\./ ]
     } ],
     'verify': function (testspec, jobresult) {
 	mod_assert.equal(jobresult['taskinput'].length, 3);
@@ -174,7 +192,7 @@ exports.jobMR = {
     ],
     'timeout': 30 * 1000,
     'expected_outputs': [
-	/\/poseidon\/stor\/.*\.out/
+	/\/poseidon\/jobs\/.*\/stor\/reduce\.1\./
     ],
     'expected_tasks': [ {
 	'phaseNum': 0,
@@ -182,27 +200,35 @@ exports.jobMR = {
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj1.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+	]
     }, {
 	'phaseNum': 0,
 	'key': '/poseidon/stor/obj2',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj2.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./
+	]
     }, {
 	'phaseNum': 0,
 	'key': '/poseidon/stor/obj3',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj3.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
+	]
     }, {
 	'phaseNum': 1,
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ /\/poseidon\/stor\/.*.out/ ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/reduce\.1\./
+	]
     } ],
     'verify': function (testspec, jobresult) {
 	mod_assert.equal(jobresult['taskinput'].length, 3);
@@ -226,9 +252,9 @@ exports.jobMMRR = {
 	'/poseidon/stor/obj2',
 	'/poseidon/stor/obj3'
     ],
-    'timeout': 60 * 1000,
+    'timeout': 90 * 1000,
     'expected_outputs': [
-	/\/poseidon\/stor\/.*\.out/
+	/\/poseidon\/jobs\/.*\/stor\/reduce\.3\./
     ],
     'expected_tasks': [ {
 	'phaseNum': 0,
@@ -236,54 +262,66 @@ exports.jobMMRR = {
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj1.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+	]
     }, {
 	'phaseNum': 0,
 	'key': '/poseidon/stor/obj2',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj2.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./
+	]
     }, {
 	'phaseNum': 0,
 	'key': '/poseidon/stor/obj3',
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj3.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
+	]
     }, {
 	'phaseNum': 1,
-	'key': '/poseidon/stor/obj1.out',
+	'key': /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj1.out.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.1\./
+	]
     }, {
 	'phaseNum': 1,
-	'key': '/poseidon/stor/obj2.out',
+	'key': /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj2.out.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.1\./
+	]
     }, {
 	'phaseNum': 1,
-	'key': '/poseidon/stor/obj3.out',
+	'key': /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj3.out.out' ]
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.1\./
+	]
     }, {
 	'phaseNum': 2,
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ /\/poseidon\/stor\/.*\.out/ ]
+	'firstOutputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.2\./ ]
     }, {
 	'phaseNum': 3,
 	'state': 'done',
 	'result': 'ok',
 	'nOutputs': 1,
-	'firstOutputs': [ /\/poseidon\/stor\/.*\.out/ ]
+	'firstOutputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.3\./ ]
     } ],
     'verify': function (testspec, jobresult) {
 	mod_assert.equal(jobresult['taskinput'].length, 4);
@@ -430,9 +468,21 @@ function jobTestVerify(api, testspec, jobid, callback)
 function jobTaskMatches(etask, task)
 {
 	for (var prop in etask) {
-		if (prop != 'firstOutputs') {
+		if (prop != 'firstOutputs' && prop != 'key') {
 			if (etask[prop] !== task[prop])
 				return (false);
+			continue;
+		}
+
+		if (prop == 'key') {
+			if (typeof (etask[prop]) == 'string') {
+				if (etask[prop] != task[prop])
+					return (false);
+			} else {
+				if (!etask[prop].test(task[prop]))
+					return (false);
+			}
+
 			continue;
 		}
 
