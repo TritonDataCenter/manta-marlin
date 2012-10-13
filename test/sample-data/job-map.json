@@ -1,5 +1,0 @@
-{
-    "jobName": "testing job",
-    "inputKeys": [ "/dap/stor/words", "/dap/stor/release" ],
-    "phases": [ { "exec": "wc" } ]
-}

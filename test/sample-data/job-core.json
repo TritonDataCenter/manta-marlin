@@ -1,5 +1,0 @@
-{
-    "jobName": "job that will dump core",
-    "inputKeys": [ "/dap/stor/core.15370" ],
-    "phases": [ { "exec": "echo '::load v8 ; ::findjsobjects' | mdb $mc_input_file 2>&1" } ]
-}

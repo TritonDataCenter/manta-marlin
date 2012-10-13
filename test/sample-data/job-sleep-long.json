@@ -1,5 +1,0 @@
-{
-    "jobName": "super sleepy job",
-    "inputKeys": [ "/dap/stor/words" ],
-    "phases": [ { "exec": "sleep 300 && echo hello" } ]
-}

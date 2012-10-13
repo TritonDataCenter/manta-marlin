@@ -227,7 +227,7 @@ Assumes: ImageMagick package installed in the zone
         "jobName": "convert images to PNGs",
         "phases": [ {
             "exec": "convert $mr_input_file ${mr_input_file##*.}.png &&
-                dpipe < ${mr_input_file##*.}.png"
+                mpipe < ${mr_input_file##*.}.png"
         } ]
     }
 
@@ -248,7 +248,7 @@ Assumes: ffmpeg package installed in the zone
         "jobName": "transcode video to webm",
         "phases": [ {
             "exec": "ffmpeg -i $mr_input_file ${mr_input_file##*.}.webm &&
-                dpipe < ${mr_input_file##*.}.webm"
+                mpipe < ${mr_input_file##*.}.webm"
         } ]
     }
 
@@ -358,7 +358,7 @@ a pretty simple map job:
         "phases": [ {
             "dataset": "smartos-1.6.3",
             "exec": "git clone $mr_input_file repo && cd repo && make &&
-                dpipe < build/dist/latest.tar.bz2"
+                mpipe < build/dist/latest.tar.bz2"
         } ]
     }
 
@@ -511,9 +511,9 @@ processes and the entire filesystem contents will be preserved.
 
 We'll provide several facilities for dealing with common tasks in MR jobs.
 
-### dpipe: output to the next job pipeline
+### mpipe: output to the next job pipeline
 
-dpipe [&lt;manta_key&gt;] [reducer]
+mpipe [&lt;manta_key&gt;] [reducer]
 
 Reads content from stdin and outputs it from this task.  If &lt;manta\_key&gt;
 is not given, a new name will be created.

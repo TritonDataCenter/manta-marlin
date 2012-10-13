@@ -1,26 +1,27 @@
-#!/usr/bin/env node
+#!/usr/node/bin/node
 
 var mod_fs = require('fs');
 var mod_http = require('http');
+var mod_path = require('path');
 var mod_uuid = require('node-uuid');
 
 /*
- * dpipe: distributed pipe
+ * mpipe: distributed pipe
  */
 var dpUsageMessage = [
-    'usage: dpipe [objectkey]',
+    'usage: mpipe [objectkey]',
     '',
-    'dpipe is a distributed pipe for compute jobs.  This command reads data',
+    'mpipe is a distributed pipe for compute jobs.  This command reads data',
     'from stdin and saves it as a new object called "objectkey".  The new ',
-    'object is recorded as an output object for the current input object.  ',
-    'If "objectkey" is unspecified, a unique key will be created.',
+    'object is recorded as an output object for the current task.  If ',
+    '"objectkey" is unspecified, a unique key will be created.',
     '',
     'Because the object store requires knowing content-length ahead of time, ',
     'this command buffers input to the local filesystem before uploading any ',
     'of it.'
 ].join('\n');
 
-var dpTmpfile = '/var/tmp/dpipe.' + process.pid;
+var dpTmpfile = '/var/tmp/mpipe.' + process.pid;
 var dpObjkey;
 var dpOutstream, dpInstream;
 
@@ -28,8 +29,20 @@ function main()
 {
 	if (process.argv.length > 2) {
 		dpObjkey = process.argv[2];
+	} else if (process.env['MANTA_OUTPUT_BASE']) {
+		dpObjkey = process.env['MANTA_OUTPUT_BASE'] + mod_uuid.v4();
 	} else {
-		dpObjkey = mod_uuid.v4();
+		/*
+		 * User programs invoking "mpipe" are expected to pass through
+		 * the environment they were created with, which will contain
+		 * variables we need to name the output key appropriately.  If
+		 * this becomes problematic for some use cases, we could fetch
+		 * this information from the HTTP server inside the zone,
+		 * obviously with some additional latency.
+		 */
+		console.error(
+		    'mpipe: manta configuration not found in environment');
+		process.exit(2);
 	}
 
 	if (dpObjkey.length === 0) {
@@ -60,7 +73,7 @@ function dpUploadFile()
 				dpFatal('failed to stat ' + dpTmpfile +
 				    ': ' + err.message);
 
-			var uri = '/object/' + dpObjkey;
+			var uri = mod_path.join('/object', dpObjkey);
 			console.error('uploading file to %s', uri);
 
 			var request = mod_http.request({

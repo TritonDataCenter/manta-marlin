@@ -1,5 +1,0 @@
-{
-	"jobName": "job-map.json",
-	"inputKeys": [ "/dap/stor/words" ],
-	"phases": [ { "exec": "wc" } ]
-}

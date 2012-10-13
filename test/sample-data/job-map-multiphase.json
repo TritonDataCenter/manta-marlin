@@ -1,9 +1,0 @@
-{
-	"jobName": "job-map-multiphase.json",
-	"inputKeys": [ "/dap/stor/words", "/dap/stor/release", "/dap/stor/nonexistent", "/dap/stor/sshd_config" ],
-	"phases": [ {
-		"exec": "wc"
-	}, {
-		"exec": "ls -lH $mc_input_file"
-	} ]
-}
