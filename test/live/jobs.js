@@ -350,7 +350,7 @@ function jobSubmit(api, testspec, callback)
 	var jobdef, funcs, jobid;
 
 	jobdef = {
-	    'owner': 'test',
+	    'owner': 'b774fc96-7eba-44d8-9fc7-52eb3395f93f',
 	    'phases': testspec['job']['phases']
 	};
 
