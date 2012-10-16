@@ -59,7 +59,7 @@ function setupClient(_, next)
 
 	queue = new mod_mamoray.MorayWriteQueue({
 	    'log': mod_common.log.child({ 'component': 'queue' }),
-	    'client': client,
+	    'client': function () { return (client); },
 	    'buckets': {
 		'team': bucket
 	    },
