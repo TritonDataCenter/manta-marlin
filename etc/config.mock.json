@@ -2,6 +2,11 @@
 	"instanceUuid": "worker-000",
 	"port": 8080,
 
+	"manta": {
+		"url": "http://manta.coal.joyent.us/",
+		"connectTimeout": 30000
+	},
+
 	"moray": {
 		"indexing": {
 			"urls": [ "tcp://1.moray.coal.joyent.us:2020" ],
@@ -39,8 +44,9 @@
 
 	"tunables": {
 		"maxPendingAuths": 1000,
-		"maxPendingLocates": 25,
-		"maxPendingPuts": 25,
+		"maxPendingDeletes": 1000,
+		"maxPendingLocates": 100,
+		"maxPendingPuts": 100,
 		"timePoll": 10,
 		"timeTick": 1000,
 		"timeJobAbandon": 30000,
