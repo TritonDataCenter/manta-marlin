@@ -30,7 +30,7 @@ var mod_marlin = require('../lib/marlin');
 
 var msArg0 = mod_path.basename(process.argv[1]);
 var msUsage = [
-    'USAGE: mrjob submit   [-i id] [-n name] [-m exec] [-r exec] ...',
+    'USAGE: mrjob submit   [-a key] [-i id] [-n name] [-m exec] [-r exec] ...',
     '       mrjob addkeys  jobid [key ...]',
     '       mrjob listkeys jobid',
     '       mrjob endinput jobid',
@@ -45,10 +45,11 @@ var msUsage = [
     '',
     'SUBCOMMANDS',
     '',
-    '   submit [-i id] [-n name] [-m exec] [-r exec]',
+    '   submit [-a key] [-i id] [-n name] [-m exec] [-r exec]',
     '',
     '      Submit a new job without ending input.',
     '',
+    '          -a key         Append the named asset to the following task.',
     '          -i id          Use "id" for the job\'s id',
     '          -m exec        Append a map phase with body "exec"',
     '          -n name        Use "name" for the job\'s name',
@@ -118,6 +119,7 @@ var msUsage = [
 ].join('\n');
 
 var msPhases = [];
+var msAssets = [];
 var msJobName = 'mrsubmit job';
 var msJobId = mod_uuid.v4();
 var msMorayUrl = process.env['MORAY_URL'];
@@ -295,11 +297,15 @@ function cmdSubmit()
 {
 	var parser, option;
 
-	parser = new mod_getopt.BasicParser('c:i:m:n:r:',
+	parser = new mod_getopt.BasicParser('a:i:m:n:r:',
 	    process.argv.slice(1));
 
 	while ((option = parser.getopt()) !== undefined) {
 		switch (option.option) {
+		case 'a':
+			msAssets.push(option.optarg);
+			break;
+
 		case 'i':
 			msJobId = option.optarg;
 			break;
@@ -310,11 +316,18 @@ function cmdSubmit()
 
 		case 'm':
 		case 'r':
-			msPhases.push({
+			var phase = {
 			    'type': option.option == 'm' ?
 				'storage-map' : 'reduce',
 			    'exec': option.optarg
-			});
+			};
+
+			if (msAssets.length > 0) {
+				phase['assets'] = msAssets;
+				msAssets = [];
+			}
+
+			msPhases.push(phase);
 			break;
 
 		default:
