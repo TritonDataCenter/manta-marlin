@@ -35,6 +35,7 @@ var msUsage = [
     '       mrjob listkeys jobid',
     '       mrjob endinput jobid',
     '       mrjob cancel   jobid',
+    '       mrjob outputs  jobid',
     '       mrjob failed   jobid',
     '       mrjob errors   jobid',
     '       mrjob list     [-H] [-o field1[,field2...]]',
@@ -70,6 +71,10 @@ var msUsage = [
     '   cancel jobid',
     '',
     '       Mark a job job cancelled.',
+    '',
+    '   outputs jobid',
+    '',
+    '       List objects emitted by a job.',
     '',
     '   failed jobid',
     '',
@@ -129,6 +134,7 @@ var msCommands = {
     'endinput': cmdEndinput,
     'cancel': cmdCancel,
     'list': cmdList,
+    'outputs': cmdOutputs,
     'errors': cmdErrors,
     'failed': cmdFailed,
     'get': cmdGet
@@ -456,6 +462,41 @@ function cmdCancel()
 				console.error('warning: job already done');
 
 			clientFini();
+		});
+	});
+}
+
+function cmdOutputs()
+{
+	if (process.argv.length < 4)
+		usage();
+
+	var jobid = process.argv[3];
+
+	clientInit(function (api) {
+		api.jobFetch(jobid, function (err, record) {
+			if (err) {
+				console.error('%s: job "%s": ' +
+				    'failed to fetch: %s', msArg0, jobid,
+				    err.message);
+				process.exit(1);
+			}
+
+			var rv = api.jobFetchOutputs(jobid,
+			    record['value']['phases'].length - 1);
+
+			rv.on('error', function (suberr) {
+				console.error('%s: job "%s": failed to list ' +
+				    'outputs: %s', msArg0, jobid,
+				    suberr.message);
+				process.exit(1);
+			});
+
+			rv.on('key', function (key) {
+				console.log('%s', key);
+			});
+
+			rv.on('end', clientFini);
 		});
 	});
 }
