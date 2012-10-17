@@ -89,7 +89,8 @@ function dpUploadFile()
 			dpInstream.pipe(request);
 
 			request.on('response', function (response) {
-				if (response.statusCode != 201)
+				if (response.statusCode != 201 &&
+				    response.statusCode != 204)
 					dpFatal('server returned ' +
 					    response.statusCode);
 
