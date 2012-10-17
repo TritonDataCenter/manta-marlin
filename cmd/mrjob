@@ -907,17 +907,16 @@ function printJobDetails(records)
 				println('    INPUT:  %s', rec['value']['key']);
 			}, function () { println('    ...'); });
 
-		if (record['value']['firstOutputs'])
-			record['value']['firstOutputs'].forEach(function (out) {
-				println('    OUTPUT: %s', out['key']);
-			});
+		var outs = (record['value']['firstOutputs'] || []).map(
+		    function (out) { return (out['key']); });
+		outs = outs.concat((taskoutputs[taskid] || []).filter(
+		    function (rec) { return (!rec['value']['error']); }).
+		    map(
+		    function (rec) { return (rec['value']['key']); }));
 
-		if (taskoutputs[taskid])
-			taskoutputs[taskid].forEach(function (rec) {
-				if (rec['value']['error'])
-					return;
-				println('    OUTPUT: %s', rec['value']['key']);
-			});
+		iterList(outs, 1, function (out) {
+			println('    OUTPUT: %s', out);
+		}, function () { println('        ...'); });
 	}, function () { println('\n...\n'); });
 }
 
