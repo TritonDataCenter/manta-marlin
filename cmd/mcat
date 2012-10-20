@@ -3,6 +3,9 @@
 var mod_http = require('http');
 var mod_path = require('path');
 
+var mod_assert = require('assert');
+var mod_getopt = require('posix-getopt');
+
 /*
  * mcat: emit a file by reference
  */
@@ -31,33 +34,68 @@ var mcUsageMessage = [
     ''
 ].join('\n');
 
+var mcReducer;
+
 function main()
 {
-	if (process.argv.length < 3 || process.argv[2].length === 0) {
+	var parser, option;
+
+	parser = new mod_getopt.BasicParser('r:', process.argv);
+
+	while ((option = parser.getopt()) !== undefined) {
+		switch (option.option) {
+		case 'r':
+			mcReducer = parseInt(option.optarg, 10);
+			if (isNaN(mcReducer)) {
+				console.error('mcat: invalid reducer');
+				usage();
+			}
+			break;
+
+		default:
+			/* error message already emitted by getopt */
+			mod_assert.equal('?', option.option);
+			usage();
+			break;
+		}
+	}
+
+	if (parser.optind() >= process.argv.length) {
 		console.error(mcUsageMessage);
 		process.exit(2);
 	}
 
-	var uri = mod_path.join('/object', process.argv[2]);
+	var uri = mod_path.join('/object', process.argv[parser.optind()]);
+
+	var headers = {
+	    'x-marlin-reference': true
+	};
+
+	if (mcReducer !== undefined)
+		headers['x-marlin-reducer'] = mcReducer;
 
 	var request = mod_http.request({
 	    'host': 'localhost',
 	    'port': 8080,
 	    'method': 'PUT',
 	    'path': uri,
-	    'headers': {
-		'x-marlin-reference': true
-	    }
+	    'headers': headers
 	});
 
 	request.end();
 
 	request.on('response', function (response) {
-		if (response.statusCode != 200) {
+		if (response.statusCode != 204) {
 			console.error('server returned ' + response.statusCode);
 			process.exit(1);
 		}
 	});
+}
+
+function usage()
+{
+	console.error(mcUsageMessage);
+	process.exit(2);
 }
 
 main();

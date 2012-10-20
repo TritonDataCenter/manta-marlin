@@ -30,7 +30,8 @@ var mod_marlin = require('../lib/marlin');
 
 var msArg0 = mod_path.basename(process.argv[1]);
 var msUsage = [
-    'USAGE: mrjob submit   [-a key] [-i id] [-n name] [-m exec] [-r exec] ...',
+    'USAGE: mrjob submit   [-a key] [-c count] [-i id] [-n name] ',
+    '                      [-m exec] [-r exec] ...',
     '       mrjob addkeys  jobid [key ...]',
     '       mrjob listkeys jobid',
     '       mrjob endinput jobid',
@@ -45,11 +46,13 @@ var msUsage = [
     '',
     'SUBCOMMANDS',
     '',
-    '   submit [-a key] [-i id] [-n name] [-m exec] [-r exec]',
+    '   submit [-a key] [-c count] [-i id] [-n name] [-m exec] [-r exec]',
     '',
     '      Submit a new job without ending input.',
     '',
-    '          -a key         Append the named asset to the following task.',
+    '          -a key         Append the named asset to the following task',
+    '          -c count       Use "count" concurrent reducers for the next ' +
+	'task',
     '          -i id          Use "id" for the job\'s id',
     '          -m exec        Append a map phase with body "exec"',
     '          -n name        Use "name" for the job\'s name',
@@ -120,6 +123,7 @@ var msUsage = [
 
 var msPhases = [];
 var msAssets = [];
+var msCount = 1;
 var msJobName = 'mrsubmit job';
 var msJobId = mod_uuid.v4();
 var msMorayUrl = process.env['MORAY_URL'];
@@ -297,13 +301,21 @@ function cmdSubmit()
 {
 	var parser, option;
 
-	parser = new mod_getopt.BasicParser('a:i:m:n:r:',
+	parser = new mod_getopt.BasicParser('a:c:i:m:n:r:',
 	    process.argv.slice(1));
 
 	while ((option = parser.getopt()) !== undefined) {
 		switch (option.option) {
 		case 'a':
 			msAssets.push(option.optarg);
+			break;
+
+		case 'c':
+			msCount = parseInt(option.optarg, 10);
+			if (isNaN(msCount) || msCount < 1 || msCount >= 1024) {
+				console.error('%s: invalid count', msArg0);
+				usage();
+			}
 			break;
 
 		case 'i':
@@ -325,6 +337,17 @@ function cmdSubmit()
 			if (msAssets.length > 0) {
 				phase['assets'] = msAssets;
 				msAssets = [];
+			}
+
+			if (msCount > 1) {
+				if (option.option != 'r') {
+					console.error('%s: -c invalid for ' +
+					    'map phases', msArg0);
+					usage();
+				}
+
+				phase['count'] = msCount;
+				msCount = 1;
 			}
 
 			msPhases.push(phase);
