@@ -4,6 +4,17 @@ set -o xtrace
 DIR=`dirname $0`
 
 #
+# If we're not in the global zone, exit right away.
+#
+if [[ -e /usr/bin/zonename ]]; then
+	zone=$(/usr/bin/zonename)
+
+	if [[ $zone != "global" ]]; then
+		exit 0
+	fi
+fi
+
+#
 # These environment variables are set by apm.
 #
 export SMF_DIR=$npm_config_smfdir
