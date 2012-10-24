@@ -35,13 +35,21 @@ IMAGEROOT_FILES =		 			\
 #
 MG_PROTO		 = $(BUILD)/proto
 MG_IMAGEROOT		 = $(BUILD)/proto/root/opt/smartdc/$(MG_NAME)
+
 MG_RELEASE_TARBALL	 = $(MG_NAME)-pkg-$(STAMP).tar.bz2
 PROTO_TARBALL 		 = $(BUILD)/$(MG_RELEASE_TARBALL)
-BITS_TARBALL		 = $(BITS_DIR)/$(MG_NAME)/$(MG_RELEASE_TARBALL)
+BITS_PROTO_TARBALL	 = $(BITS_DIR)/$(MG_NAME)/$(MG_RELEASE_TARBALL)
+
+MG_AGENT_TARBALL	 = $(MG_NAME)-$(STAMP).tar.gz
+AGENT_TARBALL	 	 = $(BUILD)/$(MG_AGENT_TARBALL)
+BITS_AGENT_TARBALL	 = $(BITS_DIR)/$(MG_NAME)/$(MG_AGENT_TARBALL)
+
 PROTO_FILES		 = $(IMAGEROOT_FILES) $(MG_PROTO)/site/.do-not-delete-me
 PROTO_DIRS		 = $(sort $(dir $(PROTO_FILES)))
 
-CLEAN_FILES		+= $(MG_PROTO) $(BUILD)/$(MG_NAME)-pkg-*.tar.bz2
+CLEAN_FILES		+= $(MG_PROTO) \
+			   $(BUILD)/$(MG_NAME)-pkg-*.tar.bz2 \
+			   $(BUILD)/$(MG_NAME)-*.tar.gz
 
 $(IMAGEROOT_FILES): $(MG_IMAGEROOT)/%: % | $(PROTO_DIRS)
 	cp -r $< $@
@@ -53,19 +61,24 @@ $(PROTO_DIRS):
 	mkdir -p $@
 
 #
-# "release" target copies creates a tarball of $(PROTO_FILES).
+# "release" target creates two tarballs: the first to be used as an input for
+# the jobworker zone, the second to be installed in each system's global zone
+# via apm.
 #
 .PHONY: release
-release: $(PROTO_TARBALL)
+release: $(PROTO_TARBALL) $(AGENT_TARBALL)
 
 $(PROTO_TARBALL): all docs $(PROTO_FILES)
 	$(TAR) -C $(MG_PROTO) -cjf $@ root site
+
+$(AGENT_TARBALL): all docs $(PROTO_FILES)
+	$(TAR) -C $(MG_PROTO)/root/opt/smartdc -czf $@ $(MG_NAME)
 
 #
 # "publish" target copies the release tarball into BITS_DIR.
 #
 .PHONY: publish
-publish: check-bitsdir $(BITS_TARBALL)
+publish: check-bitsdir $(BITS_PROTO_TARBALL) $(BITS_AGENT_TARBALL)
 
 .PHONY: check-bitsdir
 check-bitsdir:
@@ -74,8 +87,11 @@ check-bitsdir:
 		exit 1; \
 	fi
 
-$(BITS_TARBALL): $(PROTO_TARBALL) | $(dir $(BITS_TARBALL))
+$(BITS_PROTO_TARBALL): $(PROTO_TARBALL) | $(dir $(BITS_PROTO_TARBALL))
 	cp $< $@
 
-$(dir $(BITS_TARBALL)):
+$(BITS_AGENT_TARBALL): $(AGENT_TARBALL) | $(dir $(BITS_PROTO_TARBALL))
+	cp $< $@
+
+$(dir $(BITS_PROTO_TARBALL)):
 	mkdir -p $@
