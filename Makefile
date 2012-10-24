@@ -30,8 +30,7 @@ JSL_FILES_NODE   = $(JS_FILES)
 JSSTYLE_FILES	 = $(JS_FILES)
 SMF_MANIFESTS_IN = \
     smf/manifests/marlin-agent.xml.in \
-    smf/manifests/marlin-zone-agent.xml.in \
-    smf/manifests/marlin-mock-manta.xml.in
+    smf/manifests/marlin-zone-agent.xml.in
 
 REPO_MODULES     = src/node-hyprlofs
 

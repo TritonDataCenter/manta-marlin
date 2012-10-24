@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #
-# mru: Marlin Upgrade: installs the Marlin agent and mock Manta services based
-# on a given workspace's bits.  See usage below.
+# mru: Marlin Upgrade: installs the Marlin agent based on a given workspace's
+# bits.  See usage below.
 #
 
 shopt -s xpg_echo
@@ -19,8 +19,8 @@ function usage
 	cat >&2 <<USAGE
 usage: $(basename $0) prefix
 
-Installs the Marlin agent and mock manta services based on the Marlin workspace
-at "prefix".  If the services are already installed, removes them first.
+Installs the Marlin agent based on the Marlin workspace at "prefix".  If the
+services are already installed, removes them first.
 USAGE
 	exit 2
 }
