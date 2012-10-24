@@ -17,6 +17,7 @@ IMAGEROOT_FILES =		 			\
     $(MG_IMAGEROOT)/etc					\
     $(MG_IMAGEROOT)/lib					\
     $(MG_IMAGEROOT)/node_modules			\
+    $(MG_IMAGEROOT)/npm/postinstall.sh                  \
     $(MG_IMAGEROOT)/npm-shrinkwrap.json			\
     $(MG_IMAGEROOT)/package.json			\
     $(MG_IMAGEROOT)/smf/manifests/marlin-agent.xml	\

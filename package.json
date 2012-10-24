@@ -53,5 +53,8 @@
 		"verror",
 		"wordwrap",
 		"zsock"
-	]
+	],
+    "scripts": {
+		"postinstall": "./npm/postinstall.sh"
+	}
 }
