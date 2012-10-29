@@ -555,6 +555,8 @@ function cmdErrors()
 
 		rv.on('err', function (error) {
 			console.log('%s: %s', error['what'], error['message']);
+			if (error['stderr'])
+			    console.log('    (see %s)', error['stderr']);
 		});
 
 		rv.on('end', clientFini);
@@ -953,6 +955,9 @@ function printJobDetails(records)
 		iterList(outs, 1, function (out) {
 			println('    OUTPUT: %s', out);
 		}, function () { println('        ...'); });
+
+		if (record['value']['stderr'])
+			println('    STDERR: %s', record['value']['stderr']);
 	}, function () { println('\n...\n'); });
 }
 
