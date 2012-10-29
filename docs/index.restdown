@@ -127,7 +127,7 @@ Output: a total count of lines by file extension
     {
         "jobName": "total lines by file extension",
         "phases": [ {
-            "exec": "wc -l $mr_input_key | 
+            "exec": "wc -l $mr_input_key |
                 (read count file; echo $count ${file##*.}",
         }, {
             "type": "reduce",
@@ -176,13 +176,13 @@ curmudgeon file1.txt:30 file2.txt:10,12,14 file3.txt:15
                             indx[$i] = indx[$i] "," NR
                         } else {
                             indx[$i] = FILENAME ":" NR
-                        }   
-                    }   
+                        }
+                    }
                 }
                 END {
                     for (word in indx) {
                         print word, indx[word]
-                    }   
+                    }
                 }'
             "
         }, {
@@ -393,7 +393,7 @@ following fields:
 
 Object metadata (e.g., user-specified headers) are not included in the task
 info.  Users can retrieve this by querying Manta directly.
- 
+
 
 ## POST /commit
 
@@ -527,6 +527,19 @@ number of reducers in the next stage of the job pipeline.  This indicates that
 this object should be routed to the given reducer.
 
 
+### msplit: demux a stream for reducers
+
+msplit [-n number_of_reducers] [-d &lt;delimeter&gt;] [-f &lt;field_list&gt;]
+
+Reads content from stdin and outputs to the number of mpipes for the number of
+reducers that are specified.  The field list is an optional list of fields that
+are used as input to the partitioning function.  The field list defaults to [1].
+The delimeter is used to split the line to extract the key fields.  The
+delimeter defaults to (tab).  For example, this will split stdin by comma and
+use the 5th and 3rd fields for the partioning key, going to 4 reducers:
+
+    $ msplit -d ',' -f 5,3 -n 4
+
 ### aggr: aggregate rows of numbers
 
 aggr &lt;sum|avg|pctile99...&gt;
@@ -629,7 +642,7 @@ Users would only need to reference a third party asset:
             "third-party/framework/start.sh"
             "my/script"
         ],
-        "exec": "/assets/third-party/framework/start.sh /assets/my/script" 
+        "exec": "/assets/third-party/framework/start.sh /assets/my/script"
     } ]
 
 

@@ -35,6 +35,7 @@
 	},
 	"bundledDependencies": [
 		"bunyan",
+		"carrier",
 		"extsprintf",
 		"hiredis",
 		"hyprlofs",
