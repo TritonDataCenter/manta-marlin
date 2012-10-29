@@ -19,7 +19,7 @@ var msUsageMessage = [
 	'',
 	'The -d and -f fields are optional and specify the delimiter to use',
 	'when splitting fields and the field list to use to construct the key',
-	'used to map to reducers.  The delimeter defaults to (tab).  The field',
+	'used to map to reducers.  The delimiter defaults to (tab).  The field',
 	'defaults to 1.  If the field does not exist (if it is out of range,',
 	'for example), it will simply not be part of the partitioning key.',
 	'The implications of this is that if all fields are invalid all output',
@@ -112,8 +112,8 @@ function main() {
 	process.stdin.resume();
 }
 
-function selectReducer(line, delimeter, fields, nReducers) {
-	var parts = line.split(delimeter);
+function selectReducer(line, delimiter, fields, nReducers) {
+	var parts = line.split(delimiter);
 	var key = '';
 	for (var i = 0; i < fields.length; ++i) {
 		// Taking a page out of cut's playbook. if the field can't be
@@ -123,7 +123,7 @@ function selectReducer(line, delimeter, fields, nReducers) {
 		}
 
 		if (key) {
-			key += delimeter;
+			key += delimiter;
 		}
 		// The - 1 here is because the fields are specified starting
 		// at 1 and not 0.

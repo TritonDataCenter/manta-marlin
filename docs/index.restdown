@@ -529,13 +529,13 @@ this object should be routed to the given reducer.
 
 ### msplit: demux a stream for reducers
 
-msplit [-n number_of_reducers] [-d &lt;delimeter&gt;] [-f &lt;field_list&gt;]
+msplit [-n number_of_reducers] [-d &lt;delimiter&gt;] [-f &lt;field_list&gt;]
 
 Reads content from stdin and outputs to the number of mpipes for the number of
 reducers that are specified.  The field list is an optional list of fields that
 are used as input to the partitioning function.  The field list defaults to [1].
-The delimeter is used to split the line to extract the key fields.  The
-delimeter defaults to (tab).  For example, this will split stdin by comma and
+The delimiter is used to split the line to extract the key fields.  The
+delimiter defaults to (tab).  For example, this will split stdin by comma and
 use the 5th and 3rd fields for the partioning key, going to 4 reducers:
 
     $ msplit -d ',' -f 5,3 -n 4
