@@ -956,6 +956,18 @@ function printJobDetails(records)
 			println('    OUTPUT: %s', out);
 		}, function () { println('        ...'); });
 
+		var errs = (record['value']['firstOutputs'] || []).filter(
+		    function (out) { return (out['error']); }).map(
+		    function (out) { return (out['error']); });
+		errs = errs.concat((taskoutputs[taskid] || []).filter(
+		    function (rec) { return (rec['value']['error']); }).map(
+		    function (rec) { return (rec['value']['error']); }));
+
+		iterList(errs, 1, function (error) {
+			println('    ERROR:  %-10s  %s', error['code'],
+			    error['message']);
+		}, function () { println('        ...'); });
+
 		if (record['value']['stderr'])
 			println('    STDERR: %s', record['value']['stderr']);
 	}, function () { println('\n...\n'); });
