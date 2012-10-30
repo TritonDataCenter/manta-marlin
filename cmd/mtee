@@ -1,0 +1,72 @@
+#!/usr/node/bin/node
+
+var mod_assert = require('assert');
+var mod_child_process = require('child_process');
+var mod_getopt = require('posix-getopt');
+
+/*
+ * mtee: demux streams to send to multiple reducers
+ */
+var msUsageMessage = [
+	'usage: mtee [manta_key]',
+	'',
+	'mtee is used to capture stdin and write to both stdout and a manta',
+	'object.  For example, this will capture the output of cmd to manta',
+	'object /$MANTA_USER/stor/tee.out and still pipe what was coming from',
+	'cmd to cmd2:',
+	'  $ cmd | mtee /$MANTA_USER/stor/tee.out | cmd2'
+].join('\n');
+
+function main() {
+	var key;
+	var option;
+	var parser;
+
+	parser = new mod_getopt.BasicParser('', process.argv);
+
+	while ((option = parser.getopt()) !== undefined) {
+		switch (option.option) {
+		default:
+			/* error message already emitted by getopt */
+			mod_assert.equal('?', option.option);
+			usage();
+			break;
+		}
+	}
+
+	if (parser.optind() < process.argv.length) {
+		key = process.argv[parser.optind()];
+	}
+
+	if (!key) {
+		console.error('A manta object key must be specified.');
+		usage();
+	}
+
+	var mpipe = mod_child_process.spawn('mpipe', [key]);
+
+	process.stdin.on('data', function (data) {
+		mpipe.stdin.write(data);
+		process.stdout.write(data);
+	});
+
+	process.stdin.on('end', function () {
+		mpipe.stdin.end();
+	});
+
+	process.stdin.resume();
+}
+
+function usage()
+{
+	console.error(msUsageMessage);
+	process.exit(2);
+}
+
+function msFatal(message)
+{
+	console.error(message);
+	process.exit(1);
+}
+
+main();
