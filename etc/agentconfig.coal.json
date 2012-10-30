@@ -32,5 +32,10 @@
 		"timeJobSave": 3000,
 		"timePoll": 1000,
 		"timeTick": 1000
+	},
+
+	"zoneDefaults": {
+		"max_physical_memory": 256,
+		"max_swap": 512
 	}
 }
