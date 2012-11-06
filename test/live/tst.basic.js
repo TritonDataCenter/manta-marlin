@@ -9,6 +9,7 @@ var client;
 test.pipeline({ 'funcs': [
     setup,
     runTest.bind(null, jobs.jobM),
+    runTest.bind(null, jobs.jobMX),
     runTest.bind(null, jobs.jobR),
     runTest.bind(null, jobs.jobMM),
     runTest.bind(null, jobs.jobMR),

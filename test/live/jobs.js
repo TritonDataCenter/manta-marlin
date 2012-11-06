@@ -15,8 +15,9 @@ var VError = mod_verror.VError;
 var exnAsync = mod_testcommon.exnAsync;
 var log = mod_testcommon.log;
 
-exports.jobTestRun = jobTestRun;
 exports.jobSubmit = jobSubmit;
+exports.jobTestRun = jobTestRun;
+exports.jobTestVerifyTimeout = jobTestVerifyTimeout;
 exports.populateData = populateData;
 
 exports.jobM = {
@@ -69,6 +70,98 @@ exports.jobM = {
 	mod_assert.equal(jobresult['jobinput'].length, 3);
     }
 };
+
+/* Like jobM, but makes use of separate external task output objects */
+exports.jobMX = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'cat > /var/tmp/tmpfile; ' +
+		'for i in 1 2 3 4 5 6 7 8; do ' +
+		'    wc < /var/tmp/tmpfile | mpipe; ' +
+		'done'
+	} ]
+    },
+    'inputs': [
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj2',
+	'/poseidon/stor/obj3'
+    ],
+    'timeout': 30 * 1000,
+    'expected_outputs': [
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
+    ],
+    'expected_tasks': [ {
+	'phaseNum': 0,
+	'key': '/poseidon/stor/obj1',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 8,
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+	]
+    }, {
+	'phaseNum': 0,
+	'key': '/poseidon/stor/obj2',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 8,
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./
+	]
+    }, {
+	'phaseNum': 0,
+	'key': '/poseidon/stor/obj3',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 8,
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
+	]
+    } ],
+    'verify': function (testspec, jobresult) {
+	mod_assert.equal(jobresult['taskinput'].length, 0);
+	mod_assert.equal(jobresult['taskoutput'].length, 9);
+	mod_assert.equal(jobresult['task'].length, 3);
+	mod_assert.equal(jobresult['jobinput'].length, 3);
+    }
+};
+
 
 exports.jobMM = {
     'job': {
@@ -252,7 +345,7 @@ exports.jobMMRR = {
 	'/poseidon/stor/obj2',
 	'/poseidon/stor/obj3'
     ],
-    'timeout': 90 * 1000,
+    'timeout': 60 * 1000,
     'expected_outputs': [
 	/\/poseidon\/jobs\/.*\/stor\/reduce\.3\./
     ],
@@ -332,16 +425,13 @@ exports.jobMMRR = {
 
 function jobTestRun(api, testspec, callback)
 {
-	var interval = testspec['timeout'];
-
 	jobSubmit(api, testspec, function (err, jobid) {
 		if (err) {
 			callback(err);
 			return;
 		}
 
-		mod_testcommon.timedCheck(Math.ceil(interval / 1000), 1000,
-		    jobTestVerify.bind(null, api, testspec, jobid), callback);
+		jobTestVerifyTimeout(api, testspec, jobid, callback);
 	});
 }
 
@@ -350,9 +440,12 @@ function jobSubmit(api, testspec, callback)
 	var jobdef, funcs, jobid;
 
 	jobdef = {
-	    'owner': 'b774fc96-7eba-44d8-9fc7-52eb3395f93f',
+	    'owner': '78d9fb71-a851-4287-8ce7-5a5090e86b17',
 	    'phases': testspec['job']['phases']
 	};
+
+	if (testspec['input'])
+		jobdef['input'] = testspec['input'];
 
 	funcs = [
 	    function (_, stepcb) {
@@ -364,22 +457,33 @@ function jobSubmit(api, testspec, callback)
 	    }
 	];
 
-	testspec['inputs'].forEach(function (key) {
-		funcs.push(function (_, stepcb) {
-			log.info('job "%s": adding key %s', jobid, key);
-			api.jobAddKey(jobid, key, stepcb);
+	if (!testspec['input']) {
+		testspec['inputs'].forEach(function (key) {
+			funcs.push(function (_, stepcb) {
+				log.info('job "%s": adding key %s', jobid, key);
+				api.jobAddKey(jobid, key, stepcb);
+			});
 		});
-	});
 
-	funcs.push(function (_, stepcb) {
-		log.info('job "%s": ending input', jobid);
-		api.jobEndInput(jobid, { 'retry': { 'retries': 3 } }, stepcb);
-	});
+		funcs.push(function (_, stepcb) {
+			log.info('job "%s": ending input', jobid);
+			api.jobEndInput(jobid, { 'retry': { 'retries': 3 } },
+			    stepcb);
+		});
+	}
 
 	mod_vasync.pipeline({ 'funcs': funcs }, function (err) {
 		log.info('job "%s": job submission complete', jobid);
 		callback(err, jobid);
 	});
+}
+
+function jobTestVerifyTimeout(api, testspec, jobid, callback)
+{
+	var interval = testspec['timeout'];
+
+	mod_testcommon.timedCheck(Math.ceil(interval / 1000), 1000,
+	    jobTestVerify.bind(null, api, testspec, jobid), callback);
 }
 
 function jobTestVerify(api, testspec, jobid, callback)
@@ -405,7 +509,9 @@ function jobTestVerify(api, testspec, jobid, callback)
 		/* Sanity-check the rest of the job record. */
 		mod_assert.ok(job['worker']);
 		mod_assert.ok(!job['timeCancelled']);
-		mod_assert.ok(job['timeInputDone'] >= job['timeCreated']);
+		if (!testspec['input'])
+			mod_assert.ok(job['timeInputDone'] >=
+			    job['timeCreated']);
 		mod_assert.ok(job['timeDone'] >= job['timeCreated']);
 
 		/* Check expected job outputs. */
@@ -424,6 +530,11 @@ function jobTestVerify(api, testspec, jobid, callback)
 			record['value']['firstOutputs'].forEach(function (out) {
 				outputs.push(out['key']);
 			});
+		    });
+
+		mod_jsprim.forEachKey(jobresult['taskoutput'],
+		    function (_, record) {
+			outputs.push(record['value']['key']);
 		    });
 
 		outputs.sort();

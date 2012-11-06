@@ -31,7 +31,7 @@ var mod_marlin = require('../lib/marlin');
 var msArg0 = mod_path.basename(process.argv[1]);
 var msUsage = [
     'USAGE: mrjob submit   [-a key] [-c count] [-i id] [-n name] [-d size]',
-    '                      [-m exec] [-r exec] ...',
+    '                      [-p jobid] [-m exec] [-r exec] ...',
     '       mrjob addkeys  jobid [key ...]',
     '       mrjob listkeys jobid',
     '       mrjob endinput jobid',
@@ -57,6 +57,8 @@ var msUsage = [
     '          -i id          Use "id" for the job\'s id',
     '          -m exec        Append a map phase with body "exec"',
     '          -n name        Use "name" for the job\'s name',
+    '          -p jobid       Indicate that output should be streamed from ',
+    '                         the output of job "jobid"',
     '          -r exec        Append a reduce phase with body "exec"',
     '',
     '      With no -m or -r options, the job gets one map phase.',
@@ -123,9 +125,10 @@ var msUsage = [
 ].join('\n');
 
 var msPhases = [];
-var msAssets = [];
-var msCount = 1;
-var msDram;
+var msAssets = [];			/* assets (for next phase) */
+var msCount = 1;			/* reducer count (for next phase) */
+var msDram;				/* DRAM cap (for next phase) */
+var msPipeSource;			/* source of job's input */
 var msJobName = 'mrsubmit job';
 var msJobId = mod_uuid.v4();
 var msMorayUrl = process.env['MORAY_URL'];
@@ -303,7 +306,7 @@ function cmdSubmit()
 {
 	var parser, option;
 
-	parser = new mod_getopt.BasicParser('a:c:d:i:m:n:r:',
+	parser = new mod_getopt.BasicParser('a:c:d:i:m:n:p:r:',
 	    process.argv.slice(1));
 
 	while ((option = parser.getopt()) !== undefined) {
@@ -334,6 +337,10 @@ function cmdSubmit()
 
 		case 'n':
 			msJobName = option.optarg;
+			break;
+
+		case 'p':
+			msPipeSource = option.optarg;
 			break;
 
 		case 'm':
@@ -391,6 +398,9 @@ function cmdSubmit()
 	    'phases': msPhases,
 	    'owner': process.env['USER']
 	};
+
+	if (msPipeSource)
+		job['input'] = msPipeSource;
 
 	clientInit(function (api) {
 		api.jobCreate(job, function (err, jobid) {
@@ -704,7 +714,7 @@ function makeJobRow(job, mtime)
 
 	if (job['timeCancelled'])
 		state = 'C' + state;
-	else if (!job['timeInputDone'])
+	else if (!job['input'] && !job['timeInputDone'])
 		state = 'W' + state;
 
 	return ({
@@ -874,8 +884,13 @@ function printJobDetails(records)
 
 	if (job['timeCancelled'])
 		println('NOTE: Cancelled at %s', job['timeCancelled']);
-	if (!job['timeInputDone'])
+
+	if (job['input'])
+		println('NOTE: Job\'s input is piped from job "%s"',
+		    job['input']);
+	else if (!job['timeInputDone'])
 		println('NOTE: Job is waiting for user input');
+
 	println('');
 
 	table = new mod_tab.TableOutputStream({
