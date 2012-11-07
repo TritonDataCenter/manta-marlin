@@ -19,6 +19,7 @@ var mod_verror = require('verror');
 var mod_vasync = require('vasync');
 var mod_wordwrap = require('wordwrap');
 
+var sprintf = mod_extsprintf.sprintf;
 var wrap = mod_wordwrap(80);
 var wrap4 = mod_wordwrap(4, 80);
 var println = function () {
@@ -41,6 +42,7 @@ var msUsage = [
     '       mrjob errors   jobid',
     '       mrjob list     [-H] [-o field1[,field2...]]',
     '       mrjob get      [-v] jobid',
+    '       mrjob log      jobid',
     '',
     '    Manages Marlin jobs via Moray.',
     '',
@@ -106,6 +108,10 @@ var msUsage = [
     '',
     '       Fetch details about the given job.',
     '',
+    '   log jobid',
+    '',
+    '       Fetch history about the given job.',
+    '',
     'MORAY',
     '',
     '   The remote Moray instance to use must be specified via the MORAY_URL ',
@@ -148,7 +154,8 @@ var msCommands = {
     'outputs': cmdOutputs,
     'errors': cmdErrors,
     'failed': cmdFailed,
-    'get': cmdGet
+    'get': cmdGet,
+    'log': cmdLog
 };
 
 /* default set of columns for list-of-jobs */
@@ -1019,6 +1026,130 @@ function iterList(list, count, func, separator)
 			separator();
 		list.slice(list.length - count).forEach(func);
 	}
+}
+
+function cmdLog()
+{
+	if (process.argv.length < 4)
+		usage();
+
+	var jobid = process.argv[3];
+
+	clientInit(function (api) {
+		var rv = api.jobFetchLog(jobid);
+		var entries = [];
+
+		rv.on('error', function (err) {
+			console.error('%s: job "%s": failed to fetch log: %s',
+			    msArg0, jobid, err.message);
+			process.exit(1);
+		});
+
+		rv.on('log', function (entry) {
+			entries.push(entry);
+		});
+
+		rv.on('end', function () {
+			logPrint(entries);
+			clientFini();
+		});
+	});
+}
+
+function logPrint(entries)
+{
+	var timestamp, where;
+
+	sortStable(entries, function (a, b) {
+		return (a['time'] - b['time']);
+	});
+
+	for (var i = 0; i < entries.length; i++) {
+		timestamp = mod_jsprim.iso8601(entries[i]['time']);
+
+		/* Chop off the year and "Z" */
+		entries[i]['walltime'] = timestamp.substr(5,
+		    timestamp.length - 6);
+		entries[i]['jobtime'] = formatDuration(
+		    entries[i]['time'] - entries[0]['time']);
+
+		where = entries[i]['where'];
+		if (where.length > 11)
+			where = where.substr(0, 8) + '...';
+		entries[i]['where'] = where;
+	}
+
+	mod_tab.emitTable({
+	    'rows': entries,
+	    'columns': [ {
+		'label': 'walltime',
+		'alias': 'TIMESTAMP',
+		'width': 18
+	    }, {
+		'label': 'jobtime',
+		'alias': 'JOBTIME',
+		'width': 8,
+		'align': 'right'
+	    }, {
+		'label': 'where',
+		'alias': 'WHERE',
+		'width': 11
+	    }, {
+		'label': 'message',
+		'alias': 'MESSAGE',
+		'width': 12
+	    }, {
+		'label': 'what',
+		'alias': 'WHAT',
+		'width': 11
+	    } ]
+	});
+}
+
+function formatDuration(millis)
+{
+	if (millis < 60000)
+		return (sprintf('%d.%03d', Math.floor(millis / 1000),
+		    millis % 1000));
+
+	var minutes = Math.floor(millis / 60000);
+	millis %= 60000;
+
+	return (sprintf('%d:%02d.%03ds', minutes,
+	    Math.floor(millis / 1000), millis % 1000));
+}
+
+function sortStable(list, comparator)
+{
+	if (!comparator)
+		comparator = function (a, b) {
+			return ((a < b) ? -1 : (a > b) ? 1 : 0);
+		};
+
+	/*
+	 * Since JavaScript's sort is not stable, we have no choice but to use
+	 * O(N) space to keep track of each element's index.  We create an
+	 * array of just the indices, then sort that by the corresponding value
+	 * in "list".
+	 */
+	var tosort = list.map(function (_, i) { return (i); });
+
+	tosort.sort(function (a, b) {
+		var rv = comparator(list[a], list[b]);
+		if (rv !== 0)
+			return (rv);
+		return (a - b);
+	});
+
+	/*
+	 * Although we had to use O(N) space anyway, it's nice to keep the same
+	 * contract as Array.sort by updating the array in place.
+	 */
+	tosort = tosort.map(function (i) { return (list[i]); });
+	for (var j = 0; j < list.length; j++)
+		list[j] = tosort[j];
+
+	return (list);
 }
 
 main();
