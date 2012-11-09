@@ -3,14 +3,22 @@
  */
 
 var mod_assert = require('assert');
+var mod_fs = require('fs');
 var mod_http = require('http');
-var mod_jsprim = require('jsprim');
+var mod_path = require('path');
+var mod_stream = require('stream');
 var mod_url = require('url');
+var mod_util = require('util');
+
+var mod_extsprintf = require('extsprintf');
+var mod_jsprim = require('jsprim');
+var mod_manta = require('manta');
 var mod_vasync = require('vasync');
 var mod_verror = require('verror');
 
 var mod_testcommon = require('../common');
 
+var sprintf = mod_extsprintf.sprintf;
 var VError = mod_verror.VError;
 var exnAsync = mod_testcommon.exnAsync;
 var log = mod_testcommon.log;
@@ -437,17 +445,104 @@ function jobTestRun(api, testspec, callback)
 
 function jobSubmit(api, testspec, callback)
 {
-	var jobdef, funcs, jobid;
+	var jobdef, login, url, funcs, private_key, signed_path, jobid;
 
 	jobdef = {
-	    'owner': '78d9fb71-a851-4287-8ce7-5a5090e86b17',
 	    'phases': testspec['job']['phases']
 	};
+
+	login = process.env['MANTA_USER'];
+	url = mod_url.parse(process.env['MANTA_URL']);
+
+	if (!login) {
+		process.nextTick(function () {
+			callback(new VError(
+			    'MANTA_USER must be specified in the environment'));
+		});
+		return;
+	}
 
 	if (testspec['input'])
 		jobdef['input'] = testspec['input'];
 
 	funcs = [
+	    function (_, stepcb) {
+		log.info('looking up user "%s"', login);
+		mod_testcommon.loginLookup(login, function (err, owner) {
+			jobdef['owner'] = owner;
+			stepcb(err);
+		});
+	    },
+	    function (_, stepcb) {
+		/*
+		 * XXX It sucks that we're hardcoding the path to a particular
+		 * key here given that node-manta.git has magic for extracting
+		 * the right key from the agent or ~/.ssh based on the
+		 * fingerprint.
+		 */
+		var path = mod_path.join(process.env['HOME'], '.ssh/id_rsa');
+		log.info('reading private key from %s', path);
+		mod_fs.readFile(path, function (err, contents) {
+			private_key = contents.toString('utf8');
+			stepcb(err);
+		});
+	    },
+	    function (_, stepcb) {
+		log.info('creating signed URL');
+
+		mod_manta.signUrl({
+		    'algorithm': 'rsa-sha256',
+		    'expires': Date.now() + 86400 * 1000,
+		    'host': url['host'],
+		    'keyId': process.env['MANTA_KEY_ID'],
+		    'method': 'POST',
+		    'path': sprintf('/%s/tokens', login),
+		    'user': login,
+		    'sign': mod_manta.privateKeySigner({
+			'algorithm': 'rsa-sha256',
+			'key': private_key,
+			'keyId': process.env['MANTA_KEY_ID'],
+			'log': log,
+			'user': login
+		    })
+		}, function (err, path) {
+			signed_path = path;
+			stepcb(err);
+		});
+	    },
+	    function (_, stepcb) {
+		log.info('creating auth token', signed_path);
+
+		var req = mod_http.request({
+		    'method': 'POST',
+		    'path': signed_path,
+		    'host': url['hostname'],
+		    'port': parseInt(url['port'], 10) || 80
+		});
+
+		req.end();
+
+		req.on('response', function (response) {
+			log.info('auth token response: %d',
+			    response.statusCode);
+
+			if (response.statusCode != 201) {
+				stepcb(new VError(
+				    'wrong status code for auth token'));
+				return;
+			}
+
+			var body = '';
+			response.on('data', function (chunk) {
+				body += chunk;
+			});
+			response.on('end', function () {
+				var token = JSON.parse(body)['token'];
+				jobdef['authToken'] = token;
+				stepcb();
+			});
+		});
+	    },
 	    function (_, stepcb) {
 		log.info('submitting job', jobdef);
 		api.jobCreate(jobdef, function (err, result) {
@@ -473,7 +568,8 @@ function jobSubmit(api, testspec, callback)
 	}
 
 	mod_vasync.pipeline({ 'funcs': funcs }, function (err) {
-		log.info('job "%s": job submission complete', jobid);
+		if (!err)
+			log.info('job "%s": job submission complete', jobid);
 		callback(err, jobid);
 	});
 }
@@ -617,41 +713,61 @@ function jobTaskMatches(etask, task)
 	return (true);
 }
 
-function populateData(keys, callback)
+function populateData(manta, keys, callback)
 {
-	if (!process.env['MANTA_URL']) {
-		callback(new Error('MANTA_URL env var must be set.'));
-		return;
-	}
+	log.info('populating keys', keys);
 
-	var url = mod_url.parse(process.env['MANTA_URL']);
 	mod_vasync.forEachParallel({
 	    'inputs': keys,
 	    'func': function (key, subcallback) {
 		var data = 'sample data for key ' + key;
-		var req = mod_http.request({
-		    'method': 'put',
-		    'host': url['hostname'],
-		    'port': parseInt(url['port'], 10) || 80,
-		    'path': key,
-		    'headers': {
-			'content-length': data.length,
-			'x-marlin': true
-		    }
-		});
-		req.write(data);
-		req.on('response', function (response) {
-			if (response.statusCode == 204) {
-				subcallback();
-				return;
-			}
+		var stream = new StringInputStream(data);
 
-			subcallback(new Error('wrong status code for key ' +
-			    key + ': ' + response.statusCode));
-		});
+		log.info('PUT key "%s"', key);
+		manta.put(key, stream, { 'size': data.length }, subcallback);
 	    }
 	}, callback);
 }
+
+function StringInputStream(contents)
+{
+	mod_stream.Stream();
+
+	this.s_data = contents;
+	this.s_paused = false;
+	this.s_done = false;
+
+	this.scheduleEmit();
+}
+
+mod_util.inherits(StringInputStream, mod_stream.Stream);
+
+StringInputStream.prototype.pause = function ()
+{
+	this.s_paused = true;
+};
+
+StringInputStream.prototype.resume = function ()
+{
+	this.s_paused = false;
+	this.scheduleEmit();
+};
+
+StringInputStream.prototype.scheduleEmit = function ()
+{
+	var stream = this;
+
+	process.nextTick(function () {
+		if (stream.s_paused || stream.s_done)
+			return;
+
+		stream.emit('data', stream.s_data);
+		stream.emit('end');
+
+		stream.s_data = null;
+		stream.s_done = true;
+	});
+};
 
 /*
  * TODO more test cases:

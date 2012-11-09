@@ -27,7 +27,12 @@ function setup(_, next)
 
 function runTest(testjob, _, next)
 {
-	jobs.populateData(testjob['inputs'], function () {
+	jobs.populateData(client.manta, testjob['inputs'], function (err) {
+		if (err) {
+			next(err);
+			return;
+		}
+
 		jobs.jobTestRun(client, testjob, next);
 	});
 }

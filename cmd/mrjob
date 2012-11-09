@@ -31,24 +31,32 @@ var mod_marlin = require('../lib/marlin');
 
 var msArg0 = mod_path.basename(process.argv[1]);
 var msUsage = [
-    'USAGE: mrjob submit   [-a key] [-c count] [-i id] [-n name] [-d size]',
-    '                      [-p jobid] [-m exec] [-r exec] ...',
-    '       mrjob addkeys  jobid [key ...]',
-    '       mrjob listkeys jobid',
-    '       mrjob endinput jobid',
-    '       mrjob cancel   jobid',
-    '       mrjob outputs  jobid',
-    '       mrjob failed   jobid',
-    '       mrjob errors   jobid',
+    'USAGE: mrjob subcmd [options] [arguments]',
+    '       mrjob [-h | -? | --help]',
+    '',
     '       mrjob list     [-H] [-o field1[,field2...]]',
+    '       mrjob submit   [-a key] [-c count] [-i id] [-n name] [-d size]',
+    '                      [-p jobid] [-t authToken] [-m exec] [-r exec] ...',
+    '       mrjob addkeys  jobid [key ...]',
+    '       mrjob cancel   jobid',
+    '       mrjob endinput jobid',
+    '',
+    '       mrjob errors   jobid',
+    '       mrjob failed   jobid',
     '       mrjob get      [-v] jobid',
+    '       mrjob inputs   jobid',
     '       mrjob log      jobid',
+    '       mrjob outputs  jobid'
+].join('\n');
+
+var msHelp = [
     '',
     '    Manages Marlin jobs via Moray.',
     '',
     'SUBCOMMANDS',
     '',
-    '   submit [-a key] [-c count] [-i id] [-n name] [-m exec] [-r exec]',
+    '   submit [-a key] [-c count] [-i id] [-n name] [-t token]',
+    '          [-m exec] [-r exec]',
     '',
     '      Submit a new job without ending input.',
     '',
@@ -62,6 +70,7 @@ var msUsage = [
     '          -p jobid       Indicate that output should be streamed from ',
     '                         the output of job "jobid"',
     '          -r exec        Append a reduce phase with body "exec"',
+    '          -t token       Auth token',
     '',
     '      With no -m or -r options, the job gets one map phase.',
     '',
@@ -69,7 +78,7 @@ var msUsage = [
     '',
     '       Submit new keys for a job (which may or may not already exist).',
     '',
-    '   listkeys jobid',
+    '   inputs jobid',
     '',
     '       Lists all keys submitted for a job.',
     '',
@@ -137,6 +146,7 @@ var msDram;				/* DRAM cap (for next phase) */
 var msPipeSource;			/* source of job's input */
 var msJobName = 'mrsubmit job';
 var msJobId = mod_uuid.v4();
+var msAuthToken;
 var msMorayUrl = process.env['MORAY_URL'];
 var msParseable = false;		/* whether output should be parseable */
 var msVerbose = 0;			/* whether output should be verbose */
@@ -147,7 +157,7 @@ var msLog;	/* bunyan logger */
 var msCommands = {
     'submit': cmdSubmit,
     'addkeys': cmdAddkeys,
-    'listkeys': cmdListkeys,
+    'inputs': cmdInputs,
     'endinput': cmdEndinput,
     'cancel': cmdCancel,
     'list': cmdList,
@@ -248,6 +258,12 @@ var msTaskStates = {
 
 function usage()
 {
+	console.error(msUsage);
+	process.exit(2);
+}
+
+function help()
+{
 	function docFields(conf, list) {
 		return (Object.keys(conf).map(function (f) {
 			var rv = conf[f]['label'];
@@ -258,6 +274,7 @@ function usage()
 	}
 
 	console.error(msUsage);
+	console.error(msHelp);
 	console.error(wrap4(docFields(msFieldsJobs) + '\n'));
 	process.exit(2);
 }
@@ -270,6 +287,9 @@ function main()
 		usage();
 
 	subcmd = process.argv[2];
+
+	if (subcmd == '-h' || subcmd == '-?' || subcmd == '--help')
+		help();
 
 	if (!msCommands.hasOwnProperty(subcmd))
 		usage();
@@ -313,7 +333,7 @@ function cmdSubmit()
 {
 	var parser, option;
 
-	parser = new mod_getopt.BasicParser('a:c:d:i:m:n:p:r:',
+	parser = new mod_getopt.BasicParser('a:c:d:i:m:n:p:r:t:',
 	    process.argv.slice(1));
 
 	while ((option = parser.getopt()) !== undefined) {
@@ -348,6 +368,10 @@ function cmdSubmit()
 
 		case 'p':
 			msPipeSource = option.optarg;
+			break;
+
+		case 't':
+			msAuthToken = option.optarg;
 			break;
 
 		case 'm':
@@ -399,11 +423,17 @@ function cmdSubmit()
 	if (msPhases.length === 0)
 		msPhases.push({ 'type': 'storage-map', 'exec': 'echo' });
 
+	if (!msAuthToken) {
+		console.error('%s: auth token (-t) is required', msArg0);
+		process.exit(1);
+	}
+
 	var job = {
 	    'jobId': msJobId,
 	    'jobName': msJobName,
 	    'phases': msPhases,
-	    'owner': process.env['USER']
+	    'owner': process.env['USER'],
+	    'authToken': msAuthToken
 	};
 
 	if (msPipeSource)
@@ -450,7 +480,7 @@ function cmdAddkeys()
 	});
 }
 
-function cmdListkeys()
+function cmdInputs()
 {
 	if (process.argv.length < 4)
 		usage();
