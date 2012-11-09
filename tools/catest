@@ -34,6 +34,11 @@ cat_npassed=0				# number of successful tests run
 cat_nrun=0				# total number of tests run
 
 #
+# Allow environment-specific customizations.
+#
+[[ -f $(dirname $0)/catest_init.sh ]] && . $(dirname $0)/catest_init.sh
+
+#
 # fail MSG: emits the given error message to stderr and exits non-zero.
 #
 function fail
@@ -292,6 +297,14 @@ printf "    Found %d test(s) to run\n\n" $cat_ntests
 if [[ -n "$cat_tapfile" ]]; then
 	echo "1..$(($cat_ntests))" > $cat_tapfile || \
 	    fail "failed to emit TAP output"
+fi
+
+#
+# Allow for environment-specific customizations.  These are optionally loaded
+# by the catest_init.sh file sourced earlier.
+#
+if type catest_init > /dev/null 2>&1 && ! catest_init; then
+	fail "catest_init failed"
 fi
 
 #

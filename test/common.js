@@ -10,11 +10,16 @@
 
 var mod_assert = require('assert');
 var mod_path = require('path');
+var mod_url = require('url');
 
-var mod_vasync = require('vasync');
 var mod_bunyan = require('bunyan');
+var mod_redis = require('redis');
+var mod_vasync = require('vasync');
+var mod_verror = require('verror');
 
 var mod_marlin = require('../lib/marlin');
+
+var VError = mod_verror.VError;
 
 var testname = mod_path.basename(process.argv[1]);
 
@@ -27,6 +32,7 @@ var log = new mod_bunyan({
 exports.setup = setup;
 exports.teardown = teardown;
 exports.resetBucket = resetBucket;
+exports.loginLookup = loginLookup;
 
 exports.pipeline = pipeline;
 exports.timedCheck = timedCheck;
@@ -34,6 +40,9 @@ exports.exnAsync = exnAsync;
 
 exports.testname = testname;
 exports.log = log;
+
+var login_cache = {};
+var redis_client;
 
 function setup(callback)
 {
@@ -52,6 +61,8 @@ function setup(callback)
 
 function teardown(api, callback)
 {
+	if (redis_client)
+		redis_client.quit();
 	api.close();
 	callback();
 }
@@ -65,6 +76,74 @@ function resetBucket(client, bucket, options, callback)
 		}
 
 		client.putBucket(bucket, options, callback);
+	});
+}
+
+function loginLookup(login, callback)
+{
+	if (login_cache.hasOwnProperty(login)) {
+		process.nextTick(function () {
+			callback(null, login_cache[login]);
+		});
+
+		return;
+	}
+
+	if (!redis_client) {
+		if (!process.env['MAHI_URL']) {
+			process.nextTick(function () {
+				callback(new VError('MAHI_URL must be ' +
+				    'specified in the environment'));
+			});
+
+			return;
+		}
+
+		var conf = mod_url.parse(process.env['MAHI_URL']);
+		log.info('connecting to redis', conf);
+		redis_client = mod_redis.createClient(
+		    parseInt(conf['port'], 10), conf['hostname'], {});
+
+		redis_client.once('error', function (err) {
+			var verr = new VError(err, 'failed to lookup login ' +
+			    '"%s"', login);
+			redis_client = undefined;
+			log.warn(verr);
+			callback(verr);
+		});
+
+		redis_client.once('end', function () {
+			log.warn('redis connection closed');
+			redis_client = undefined;
+		});
+
+		redis_client.once('ready', function () {
+			log.info('redis connected');
+			redis_client.removeAllListeners('error');
+		});
+
+		/*
+		 * We fall-through since the client will queue our requests
+		 * until it's ready.
+		 */
+	}
+
+	redis_client.get('/login/' + login, function (err, result) {
+		if (err) {
+			callback(err);
+			return;
+		}
+
+		var parsed = JSON.parse(result);
+
+		if (!parsed) {
+			callback(new VError('no such login: "%s"', login));
+			return;
+		}
+
+		log.info('user "%s" has uuid', login, parsed['uuid']);
+		login_cache[login] = parsed['uuid'];
+		callback(null, parsed['uuid']);
 	});
 }
 

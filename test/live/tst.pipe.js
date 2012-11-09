@@ -72,10 +72,15 @@ function setup(_, next)
 
 function submitFirst(_, next)
 {
-	jobs.populateData(testjob['inputs'], function () {
-		jobs.jobSubmit(client, testjob, function (err, jobid) {
-			srcjobid = jobid;
+	jobs.populateData(testjob['inputs'], function (err) {
+		if (err) {
 			next(err);
+			return;
+		}
+
+		jobs.jobSubmit(client, testjob, function (suberr, jobid) {
+			srcjobid = jobid;
+			next(suberr);
 		});
 	});
 }

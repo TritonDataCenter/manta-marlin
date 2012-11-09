@@ -437,17 +437,33 @@ function jobTestRun(api, testspec, callback)
 
 function jobSubmit(api, testspec, callback)
 {
-	var jobdef, funcs, jobid;
+	var jobdef, login, funcs, jobid;
 
 	jobdef = {
-	    'owner': '78d9fb71-a851-4287-8ce7-5a5090e86b17',
 	    'phases': testspec['job']['phases']
 	};
+
+	login = process.env['MANTA_USER'];
+
+	if (!login) {
+		process.nextTick(function () {
+			callback(new VError(
+			    'MANTA_USER must be specified in the environment'));
+		});
+		return;
+	}
 
 	if (testspec['input'])
 		jobdef['input'] = testspec['input'];
 
 	funcs = [
+	    function (_, stepcb) {
+		log.info('looking up user "%s"', login);
+		mod_testcommon.loginLookup(login, function (err, owner) {
+			jobdef['owner'] = owner;
+			stepcb(err);
+		});
+	    },
 	    function (_, stepcb) {
 		log.info('submitting job', jobdef);
 		api.jobCreate(jobdef, function (err, result) {
@@ -473,7 +489,8 @@ function jobSubmit(api, testspec, callback)
 	}
 
 	mod_vasync.pipeline({ 'funcs': funcs }, function (err) {
-		log.info('job "%s": job submission complete', jobid);
+		if (!err)
+			log.info('job "%s": job submission complete', jobid);
 		callback(err, jobid);
 	});
 }
@@ -624,6 +641,8 @@ function populateData(keys, callback)
 		return;
 	}
 
+	log.info('populating keys', keys);
+
 	var url = mod_url.parse(process.env['MANTA_URL']);
 	mod_vasync.forEachParallel({
 	    'inputs': keys,
@@ -639,8 +658,10 @@ function populateData(keys, callback)
 			'x-marlin': true
 		    }
 		});
-		req.write(data);
+		req.end(data);
 		req.on('response', function (response) {
+			log.info('PUT key "%s"', key);
+
 			if (response.statusCode == 204) {
 				subcallback();
 				return;
