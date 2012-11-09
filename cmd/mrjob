@@ -31,18 +31,25 @@ var mod_marlin = require('../lib/marlin');
 
 var msArg0 = mod_path.basename(process.argv[1]);
 var msUsage = [
-    'USAGE: mrjob submit   [-a key] [-c count] [-i id] [-n name] [-d size]',
+    'USAGE: mrjob subcmd [options] [arguments]',
+    '       mrjob [-h | -? | --help]',
+    '',
+    '       mrjob list     [-H] [-o field1[,field2...]]',
+    '       mrjob submit   [-a key] [-c count] [-i id] [-n name] [-d size]',
     '                      [-p jobid] [-m exec] [-r exec] ...',
     '       mrjob addkeys  jobid [key ...]',
-    '       mrjob listkeys jobid',
-    '       mrjob endinput jobid',
     '       mrjob cancel   jobid',
-    '       mrjob outputs  jobid',
-    '       mrjob failed   jobid',
+    '       mrjob endinput jobid',
+    '',
     '       mrjob errors   jobid',
-    '       mrjob list     [-H] [-o field1[,field2...]]',
+    '       mrjob failed   jobid',
     '       mrjob get      [-v] jobid',
+    '       mrjob inputs   jobid',
     '       mrjob log      jobid',
+    '       mrjob outputs  jobid'
+].join('\n');
+
+var msHelp = [
     '',
     '    Manages Marlin jobs via Moray.',
     '',
@@ -69,7 +76,7 @@ var msUsage = [
     '',
     '       Submit new keys for a job (which may or may not already exist).',
     '',
-    '   listkeys jobid',
+    '   inputs jobid',
     '',
     '       Lists all keys submitted for a job.',
     '',
@@ -147,7 +154,7 @@ var msLog;	/* bunyan logger */
 var msCommands = {
     'submit': cmdSubmit,
     'addkeys': cmdAddkeys,
-    'listkeys': cmdListkeys,
+    'inputs': cmdInputs,
     'endinput': cmdEndinput,
     'cancel': cmdCancel,
     'list': cmdList,
@@ -248,6 +255,12 @@ var msTaskStates = {
 
 function usage()
 {
+	console.error(msUsage);
+	process.exit(2);
+}
+
+function help()
+{
 	function docFields(conf, list) {
 		return (Object.keys(conf).map(function (f) {
 			var rv = conf[f]['label'];
@@ -258,6 +271,7 @@ function usage()
 	}
 
 	console.error(msUsage);
+	console.error(msHelp);
 	console.error(wrap4(docFields(msFieldsJobs) + '\n'));
 	process.exit(2);
 }
@@ -270,6 +284,9 @@ function main()
 		usage();
 
 	subcmd = process.argv[2];
+
+	if (subcmd == '-h' || subcmd == '-?' || subcmd == '--help')
+		help();
 
 	if (!msCommands.hasOwnProperty(subcmd))
 		usage();
@@ -450,7 +467,7 @@ function cmdAddkeys()
 	});
 }
 
-function cmdListkeys()
+function cmdInputs()
 {
 	if (process.argv.length < 4)
 		usage();
