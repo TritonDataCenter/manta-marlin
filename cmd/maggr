@@ -442,9 +442,7 @@ module.exports = {
 	count: count,
 	max: max,
 	mean: mean,
-	median: median,
 	min: min,
-	mode: mode,
 	range: range,
 	sum: sum
 };
