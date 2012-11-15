@@ -72,7 +72,7 @@ function setup(_, next)
 
 function submitFirst(_, next)
 {
-	jobs.populateData(testjob['inputs'], function (err) {
+	jobs.populateData(client.manta, testjob['inputs'], function (err) {
 		if (err) {
 			next(err);
 			return;

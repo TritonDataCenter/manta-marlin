@@ -17,6 +17,7 @@ var mod_redis = require('redis');
 var mod_vasync = require('vasync');
 var mod_verror = require('verror');
 
+var mod_manta = require('manta');
 var mod_marlin = require('../lib/marlin');
 
 var VError = mod_verror.VError;
@@ -46,6 +47,30 @@ var redis_client;
 
 function setup(callback)
 {
+	var manta_key_id = process.env['MANTA_KEY_ID'];
+	var manta_url = process.env['MANTA_URL'];
+	var manta_user = process.env['MANTA_USER'];
+
+	if (!manta_key_id)
+		throw (new VError('MANTA_KEY_ID not specified'));
+
+	if (!manta_url)
+		throw (new VError('MANTA_URL not specified'));
+
+	if (!manta_user)
+		throw (new VError('MANTA_USER not specified'));
+
+	exports.manta = mod_manta.createClient({
+	    'log': log, /* manta client creates a child logger */
+	    'url': manta_url,
+	    'user': manta_user,
+	    'sign': mod_manta.cliSigner({
+		'keyId': manta_key_id,
+		'log': log,
+		'user': manta_user
+	    })
+	});
+
 	mod_marlin.createClient({
 	    'moray': { 'url': process.env['MORAY_URL'] },
 	    'log': log.child({ 'component': 'marlin-client' })
@@ -55,6 +80,7 @@ function setup(callback)
 			throw (err);
 		}
 
+		api.manta = exports.manta;
 		callback(api);
 	});
 }

@@ -46,13 +46,14 @@ function runTests(_, next)
 	vasync.forEachParallel({
 	    'inputs': tests,
 	    'func': function (testjob, callback) {
-		jobs.populateData(testjob['inputs'], function (err) {
-		    if (err) {
-			next(err);
-			return;
-		    }
-		    jobs.jobTestRun(client, testjob, callback);
-		});
+		jobs.populateData(client.manta, testjob['inputs'],
+		    function (err) {
+			if (err) {
+			    next(err);
+			    return;
+			}
+			jobs.jobTestRun(client, testjob, callback);
+		    });
 	    }
 	}, next);
 }

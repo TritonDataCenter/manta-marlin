@@ -4,8 +4,11 @@
 
 var mod_assert = require('assert');
 var mod_http = require('http');
-var mod_jsprim = require('jsprim');
+var mod_stream = require('stream');
 var mod_url = require('url');
+var mod_util = require('util');
+
+var mod_jsprim = require('jsprim');
 var mod_vasync = require('vasync');
 var mod_verror = require('verror');
 
@@ -465,6 +468,47 @@ function jobSubmit(api, testspec, callback)
 		});
 	    },
 	    function (_, stepcb) {
+		log.info('creating auth token');
+
+		/*
+		 * XXX this needs to use "x-marlin: true" until the client API
+		 * supports creating auth tokens, since we need to sign this
+		 * request.
+		 */
+		var url = mod_url.parse(process.env['MANTA_URL']);
+		var req = mod_http.request({
+		    'method': 'POST',
+		    'path': '/' + process.env['MANTA_USER'] + '/tokens',
+		    'host': url['hostname'],
+		    'port': parseInt(url['port'], 10) || 80,
+		    'headers': {
+			'x-marlin': 'true'
+		    }
+		});
+
+		req.end();
+
+		req.on('response', function (response) {
+			log.info('auth token response: %d',
+			    response.statusCode);
+
+			if (response.statusCode != 201) {
+				stepcb(new VError(
+				    'wrong status code for auth token'));
+			}
+
+			var body = '';
+			response.on('data', function (chunk) {
+				body += chunk;
+			});
+			response.on('end', function () {
+				var token = JSON.parse(body)['token'];
+				jobdef['authToken'] = token;
+				stepcb();
+			});
+		});
+	    },
+	    function (_, stepcb) {
 		log.info('submitting job', jobdef);
 		api.jobCreate(jobdef, function (err, result) {
 			jobid = result;
@@ -634,45 +678,61 @@ function jobTaskMatches(etask, task)
 	return (true);
 }
 
-function populateData(keys, callback)
+function populateData(manta, keys, callback)
 {
-	if (!process.env['MANTA_URL']) {
-		callback(new Error('MANTA_URL env var must be set.'));
-		return;
-	}
-
 	log.info('populating keys', keys);
 
-	var url = mod_url.parse(process.env['MANTA_URL']);
 	mod_vasync.forEachParallel({
 	    'inputs': keys,
 	    'func': function (key, subcallback) {
 		var data = 'sample data for key ' + key;
-		var req = mod_http.request({
-		    'method': 'put',
-		    'host': url['hostname'],
-		    'port': parseInt(url['port'], 10) || 80,
-		    'path': key,
-		    'headers': {
-			'content-length': data.length,
-			'x-marlin': true
-		    }
-		});
-		req.end(data);
-		req.on('response', function (response) {
-			log.info('PUT key "%s"', key);
+		var stream = new StringInputStream(data);
 
-			if (response.statusCode == 204) {
-				subcallback();
-				return;
-			}
-
-			subcallback(new Error('wrong status code for key ' +
-			    key + ': ' + response.statusCode));
-		});
+		log.info('PUT key "%s"', key);
+		manta.put(key, stream, { 'size': data.length }, subcallback);
 	    }
 	}, callback);
 }
+
+function StringInputStream(contents)
+{
+	mod_stream.Stream();
+
+	this.s_data = contents;
+	this.s_paused = false;
+	this.s_done = false;
+
+	this.scheduleEmit();
+}
+
+mod_util.inherits(StringInputStream, mod_stream.Stream);
+
+StringInputStream.prototype.pause = function ()
+{
+	this.s_paused = true;
+};
+
+StringInputStream.prototype.resume = function ()
+{
+	this.s_paused = false;
+	this.scheduleEmit();
+};
+
+StringInputStream.prototype.scheduleEmit = function ()
+{
+	var stream = this;
+
+	process.nextTick(function () {
+		if (stream.s_paused || stream.s_done)
+			return;
+
+		stream.emit('data', stream.s_data);
+		stream.emit('end');
+
+		stream.s_data = null;
+		stream.s_done = true;
+	});
+};
 
 /*
  * TODO more test cases:
