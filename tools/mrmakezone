@@ -21,12 +21,18 @@ mkz_alias="$1"						# zone alias
 mkz_image_uuid="01b2c898-945f-11e1-a523-af1afbe22822" 	# smartos 1.6.3
 mkz_owner_uuid="" 					# admin user
 mkz_network_uuid=""   					# network uuid
+mkz_server_uuid=""					# server uuid
 
 echo "Retrieving admin customer uuid ... \c "
 mkz_owner_uuid=$(sdc-ldap search cn=Admin | grep uuid: | \
     awk '{print $2}') || fail "failed"
 [[ -n $mkz_owner_uuid ]] || fail "not found"
 echo "$mkz_owner_uuid"
+
+echo "Retrieving server uuid ... \c "
+mkz_server_uuid=$(sysinfo | json UUID) || fail "failed"
+[[ -n $mkz_server_uuid ]] || fail "not found"
+echo "$mkz_server_uuid."
 
 echo "Retrieving external network uuid ... \c "
 mkz_network_uuid=$(sdc-napi /networks?name=external | json -H 0.uuid) || \
@@ -41,6 +47,7 @@ cat > $mkz_tmpfile.input <<EOF
 	"brand": "joyent-minimal",
 	"image_uuid": "$mkz_image_uuid",
 	"owner_uuid": "$mkz_owner_uuid",
+	"server_uuid": "$mkz_server_uuid",
 	"networks": [ "$mkz_network_uuid" ],
 	"alias": "$mkz_alias",
 	"ram": 256,
