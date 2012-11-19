@@ -2,10 +2,14 @@
 
 var mod_assert = require('assert');
 var mod_fs = require('fs');
-var mod_getopt = require('posix-getopt');
-var mod_http = require('http');
 var mod_path = require('path');
+
+var mod_bunyan = require('bunyan');
+var mod_getopt = require('posix-getopt');
+var mod_manta = require('manta');
 var mod_uuid = require('node-uuid');
+
+var mod_mautil = require('../lib/util');
 
 /*
  * mpipe: distributed pipe
@@ -32,6 +36,7 @@ var dpUsageMessage = [
 var dpTmpfile = '/var/tmp/mpipe.' + process.pid;
 var dpObjkey, dpReducer;
 var dpOutstream, dpInstream;
+var dpNoretry = false;
 
 function main()
 {
@@ -59,6 +64,7 @@ function main()
 
 	if (parser.optind() < process.argv.length) {
 		dpObjkey = process.argv[parser.optind()];
+		dpNoretry = true;
 	} else if (process.env['MANTA_OUTPUT_BASE']) {
 		dpObjkey = process.env['MANTA_OUTPUT_BASE'] + mod_uuid.v4();
 	} else {
@@ -90,50 +96,37 @@ function usage()
 
 function dpFatal(message)
 {
-	console.error(message);
+	console.error('mpipe: %s', message);
 	process.exit(1);
 }
 
 function dpUploadFile()
 {
-	dpInstream = mod_fs.createReadStream(dpTmpfile);
+	var log = new mod_bunyan({ 'name': 'mpipe', 'level': 'fatal' });
 
-	dpInstream.on('open', function () {
-		mod_fs.stat(dpTmpfile, function (err, stat) {
-			if (err)
-				dpFatal('failed to stat ' + dpTmpfile +
-				    ': ' + err.message);
-
-			var uri = mod_path.join('/object', dpObjkey);
-			console.error('uploading file to %s', uri);
-
-			var headers = {
-			    'content-length': stat['size']
-			};
-
-			if (dpReducer !== undefined)
-				headers['x-marlin-reducer'] = dpReducer;
-
-			var request = mod_http.request({
-			    'host': 'localhost',
-			    'port': 8080,
-			    'method': 'PUT',
-			    'path': uri,
-			    'headers': headers
-			});
-
-			dpInstream.pipe(request);
-
-			request.on('response', function (response) {
-				if (response.statusCode != 201 &&
-				    response.statusCode != 204)
-					dpFatal('server returned ' +
-					    response.statusCode);
-
-				console.log(dpObjkey);
-			});
-		});
+	var client = mod_manta.createClient({
+	    'url': 'http://localhost:8080/',
+	    'log': log,
+	    'retry': false,
+	    'sign': mod_mautil.mantaSignNull
 	});
+
+	var headers = {};
+
+	if (dpReducer !== undefined)
+		headers['x-marlin-reducer'] = dpReducer;
+
+	mod_mautil.mantaFileSave({
+	    'client': client,
+	    'filename': dpTmpfile,
+	    'headers': headers,
+	    'key': dpObjkey,
+	    'log': log
+	}, function (err) {
+		if (err)
+			dpFatal(err.message);
+		console.log(dpObjkey);
+	}, dpNoretry);
 }
 
 main();

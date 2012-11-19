@@ -36,7 +36,7 @@ var msUsage = [
     '',
     '       mrjob list     [-H] [-o field1[,field2...]]',
     '       mrjob submit   [-a key] [-c count] [-i id] [-n name] [-d size]',
-    '                      [-p jobid] [-m exec] [-r exec] ...',
+    '                      [-p jobid] [-t authToken] [-m exec] [-r exec] ...',
     '       mrjob addkeys  jobid [key ...]',
     '       mrjob cancel   jobid',
     '       mrjob endinput jobid',
@@ -55,7 +55,8 @@ var msHelp = [
     '',
     'SUBCOMMANDS',
     '',
-    '   submit [-a key] [-c count] [-i id] [-n name] [-m exec] [-r exec]',
+    '   submit [-a key] [-c count] [-i id] [-n name] [-t token]',
+    '          [-m exec] [-r exec]',
     '',
     '      Submit a new job without ending input.',
     '',
@@ -69,6 +70,7 @@ var msHelp = [
     '          -p jobid       Indicate that output should be streamed from ',
     '                         the output of job "jobid"',
     '          -r exec        Append a reduce phase with body "exec"',
+    '          -t token       Auth token',
     '',
     '      With no -m or -r options, the job gets one map phase.',
     '',
@@ -144,6 +146,7 @@ var msDram;				/* DRAM cap (for next phase) */
 var msPipeSource;			/* source of job's input */
 var msJobName = 'mrsubmit job';
 var msJobId = mod_uuid.v4();
+var msAuthToken;
 var msMorayUrl = process.env['MORAY_URL'];
 var msParseable = false;		/* whether output should be parseable */
 var msVerbose = 0;			/* whether output should be verbose */
@@ -330,7 +333,7 @@ function cmdSubmit()
 {
 	var parser, option;
 
-	parser = new mod_getopt.BasicParser('a:c:d:i:m:n:p:r:',
+	parser = new mod_getopt.BasicParser('a:c:d:i:m:n:p:r:t:',
 	    process.argv.slice(1));
 
 	while ((option = parser.getopt()) !== undefined) {
@@ -365,6 +368,10 @@ function cmdSubmit()
 
 		case 'p':
 			msPipeSource = option.optarg;
+			break;
+
+		case 't':
+			msAuthToken = option.optarg;
 			break;
 
 		case 'm':
@@ -416,11 +423,17 @@ function cmdSubmit()
 	if (msPhases.length === 0)
 		msPhases.push({ 'type': 'storage-map', 'exec': 'echo' });
 
+	if (!msAuthToken) {
+		console.error('%s: auth token (-t) is required', msArg0);
+		process.exit(1);
+	}
+
 	var job = {
 	    'jobId': msJobId,
 	    'jobName': msJobName,
 	    'phases': msPhases,
-	    'owner': process.env['USER']
+	    'owner': process.env['USER'],
+	    'authToken': msAuthToken
 	};
 
 	if (msPipeSource)
