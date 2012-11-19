@@ -3,17 +3,22 @@
  */
 
 var mod_assert = require('assert');
+var mod_fs = require('fs');
 var mod_http = require('http');
+var mod_path = require('path');
 var mod_stream = require('stream');
 var mod_url = require('url');
 var mod_util = require('util');
 
+var mod_extsprintf = require('extsprintf');
 var mod_jsprim = require('jsprim');
+var mod_manta = require('manta');
 var mod_vasync = require('vasync');
 var mod_verror = require('verror');
 
 var mod_testcommon = require('../common');
 
+var sprintf = mod_extsprintf.sprintf;
 var VError = mod_verror.VError;
 var exnAsync = mod_testcommon.exnAsync;
 var log = mod_testcommon.log;
@@ -440,13 +445,14 @@ function jobTestRun(api, testspec, callback)
 
 function jobSubmit(api, testspec, callback)
 {
-	var jobdef, login, funcs, jobid;
+	var jobdef, login, url, funcs, private_key, signed_path, jobid;
 
 	jobdef = {
 	    'phases': testspec['job']['phases']
 	};
 
 	login = process.env['MANTA_USER'];
+	url = mod_url.parse(process.env['MANTA_URL']);
 
 	if (!login) {
 		process.nextTick(function () {
@@ -468,22 +474,50 @@ function jobSubmit(api, testspec, callback)
 		});
 	    },
 	    function (_, stepcb) {
-		log.info('creating auth token');
-
 		/*
-		 * XXX this needs to use "x-marlin: true" until the client API
-		 * supports creating auth tokens, since we need to sign this
-		 * request.
+		 * XXX It sucks that we're hardcoding the path to a particular
+		 * key here given that node-manta.git has magic for extracting
+		 * the right key from the agent or ~/.ssh based on the
+		 * fingerprint.
 		 */
-		var url = mod_url.parse(process.env['MANTA_URL']);
+		var path = mod_path.join(process.env['HOME'], '.ssh/id_rsa');
+		log.info('reading private key from %s', path);
+		mod_fs.readFile(path, function (err, contents) {
+			private_key = contents.toString('utf8');
+			stepcb(err);
+		});
+	    },
+	    function (_, stepcb) {
+		log.info('creating signed URL');
+
+		mod_manta.signUrl({
+		    'algorithm': 'rsa-sha256',
+		    'expires': Date.now() + 86400 * 1000,
+		    'host': url['host'],
+		    'keyId': process.env['MANTA_KEY_ID'],
+		    'method': 'POST',
+		    'path': sprintf('/%s/tokens', login),
+		    'user': login,
+		    'sign': mod_manta.privateKeySigner({
+			'algorithm': 'rsa-sha256',
+			'key': private_key,
+			'keyId': process.env['MANTA_KEY_ID'],
+			'log': log,
+			'user': login
+		    })
+		}, function (err, path) {
+			signed_path = path;
+			stepcb(err);
+		});
+	    },
+	    function (_, stepcb) {
+		log.info('creating auth token', signed_path);
+
 		var req = mod_http.request({
 		    'method': 'POST',
-		    'path': '/' + process.env['MANTA_USER'] + '/tokens',
+		    'path': signed_path,
 		    'host': url['hostname'],
-		    'port': parseInt(url['port'], 10) || 80,
-		    'headers': {
-			'x-marlin': 'true'
-		    }
+		    'port': parseInt(url['port'], 10) || 80
 		});
 
 		req.end();
@@ -495,6 +529,7 @@ function jobSubmit(api, testspec, callback)
 			if (response.statusCode != 201) {
 				stepcb(new VError(
 				    'wrong status code for auth token'));
+				return;
 			}
 
 			var body = '';
