@@ -67,7 +67,7 @@ var msUsage = [
 	'delimiter. If multiple operations were specified for a single column,',
 	'results will be printed in the same order they were specified and',
 	'separated by the delimiter specified by the -i option, otherwise by',
-	'commas.',
+	'commas.'
 ].join('\n');
 
 function usage(errstring) {
@@ -128,11 +128,11 @@ function listOps() {
 	Object.keys(OPS).forEach(function (op) {
 		s += op + ' ';
 	});
-	return s;
+	return (s);
 }
 
 
-/**
+/*
  * Checks if the ops specified make sense and adds any dependencies.
  */
 function processOps(ops) {
@@ -140,8 +140,8 @@ function processOps(ops) {
 
 	processedOps.singleOps = {}; // operations that have no dependencies
 
-	processedOps.postOps = {}; // operations that must be performed after
-				   // other ones, i.e. they have dependencies
+	processedOps.postOps = {};  // operations that must be performed after
+				    // other ones, i.e. they have dependencies
 
 	processedOps.outputOps = {}; // operations that the user explicitly
 				     // requested to be performed
@@ -250,7 +250,7 @@ function getOpts(argv) {
 }
 
 
-/**
+/*
  * Parses a single line of input into a key and values.
  * Each line is split into columns. Each column is added to the key or the
  * values array depending on the operation specified for that column.
@@ -305,7 +305,7 @@ function lineParse(delim, ops, input) {
 		for (var col = 0; col < columns.length; col++) {
 			var colOps = ops[col] || ops.global;
 
-			//use this column as part of the aggregation key
+			// use this column as part of the aggregation key
 			if ('key' in colOps.singleOps) {
 				key += columns[col];
 				values[col] = columns[col];
@@ -335,7 +335,7 @@ function lineParse(delim, ops, input) {
 }
 
 
-/**
+/*
  * Prints the result object.
  * Each key and it's aggregated columns are printed on a line.
  * Columns are separated by opts.outputDelimiter
