@@ -65,7 +65,7 @@ function main()
 		process.exit(2);
 	}
 
-	var uri = mod_path.join('/object', process.argv[parser.optind()]);
+	var uri = process.argv[parser.optind()];
 
 	var headers = {
 	    'x-marlin-reference': true
