@@ -97,7 +97,12 @@
           "version": "0.1.2"
         },
         "bunyan": {
-          "version": "0.14.0"
+          "version": "0.16.7",
+          "dependencies": {
+            "dtrace-provider": {
+              "version": "0.2.4"
+            }
+          }
         },
         "clone": {
           "version": "0.1.1"
@@ -109,6 +114,9 @@
               "version": "0.4.1"
             }
           }
+        },
+        "once": {
+          "version": "1.1.1"
         }
       }
     },
@@ -120,19 +128,25 @@
           "version": "0.1.2"
         },
         "bunyan": {
-          "version": "0.14.5"
+          "version": "0.16.7",
+          "dependencies": {
+            "dtrace-provider": {
+              "version": "0.2.4"
+            }
+          }
         },
         "clone": {
           "version": "0.1.1"
         },
         "http-signature": {
-          "version": "0.9.9",
+          "version": "0.9.10",
+          "from": "git://github.com/joyent/node-http-signature#ba72d40",
           "dependencies": {
             "asn1": {
               "version": "0.1.11"
             },
             "ctype": {
-              "version": "0.5.0"
+              "version": "0.5.2"
             }
           }
         },
@@ -142,26 +156,38 @@
         "mime": {
           "version": "1.2.7"
         },
+        "node-uuid": {
+          "version": "1.4.0"
+        },
         "restify": {
           "version": "2.0.0",
-          "from": "git://github.com/mcavage/node-restify.git#8650190",
+          "from": "git://github.com/mcavage/node-restify.git#fcabbd1",
           "dependencies": {
+            "bunyan": {
+              "version": "0.16.4"
+            },
+            "dtrace-provider": {
+              "version": "0.2.4"
+            },
             "byline": {
               "version": "2.0.3"
             },
             "formidable": {
               "version": "1.0.11"
             },
-            "lru-cache": {
-              "version": "2.0.4"
-            },
-            "pooling": {
-              "version": "0.3.2",
+            "http-signature": {
+              "version": "0.9.9",
               "dependencies": {
-                "bunyan": {
-                  "version": "0.14.0"
+                "asn1": {
+                  "version": "0.1.11"
+                },
+                "ctype": {
+                  "version": "0.5.0"
                 }
               }
+            },
+            "lru-cache": {
+              "version": "2.1.0"
             },
             "qs": {
               "version": "0.5.1"
@@ -169,8 +195,14 @@
             "semver": {
               "version": "1.1.0"
             },
-            "dtrace-provider": {
-              "version": "0.2.1"
+            "verror": {
+              "version": "1.3.4",
+              "from": "git://github.com/davepacheco/node-verror.git#35e55e8",
+              "dependencies": {
+                "extsprintf": {
+                  "version": "1.0.0"
+                }
+              }
             }
           }
         },
@@ -195,28 +227,36 @@
           "version": "0.1.2"
         },
         "bunyan": {
-          "version": "0.14.5"
+          "version": "0.16.7",
+          "dependencies": {
+            "dtrace-provider": {
+              "version": "0.2.4"
+            }
+          }
         },
         "clone": {
           "version": "0.1.1"
         },
         "fast": {
-          "version": "0.2.0",
-          "from": "git://github.com/mcavage/node-fast.git#f4794c2",
+          "version": "0.2.2",
           "dependencies": {
+            "backoff": {
+              "version": "1.2.0"
+            },
             "crc": {
               "version": "0.2.0"
             },
             "microtime": {
-              "version": "0.3.1",
+              "version": "0.3.3",
               "dependencies": {
                 "bindings": {
-                  "version": "0.3.0"
+                  "version": "1.0.0"
                 }
               }
             },
             "verror": {
               "version": "1.3.4",
+              "from": "git://github.com/davepacheco/node-verror.git#1514e14",
               "dependencies": {
                 "extsprintf": {
                   "version": "1.0.0"
@@ -224,6 +264,12 @@
               }
             }
           }
+        },
+        "node-uuid": {
+          "version": "1.4.0"
+        },
+        "once": {
+          "version": "1.1.1"
         }
       }
     },
