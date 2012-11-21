@@ -12,11 +12,10 @@ set -o xtrace
 export PATH=$PATH:/opt/smartdc/bin:/smartdc/bin
 
 mdc_arg0="$(basename $0)"
-mdc_alias="$1"
+mdc_zonename="$1"
 mdc_tmpfile="/var/tmp/$mdc_arg0.$$"
 mdc_tools="$(dirname $0)"
 mdc_zonesfile="$mdc_tools/../etc/marlinzones"
-mdc_zonename=
 
 function fail
 {
@@ -26,17 +25,18 @@ function fail
 
 function usage
 {
-	echo "usage: $mdc_arg0 zone_alias" >&2
+	echo "usage: $mdc_arg0 zonename" >&2
 	exit 2
 }
 
-[[ -n "$mdc_alias" ]] || usage
+[[ -n "$mdc_zonename" ]] || usage
 
-sdc-vm list | awk '{print $1}' | grep -w "$mdc_alias" && fail "duplicate alias"
+vmadm list | awk '{print $1}' | grep -w "$mdc_zonename" || \
+    fail "no such zone: $mdc_zonename"
 
-$mdc_tools/mrmakezone $mdc_alias | tee $mdc_tmpfile || fail "failed to make zone"
-mdc_zonename=$(tail -1 $mdc_tmpfile)
-echo "New worker zone uuid: $mdc_zonename"
+echo "Creating snapshot zones/$mdc_zonename@marlin_init ... \c "
+zfs snapshot zones/$mdc_zonename@marlin_init
+echo "done."
 
 echo $mdc_zonename >> $mdc_zonesfile && echo "Updated $mdc_zonesfile"
 
