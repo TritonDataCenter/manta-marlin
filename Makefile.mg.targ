@@ -25,7 +25,6 @@ IMAGEROOT_FILES =		 			\
     $(MG_IMAGEROOT)/smf/manifests/marlin-zone-agent.xml	\
     $(MG_IMAGEROOT)/tools/mragentconf			\
     $(MG_IMAGEROOT)/tools/mrdeploycompute		\
-    $(MG_IMAGEROOT)/tools/mrmakezone			\
     $(MG_IMAGEROOT)/tools/mrzone
 
 #
