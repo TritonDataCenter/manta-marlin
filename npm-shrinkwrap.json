@@ -96,6 +96,9 @@
         "assert-plus": {
           "version": "0.1.2"
         },
+        "backoff": {
+          "version": "1.2.0"
+        },
         "bunyan": {
           "version": "0.16.7",
           "dependencies": {
