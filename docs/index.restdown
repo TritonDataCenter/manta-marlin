@@ -572,7 +572,7 @@ use the 5th and 3rd fields for the partioning key, going to 4 reducers:
 
 ### mtee: save stdout to a manta object in a stream of commands
 
-mtee [manta_object_key]
+mtee manta_object_key
 
 mtee is used to capture stdin and write to both stdout and a manta object.
 For example, this will capture the output of cmd to manta object
