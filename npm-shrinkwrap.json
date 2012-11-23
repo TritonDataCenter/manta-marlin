@@ -3,7 +3,12 @@
   "version": "0.0.2",
   "dependencies": {
     "bunyan": {
-      "version": "0.13.0"
+      "version": "0.16.7",
+      "dependencies": {
+        "dtrace-provider": {
+          "version": "0.2.4"
+        }
+      }
     },
     "carrier": {
       "version": "0.1.7"
@@ -99,14 +104,6 @@
         "backoff": {
           "version": "1.2.0"
         },
-        "bunyan": {
-          "version": "0.16.7",
-          "dependencies": {
-            "dtrace-provider": {
-              "version": "0.2.4"
-            }
-          }
-        },
         "clone": {
           "version": "0.1.1"
         },
@@ -129,14 +126,6 @@
       "dependencies": {
         "assert-plus": {
           "version": "0.1.2"
-        },
-        "bunyan": {
-          "version": "0.16.7",
-          "dependencies": {
-            "dtrace-provider": {
-              "version": "0.2.4"
-            }
-          }
         },
         "clone": {
           "version": "0.1.1"
@@ -228,14 +217,6 @@
       "dependencies": {
         "assert-plus": {
           "version": "0.1.2"
-        },
-        "bunyan": {
-          "version": "0.16.7",
-          "dependencies": {
-            "dtrace-provider": {
-              "version": "0.2.4"
-            }
-          }
         },
         "clone": {
           "version": "0.1.1"

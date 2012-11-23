@@ -3,13 +3,13 @@
 	"port": 8081,
 
 	"manta": {
-		"url": "http://manta.coal.joyent.us/",
+		"url": "http://manta.joyent.us/",
 		"connectTimeout": 30000
 	},
 
 	"moray": {
 		"indexing": {
-			"urls": [ "tcp://1.moray.coal.joyent.us:2020" ],
+			"urls": [ "tcp://1.moray.joyent.us:2020" ],
 			"replicas": 100,
 			"reconnect": {
 				"maxTimeout": 30000,
@@ -17,7 +17,7 @@
 			}
 		},
 		"storage": {
-			"url": "tcp://1.moray.coal.joyent.us:2020",
+			"url": "tcp://1.moray.joyent.us:2020",
 			"reconnect": {
 				"maxTimeout": 30000,
 				"retries": 120
@@ -26,7 +26,7 @@
 	},
 
 	"auth": {
-		"host": "auth.coal.joyent.us",
+		"host": "auth.joyent.us",
 		"port": 6379,
 		"options": {
 			"enable_offline_queue": false
@@ -48,8 +48,8 @@
 		"maxPendingPuts": 100,
 		"maxRecentRequests": 300,
 		"maxRecordsPerQuery": 1000,
-		"timePoll": 1000,
-		"timeTick": 1000,
+		"timePoll": 50,
+		"timeTick": 20,
 		"timeJobAbandon": 30000,
 		"timeJobSave": 10000,
 		"timeTaskAbandon": 10000

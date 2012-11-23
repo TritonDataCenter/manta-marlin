@@ -17,9 +17,9 @@ https://mo.joyent.com/docs/marlin).
 
 First, set up a working Manta install.  You'll need the nameserver IP addresses
 as well as the names of the Moray, Mahi, and Muppet zones (usually something
-like {1.moray,auth,manta}.coal.joyent.us).  The rest of these steps assume
-you've already set up the node-manta.git clients and have tools like "mls" and
-"msign" in your path.
+like {1.moray,auth,manta}.joyent.us).  The rest of these steps assume you've
+already set up the node-manta.git clients and have tools like "mls" and "msign"
+in your path.
 
 The suggested Marlin development environment is a compute zone as set up by
 ca-headnode-setup, available in the global zone at
@@ -28,7 +28,7 @@ basically a smartos zone with a few particular packages, including
 gcc-compiler, cscope, gmake, scmgit, and python26.
 
 In your new zone, add the Manta nameservers to /etc/resolv.conf.  Check this
-using "dig manta.coal.joyent.us" (or whatever the manta front door is in your
+using "dig manta.joyent.us" (or whatever the manta front door is in your
 setup).
 
 Now you're ready to check out the source:
@@ -61,11 +61,11 @@ To create a job, you must first create an auth token against Manta.  The
 easiest way to do this is to sign the 'POST /$user/tokens' URL:
 
     $ msign -m POST /dap/tokens
-    https://manta.coal.joyent.us/dap/tokens?...
+    https://manta.joyent.us/dap/tokens?...
 
 Then use the URL you were given with curl to create a new token:
 
-    $ curl -k -XPOST 'https://manta.coal.joyent.us/dap/tokens?...'
+    $ curl -k -XPOST 'https://manta.joyent.us/dap/tokens?...'
     {"token":"..."}
 
 Copy this token, and pass that to "mrjob submit" using the "-t" option.  You'll
@@ -89,9 +89,9 @@ misconfiguration.**
 The test environment assumes several environment variables are set.  Here are
 example settings for COAL:
 
-    $ export MAHI_URL=tcp://auth.coal.joyent.us:6379/
-    $ export MORAY_URL=tcp://1.moray.coal.joyent.us:2020/
-    $ export MANTA_URL=https://manta.coal.joyent.us
+    $ export MAHI_URL=tcp://auth.joyent.us:6379/
+    $ export MORAY_URL=tcp://1.moray.joyent.us:2020/
+    $ export MANTA_URL=https://manta.joyent.us
     $ export MANTA_USER=poseidon
     $ export MANTA_KEY_ID=ff:4a:ad:ac:92:86:ec:d2:5a:9d:88:c8:e8:12:8d:15
 

@@ -30,8 +30,8 @@
 	"tunables": {
 		"maxPendingPuts": 25,
 		"timeJobSave": 3000,
-		"timePoll": 1000,
-		"timeTick": 1000
+		"timePoll": 50,
+		"timeTick": 20
 	},
 
 	"zoneDefaults": {
