@@ -431,6 +431,40 @@ exports.jobMMRR = {
     }
 };
 
+exports.jobM500 = {
+    'job': {
+	'phases': [ { 'type': 'storage-map', 'exec': 'wc' } ]
+    },
+    'inputs': [],
+    'timeout': 30 * 1000,
+    'expected_outputs': [],
+    'expected_tasks': [],
+    'verify': function () {}
+};
+
+function initJobs()
+{
+	var job = exports.jobM500;
+
+	for (var i = 0; i < 500; i++) {
+		var key = '/poseidon/stor/obj' + i;
+		var okey = '/poseidon/jobs/.*/stor' + key;
+
+		job['inputs'].push(key);
+		job['expected_outputs'] = new RegExp(okey);
+		job['expected_tasks'].push({
+		    'phaseNum': 0,
+		    'key': key,
+		    'state': 'done',
+		    'result': 'ok',
+		    'nOutputs': 1,
+		    'firstOutputs': [ new RegExp(okey) ]
+		});
+	}
+}
+
+initJobs();
+
 function jobTestRun(api, testspec, callback)
 {
 	jobSubmit(api, testspec, function (err, jobid) {
@@ -553,11 +587,33 @@ function jobSubmit(api, testspec, callback)
 	];
 
 	if (!testspec['input']) {
-		testspec['inputs'].forEach(function (key) {
-			funcs.push(function (_, stepcb) {
-				log.info('job "%s": adding key %s', jobid, key);
-				api.jobAddKey(jobid, key, stepcb);
+		funcs.push(function (_, stepcb) {
+			var final_err;
+
+			var queue = mod_vasync.queuev({
+				'concurrency': 15,
+				'worker': function (key, subcallback) {
+					if (final_err) {
+						subcallback();
+						return;
+					}
+
+					log.info('job "%s": adding key %s',
+					    jobid, key);
+					api.jobAddKey(jobid, key,
+					    function (err) {
+						if (err)
+							final_err = err;
+						subcallback();
+					    });
+				}
 			});
+
+			testspec['inputs'].forEach(function (key) {
+				queue.push(key);
+			});
+
+			queue.drain = function () { stepcb(final_err); };
 		});
 
 		funcs.push(function (_, stepcb) {
@@ -717,16 +773,33 @@ function populateData(manta, keys, callback)
 {
 	log.info('populating keys', keys);
 
-	mod_vasync.forEachParallel({
-	    'inputs': keys,
-	    'func': function (key, subcallback) {
-		var data = 'sample data for key ' + key;
-		var stream = new StringInputStream(data);
+	var final_err;
 
-		log.info('PUT key "%s"', key);
-		manta.put(key, stream, { 'size': data.length }, subcallback);
+	var queue = mod_vasync.queuev({
+	    'concurrency': 15,
+	    'worker': function (key, subcallback) {
+		    if (final_err) {
+			    subcallback();
+			    return;
+		    }
+
+		    var data = 'auto-generated content for key ' + key;
+		    var stream = new StringInputStream(data);
+
+		    log.info('PUT key "%s"', key);
+
+		    manta.put(key, stream, { 'size': data.length },
+		        function (err) {
+				if (err)
+					final_err = err;
+
+				subcallback();
+			});
 	    }
-	}, callback);
+	});
+
+	keys.forEach(function (key) { queue.push(key); });
+	queue.drain = function () { callback(final_err); };
 }
 
 function StringInputStream(contents)
