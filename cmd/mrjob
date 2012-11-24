@@ -994,6 +994,7 @@ function printJobDetails(records)
 
 	iterList(records['task'], 3, function (record) {
 		var taskid = record['value']['taskId'];
+		var internal;
 
 		table.writeRow([
 		    record['value']['taskId'],
@@ -1008,9 +1009,17 @@ function printJobDetails(records)
 		println('    INPUT:  %s', input);
 
 		if (record['value']['error']) {
-			var message = record['value']['error']['message'] ||
+			var errobj = record['value']['error'];
+			var message = errobj['message'] ||
 			    '(no error specified)';
+
+			internal = errobj['messageInternal'];
+
 			println('    ERROR:  %s', message);
+
+			if (internal)
+				println('            internal error: %s',
+				    internal);
 		}
 
 		if (taskinputs[taskid])
@@ -1037,8 +1046,11 @@ function printJobDetails(records)
 		    function (rec) { return (rec['value']['error']); }));
 
 		iterList(errs, 1, function (error) {
+			internal = error['messageInternal'];
 			println('    ERROR:  %-10s  %s', error['code'],
 			    error['message']);
+			if (internal)
+				println('            internal: %s', internal);
 		}, function () { println('        ...'); });
 
 		if (record['value']['stderr'])
