@@ -692,6 +692,7 @@ Users would only need to reference a third party asset:
 ## Network architecture
 
 Marlin makes use of two generic Manta components:
+
 * muskie, the Manta web tier, which handles the Jobs API (requests to POST new
   jobs and GET job state).
 * moray, where all Marlin state is stored.

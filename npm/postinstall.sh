@@ -12,6 +12,8 @@ if [[ -e /usr/bin/zonename ]]; then
 	if [[ $zone != "global" ]]; then
 		exit 0
 	fi
+else
+	exit 0
 fi
 
 #
