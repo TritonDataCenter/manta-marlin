@@ -16,6 +16,7 @@
 #
 # Tools
 #
+BASHSTYLE	 = $(NODE) tools/bashstyle
 CATEST		 = tools/catest
 
 #
