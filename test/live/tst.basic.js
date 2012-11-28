@@ -14,6 +14,7 @@ test.pipeline({ 'funcs': [
     runTest.bind(null, jobs.jobMM),
     runTest.bind(null, jobs.jobMR),
     runTest.bind(null, jobs.jobMMRR),
+    runTest.bind(null, jobs.jobMRRoutput),
     teardown
 ] });
 

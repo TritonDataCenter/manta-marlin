@@ -56,11 +56,12 @@ function setup(_, next)
 	    'timeout': testjob['timeout'],
 	    'expected_outputs': expected_outputs,
 	    'expected_tasks': expected_tasks,
-	    'verify': function (spec, result) {
+	    'verify': function (spec, result, callback) {
 		mod_assert.equal(result['taskinput'].length, 0);
 		mod_assert.equal(result['taskoutput'].length, 0);
 		mod_assert.equal(result['task'].length, expected_tasks.length);
 		mod_assert.equal(result['jobinput'].length, 0);
+		callback();
 	    }
 	};
 

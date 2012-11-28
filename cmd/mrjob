@@ -587,7 +587,8 @@ function cmdOutputs()
 			}
 
 			var rv = api.jobFetchOutputs(jobid,
-			    record['value']['phases'].length - 1);
+			    record['value']['phases'].length - 1,
+			    { 'limit': 1000 });
 
 			rv.on('error', function (suberr) {
 				console.error('%s: job "%s": failed to list ' +

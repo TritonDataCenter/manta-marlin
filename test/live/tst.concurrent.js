@@ -14,7 +14,8 @@ var tests = [
     jobs.jobR,
     jobs.jobMM,
     jobs.jobMR,
-    jobs.jobMMRR
+    jobs.jobMMRR,
+    jobs.jobMRRoutput
 ];
 
 test.pipeline({ 'funcs': [
