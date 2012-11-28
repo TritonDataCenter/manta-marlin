@@ -19,19 +19,6 @@
     "hiredis": {
       "version": "0.1.14"
     },
-    "illumos_contract": {
-      "version": "0.0.9",
-      "dependencies": {
-        "v8plus": {
-          "version": "0.0.4",
-          "dependencies": {
-            "posix-getopt": {
-              "version": "0.0.1"
-            }
-          }
-        }
-      }
-    },
     "jsprim": {
       "version": "0.3.0",
       "dependencies": {
@@ -122,7 +109,7 @@
     },
     "manta": {
       "version": "1.0.0",
-      "from": "git+ssh://git@git.joyent.com:node-manta.git#master",
+      "from": "git+ssh://git@github.com:joyent/node-manta.git#master",
       "dependencies": {
         "assert-plus": {
           "version": "0.1.2"
@@ -360,6 +347,19 @@
     },
     "hyprlofs": {
       "version": "0.0.1"
+    },
+    "illumos_contract": {
+      "version": "0.0.9",
+      "dependencies": {
+        "v8plus": {
+          "version": "0.0.4",
+          "dependencies": {
+            "posix-getopt": {
+              "version": "0.0.1"
+            }
+          }
+        }
+      }
     }
   }
 }

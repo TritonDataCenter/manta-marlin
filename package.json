@@ -13,7 +13,7 @@
 		"jsprim": "0.3.0",
 		"kang": "0.0.2",
 		"libindex": "git+ssh://git@git.joyent.com:manta-libindex.git#master",
-		"manta": "git+ssh://git@git.joyent.com:node-manta.git#master",
+		"manta": "git+ssh://git@github.com:joyent/node-manta.git#master",
 		"mkdirp": "0.3.1",
 		"moray": "git+ssh://git@git.joyent.com:node-moray.git#master",
 		"native-dns": "0.2.1",
