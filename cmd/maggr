@@ -94,9 +94,7 @@ function count(aggr) {
 
 function range(aggr) {
 	aggr.range = aggr.range || {};
-	aggr.range.result = {
-		result: Math.abs(aggr.max.result - aggr.min.result)
-	};
+	aggr.range.result = Math.abs(aggr.max.result - aggr.min.result);
 }
 
 function min(value, aggr) {
@@ -421,6 +419,9 @@ function main() {
 					switch (op) {
 					case 'mean':
 						mean(aggr);
+						break;
+					case 'range':
+						range(aggr);
 						break;
 					default:
 						break;
