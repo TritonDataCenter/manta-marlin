@@ -15,12 +15,14 @@ var mod_mautil = require('../lib/util');
  * mpipe: distributed pipe
  */
 var dpUsageMessage = [
-    'usage: mpipe [-r reducer] [objectkey]',
+    'usage: mpipe [-p] [-r reducer] [-H header:value ... ] [objectkey]',
     '',
     'mpipe is a distributed pipe for compute jobs.  This command reads data',
     'from stdin and saves it as a new object called "objectkey".  The new ',
     'object is recorded as an output object for the current task.  If ',
-    '"objectkey" is unspecified, a unique key will be created.',
+    '"objectkey" is unspecified, a unique key will be created.  Otherwise, ',
+    'the object\'s parent directory must already exist, unless -p is also ',
+    'specified.',
     '',
     'Because the object store requires knowing content-length ahead of time, ',
     'this command buffers input to the local filesystem before uploading any ',
@@ -41,12 +43,13 @@ var dpObjkey, dpReducer;
 var dpOutstream, dpInstream;
 var dpNoretry = false;
 var dpHeaders = {};
+var dpOptP = false;
 
 function main()
 {
 	var parser, option;
 
-	parser = new mod_getopt.BasicParser('H:r:', process.argv);
+	parser = new mod_getopt.BasicParser('H:pr:', process.argv);
 
 	while ((option = parser.getopt()) !== undefined) {
 		switch (option.option) {
@@ -59,6 +62,10 @@ function main()
 			}
 			var p = option.optarg.split(': ');
 			dpHeaders[p[0]] = p.slice(1).join(': ');
+			break;
+
+		case 'p':
+			dpOptP = true;
 			break;
 
 		case 'r':
@@ -79,7 +86,7 @@ function main()
 
 	if (parser.optind() < process.argv.length) {
 		dpObjkey = process.argv[parser.optind()];
-		dpNoretry = true;
+		dpNoretry = !dpOptP;
 	} else if (process.env['MANTA_OUTPUT_BASE']) {
 		dpObjkey = process.env['MANTA_OUTPUT_BASE'] + mod_uuid.v4();
 	} else {
