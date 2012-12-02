@@ -198,6 +198,9 @@
         }
       }
     },
+    "memorystream": {
+      "version": "0.2.0"
+    },
     "mkdirp": {
       "version": "0.3.1"
     },

@@ -4,3 +4,4 @@
 
 export PATH="$PWD/build/node/bin:$PWD/cmd:$PWD/tools:$PATH"
 export PATH="$PWD/node_modules/moray/bin:$PATH"
+export PATH="$PWD/node_modules/manta/bin:$PATH"

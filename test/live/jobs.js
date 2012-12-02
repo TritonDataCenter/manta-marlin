@@ -13,6 +13,7 @@ var mod_util = require('util');
 var mod_extsprintf = require('extsprintf');
 var mod_jsprim = require('jsprim');
 var mod_manta = require('manta');
+var mod_memorystream = require('memorystream');
 var mod_vasync = require('vasync');
 var mod_verror = require('verror');
 
@@ -500,34 +501,42 @@ exports.jobMRRoutput = {
 	'firstOutputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.2\./ ]
     } ],
     'expected_outputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.2\./ ],
-    'verify': function (testspec, jobresult, callback) {
-	var output = '';
-	mod_jsprim.forEachKey(jobresult['task'], function (taskid, record) {
-		if (record['value']['phaseNum'] != 2 ||
-		    record['value']['state'] != 'done' ||
-		    record['value']['nOutputs'] != 1)
-			return;
+    'expected_output_content': [ '55\n' ]
+};
 
-		output = record['value']['firstOutputs'][0]['key'];
-	});
+var asset_body = [
+    '#!/bin/bash\n',
+    '\n',
+    'echo "sarabi" "$*"\n'
+].join('\n');
 
-	mod_assert.ok(output, 'expected output not found');
-	mod_testcommon.manta.get(output, function (err, stream) {
-		if (err) {
-			callback(err);
-			return;
-		}
-
-		var data = '';
-		stream.on('data', function (chunk) {
-			data += chunk.toString('utf8');
-		});
-		stream.on('end', function () {
-			mod_assert.equal('55\n', data);
-			callback();
-		});
-	});
-    }
+exports.jobMasset = {
+    'job': {
+	'assets': {
+	    '/poseidon/stor/test_asset.sh': asset_body
+	},
+	'phases': [ {
+	    'assets': [ '/poseidon/stor/test_asset.sh' ],
+	    'type': 'storage-map',
+	    'exec': '/assets/poseidon/stor/test_asset.sh 17'
+	} ]
+    },
+    'inputs': [ '/poseidon/stor/obj1' ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+    ],
+    'expected_tasks': [ {
+	'phaseNum': 0,
+	'key': '/poseidon/stor/obj1',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+	]
+    } ],
+    'expected_output_content': [ 'sarabi 17\n' ]
 };
 
 function initJobs()
@@ -674,6 +683,19 @@ function jobSubmit(api, testspec, callback)
 	    }
 	];
 
+	if (testspec['job']['assets']) {
+		mod_jsprim.forEachKey(testspec['job']['assets'],
+		    function (key, content) {
+			funcs.push(function (_, stepcb) {
+				log.info('submitting asset "%s"', key);
+				var stream = new mod_memorystream(content,
+				    { 'writable': false });
+				api.manta.put(key, stream,
+				    { 'size': content.length }, stepcb);
+			});
+		    });
+	}
+
 	if (!testspec['input']) {
 		funcs.push(function (_, stepcb) {
 			var final_err;
@@ -809,21 +831,92 @@ function jobTestVerify(api, testspec, jobid, callback)
 
 		mod_assert.equal(ntasks, expected_tasks.length);
 
-		if (!testspec['verify']) {
-			callback();
+		jobTestVerifyOutputs(api, testspec, outputs, function (err2) {
+			if (err2) {
+				log.fatal(err2, 'output mismatch');
+				throw (err2);
+			}
+
+			if (!testspec['verify']) {
+				callback();
+				return;
+			}
+
+			/*
+			 * On success, the "verify" function must invoke its
+			 * callback.  However, if it's going to fail, it may
+			 * either throw an exception synchronously or emit an
+			 * error to the callback.
+			 */
+			testspec['verify'](testspec, jobresult,
+			    function (err3) {
+				mod_assert.ok(!err3, 'job verify failed');
+				callback();
+			    });
+		});
+
+	}, callback));
+}
+
+function jobTestVerifyOutputs(api, testspec, outputs, callback)
+{
+	var funcs = [];
+
+	if (!testspec['expected_output_content']) {
+		callback();
+		return;
+	}
+
+	outputs.forEach(function (output) {
+		funcs.push(function (_, stepcb) {
+			log.info('fetching output "%s"', output);
+			api.manta.get(output, function (err, mantastream) {
+				if (err) {
+					stepcb(err);
+					return;
+				}
+
+				var data = '';
+				mantastream.on('data', function (chunk) {
+					data += chunk.toString('utf8');
+				});
+
+				mantastream.on('end', function () {
+					stepcb(null, data);
+				});
+			});
+		});
+	});
+
+	mod_vasync.pipeline({
+	    'funcs': funcs
+	}, function (err, results) {
+		if (err) {
+			callback(err);
 			return;
 		}
 
-		/*
-		 * On success, the "verify" function must invoke its callback.
-		 * However, if it's going to fail, it may either throw an
-		 * exception synchronously or emit an error to the callback.
-		 */
-		testspec['verify'](testspec, jobresult, function (err2) {
-			mod_assert.ok(!err2, 'job verify failed');
-			callback();
-		});
-	}, callback));
+		var bodies = results.successes;
+		var expected = testspec['expected_output_content'];
+		var i, j;
+
+		for (i = 0; i < expected.length; i++) {
+			for (j = 0; j < bodies.length; j++) {
+				if (expected[i] == bodies[j])
+					break;
+			}
+
+			if (j == bodies.length)
+				log.fatal('expected content not found',
+				    expected[i], bodies);
+			mod_assert.ok(j < bodies.length,
+			    'expected content not found');
+			log.info('output matched', bodies[j]);
+			bodies = bodies.splice(j, 1);
+		}
+
+		callback();
+	});
 }
 
 function jobTaskMatches(etask, task)
