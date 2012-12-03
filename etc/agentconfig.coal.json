@@ -29,7 +29,7 @@
 
 	"tunables": {
 		"maxPendingPuts": 25,
-		"timeJobHeartbeat": 3000,
+		"timeJobSave": 3000,
 		"timePoll": 50,
 		"timeTick": 20,
 		"zoneReserveMin": 1,
