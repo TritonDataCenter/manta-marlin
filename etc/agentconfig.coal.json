@@ -31,7 +31,7 @@
 		"maxPendingPuts": 25,
 		"timeJobHeartbeat": 3000,
 		"timePoll": 50,
-		"timeTick": 20
+		"timeTick": 20,
 		"zoneReserveMin": 1,
 		"zoneReservePercent": 12
 	},
