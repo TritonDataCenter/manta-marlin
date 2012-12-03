@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# mragentconf uuid manta-url moray-url name-service-1 [name-service-2 ...]
+# mragentconf manta-url moray-url name-service-1 [name-service-2 ...]
 # Reconfigures the Marlin agent with the specified URLs and name servers.
 #
 
@@ -9,7 +9,7 @@ mac_arg0=$(basename $0)
 
 function usage
 {
-	echo "usage: $mac_arg0 uuid mantaurl morayurl nameservice1 ..." >&2
+	echo "usage: $mac_arg0 mantaurl morayurl nameservice1 ..." >&2
 	exit 2
 }
 
@@ -21,9 +21,9 @@ function fail
 
 [[ $# -gt 3 ]] || usage
 
-mac_serverid=$1
-mac_manta_host=$2
-mac_moray_host=$3
+mac_serverid=$(sysinfo | json UUID)
+mac_manta_host=$1
+mac_moray_host=$2
 mac_root=$(dirname $0)/..
 mac_zones_file=$mac_root/etc/marlinzones
 
@@ -32,7 +32,7 @@ mac_code="$mac_code; moray.url='tcp://$mac_moray_host:2020'"
 mac_code="$mac_code; manta.url='http://$mac_manta_host:80/'"
 mac_code="$mac_code; dns.nameservers = []"
 
-shift 3
+shift 2
 for ns in "$@"; do
 	mac_code="$mac_code; dns.nameservers.push('$ns')"
 done
