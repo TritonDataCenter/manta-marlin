@@ -1,0 +1,73 @@
+#!/bin/bash
+
+#
+# mparams: given a headnode (as an IP, or hostname, or other ssh target), print
+# out information about the "manta" deployed there, including various IP
+# addresses and poseidon user information.
+#
+
+shopt -s xpg_echo
+
+function fail
+{
+	echo "$*" >&2
+	exit 1
+}
+
+function resolve
+{
+	dig "$1" @$me_nsip | awk '/ANSWER SECTION:/{ getline; print $5}'
+}
+
+me_arg0=$(basename $0)
+me_headnode="$1"
+
+me_nsip=
+me_region=
+me_poseidon_dn=
+me_poseidon_uuid=
+me_poseidon_fingerprint=
+
+if [[ -z "$me_headnode" ]]; then
+	echo "usage: $me_arg0 headnode-ip" >&2
+	exit 2
+fi
+
+echo "Fetching nameserver IP ... \c "
+me_nsip=$(ssh -q $me_headnode vmadm list -o alias,nics.0.ip | grep '^ns\.' | \
+    head -1 | awk '{print $2}')
+[[ -n "$me_nsip" ]] || fail "no nameservers found on "$me_headnode""
+echo "$me_nsip"
+
+echo "Fetching poseidon user uuid ... \c"
+ssh -q $me_headnode /opt/smartdc/bin/sdc-ldap search login=poseidon \
+    > /var/tmp/$me_arg0.$$ || fail "failed (see /var/tmp/$me_arg0.$$)"
+me_poseidon_dn="$(head -1 /var/tmp/$me_arg0.$$ | cut -c5-)"
+me_poseidon_uuid=$(grep ^uuid: /var/tmp/$me_arg0.$$ | awk '{print $2}')
+rm -f /var/tmp/$me_arg0.$$
+echo "$me_poseidon_uuid"
+
+echo "Fetching poseidon key ... \c "
+me_poseidon_fingerprint=$(ssh -q $me_headnode /opt/smartdc/bin/sdc-ldap search \
+    -b "'$me_poseidon_dn'" objectclass=sdckey | grep '^fingerprint:' | \
+    awk '{print $2}') || fail "failed"
+echo "$me_poseidon_fingerprint"
+
+echo "Fetching region ... \c "
+me_region="$(ssh -q $me_headnode /opt/smartdc/bin/sdc-ldap search \
+    -b 'role=manta,ou=config,o=smartdc' | awk '$1=="manta:"{print $2}' | \
+    json contents.region)"
+echo "$me_region"
+
+me_mahi="$(resolve auth.$me_region.joyent.us)"
+me_manta="$(resolve manta.$me_region.joyent.us)"
+me_moray="$(resolve 1.moray.$me_region.joyent.us)"
+
+echo ""
+echo "Suggested marlin test configuration:"
+echo "export MANTA_USER=poseidon"
+echo "export MANTA_KEY_ID=$me_poseidon_fingerprint"
+
+[[ -n "$me_manta" ]] && echo "export MANTA_URL=https://$me_manta"
+[[ -n "$me_moray" ]] && echo "export MORAY_URL=tcp://$me_moray:2020/"
+[[ -n "$me_mahi" ]]  && echo "export MAHI_URL=tcp://$me_mahi:6379/"

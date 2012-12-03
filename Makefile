@@ -29,7 +29,11 @@ CATEST		 = tools/catest
 #
 # Files
 #
-BASH_FILES	 = tools/mrzone tools/mrpost tools/mrdeploycompute
+BASH_FILES	 = \
+    tools/mparams		\
+    tools/mrzone		\
+    tools/mrpost		\
+    tools/mrdeploycompute
 DOC_FILES	 = index.restdown
 JS_FILES	:= $(shell find src lib test -name '*.js')
 JS_FILES	+= \
