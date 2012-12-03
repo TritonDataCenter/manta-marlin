@@ -19,7 +19,7 @@ function fail
 	exit 1
 }
 
-[[ $# -gt 3 ]] || usage
+[[ $# -gt 2 ]] || usage
 
 mac_serverid=$(sysinfo | json UUID)
 mac_manta_host=$1
