@@ -91,6 +91,14 @@ function main() {
 	// Pipes
 	for (i = 0; i < msNumReducers; ++i) {
 		var spawn = createReducerPipe(i);
+                spawn.on('exit', function (code) {
+                        if (code !== 0) {
+                                var m = 'msplit reducer %d exited with ' +
+                                        'status code %d';
+                                console.error(m, spawn.reducerNumber, code);
+                                process.exit(code);
+                        }
+                });
 		msPipes.push(spawn);
 	}
 
@@ -137,7 +145,9 @@ function selectReducer(line, delimiter, fields, nReducers) {
 }
 
 function createReducerPipe(reducer) {
-	return (mod_child_process.spawn('mpipe', ['-r', reducer]));
+        var p = mod_child_process.spawn('mpipe', ['-r', reducer]);
+        p.reducerNumber = reducer;
+	return (p);
 }
 
 function usage()
