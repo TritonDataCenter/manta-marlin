@@ -1,0 +1,88 @@
+#!/bin/bash
+
+#
+# mrzoneremove zonename: remove a zone from Marlin service in preparation for
+# removing it from the system.
+#
+
+shopt -s xpg_echo
+
+set -o pipefail
+
+mr_arg0=$(basename $0)
+mr_zonename="$1"
+
+function fail
+{
+	echo "$mr_arg0: $*" >&2
+	exit 1
+}
+
+function curlagent
+{
+	local path=$1
+	local tmpfile=/var/tmp/$mr_arg0.$$
+	local url="${AGENT_URL:-http://localhost:9080}"
+	local status
+	shift
+
+	if ! curl -is "$@" "$url$path" > $tmpfile; then
+		echo "$mr_arg0: failed to hit \"$url\" (see $tmpfile)" >&2
+		return 1
+	fi
+
+	status="$(grep '^HTTP' $tmpfile | head -1 | awk '{print $2}')"
+	if [[ $status -ge 400 ]]; then
+		echo "$mr_arg0: \"$url\" failed (code $status see $tmpfile)" >&2
+		return 1
+	fi
+
+	nawk '/^\r$/,EOF' $tmpfile
+}
+
+function zone_disable
+{
+	local zonename=$1
+
+	if ! curlagent /zones/$zonename/disable -XPOST > /dev/null; then
+		echo "$mr_arg0: failed to disable zone \"$zonename\"" >&2
+		return 1
+	fi
+}
+
+function zone_wait_state
+{
+	local zonename=$1
+	local state=$2
+
+	while true; do
+		state="$(curlagent /zones | json -a zonename state | 
+		    nawk "\$1 == \"$zonename\" { print \$2 }")"
+		[[ "$state" == "disabled" ]] && break
+		sleep 1
+	done
+}
+
+function zone_remove
+{
+	local zonename=$1
+
+	if ! curlagent /zones/$zonename -XDELETE > /dev/null; then
+		echo "$mr_arg0: failed to disable zone \"$zonename\"" >&2
+		return 1
+	fi
+}
+
+[[ -n "$mr_zonename" ]] || fail "usage: $mr_arg0 zonename"
+
+echo -n "Disabling zone \"$mr_zonename\" ... \c "
+zone_disable $mr_zonename || fail "failed"
+echo "done."
+
+echo -n "Waiting for zone \"$mr_zonename\" to quiesce ... \c "
+zone_wait_state $mr_zonename "disabled" || fail "failed"
+echo "done."
+
+echo -n "Removing zone \"$mr_zonename\" ... \c "
+zone_remove $mr_zonename || fail "failed"
+echo "done."
