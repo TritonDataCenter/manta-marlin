@@ -539,6 +539,51 @@ exports.jobMasset = {
     'expected_output_content': [ 'sarabi 17\n' ]
 };
 
+exports.jobM0bi = {
+    'job': {
+	'phases': [ { 'type': 'storage-map', 'exec': 'wc' } ]
+    },
+    'inputs': [ '/poseidon/stor/0bytes' ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/0bytes\.0\./
+    ],
+    'expected_tasks': [ {
+	'phaseNum': 0,
+	'key': '/poseidon/stor/0bytes',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/0bytes\.0\./
+	]
+    } ],
+    'expected_output_content': [ '0 0 0\n' ]
+};
+
+exports.jobM0bo = {
+    'job': {
+	'phases': [ { 'type': 'storage-map', 'exec': 'true' } ]
+    },
+    'inputs': [ '/poseidon/stor/obj1' ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+    ],
+    'expected_tasks': [ {
+	'phaseNum': 0,
+	'key': '/poseidon/stor/obj1',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+	]
+    } ],
+    'expected_output_content': [ '' ]
+};
+
+
 function initJobs()
 {
 	var job = exports.jobM500;
@@ -578,10 +623,6 @@ function jobSubmit(api, testspec, callback)
 {
 	var jobdef, login, url, funcs, private_key, signed_path, jobid;
 
-	jobdef = {
-	    'phases': testspec['job']['phases']
-	};
-
 	login = process.env['MANTA_USER'];
 	url = mod_url.parse(process.env['MANTA_URL']);
 
@@ -593,6 +634,14 @@ function jobSubmit(api, testspec, callback)
 		return;
 	}
 
+	jobdef = {
+	    'auth': {
+		'login': login,
+		'groups': [ 'operator' ] /* XXX */
+	    },
+	    'phases': testspec['job']['phases']
+	};
+
 	if (testspec['input'])
 		jobdef['input'] = testspec['input'];
 
@@ -600,6 +649,7 @@ function jobSubmit(api, testspec, callback)
 	    function (_, stepcb) {
 		log.info('looking up user "%s"', login);
 		mod_testcommon.loginLookup(login, function (err, owner) {
+			jobdef['auth']['uuid'] = owner;
 			jobdef['owner'] = owner;
 			stepcb(err);
 		});
@@ -669,6 +719,7 @@ function jobSubmit(api, testspec, callback)
 			});
 			response.on('end', function () {
 				var token = JSON.parse(body)['token'];
+				jobdef['auth']['token'] = token;
 				jobdef['authToken'] = token;
 				stepcb();
 			});
@@ -974,7 +1025,12 @@ function populateData(manta, keys, callback)
 			    return;
 		    }
 
-		    var data = 'auto-generated content for key ' + key;
+		    var data;
+		    if (mod_jsprim.endsWith(key, '0bytes'))
+			data = '';
+		    else
+			data = 'auto-generated content for key ' + key;
+
 		    var stream = new StringInputStream(data);
 
 		    log.info('PUT key "%s"', key);

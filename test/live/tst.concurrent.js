@@ -11,6 +11,8 @@ var client;
 var tests = [
     jobs.jobM,
     jobs.jobMX,
+    jobs.jobM0bi,
+    jobs.jobM0bo,
     jobs.jobR,
     jobs.jobMM,
     jobs.jobMR,
