@@ -34,7 +34,8 @@ var msUsage = [
     'USAGE: mrjob subcmd [options] [arguments]',
     '       mrjob [-h | -? | --help]',
     '',
-    '       mrjob list     [-H] [-o field1[,field2...]]',
+    '       mrjob list     [-H] [-o field1[,field2...]] [-c] [-s state]',
+    '                      [-t ms] [-u user] [-w worker]',
     '       mrjob submit   [-a key] [-c count] [-i id] [-n name] [-d size]',
     '                      [-p jobid] [-t authToken] [-m exec] [-r exec] ...',
     '       mrjob addkeys  jobid [key ...]',
@@ -106,12 +107,21 @@ var msHelp = [
     '',
     '       Lists errors that occurred while processing the given job.',
     '',
-    '   list [-H] [-o field1[,field2...]]',
+    '   list [-H] [-o field1[,field2...]] [-c] [-s state] [-t sec] [-u user]',
+    '        [-w worker]',
     '',
     '       Lists all jobs.  The default output mode is a human-readable, ',
     '       unstable output format.  With -H, the output is a simple table ',
     '       with no header row.  Individual columns may be selected using -o',
     '       as with ps(1) and other tools.  -o implies -H.',
+    '',
+    '       Other options control filtering:',
+    '',
+    '           -c              only cancelled jobs',
+    '           -s state        only jobs in state "state"',
+    '           -t sec          only jobs completed in last "sec" seconds',
+    '           -u user         only jobs owned by "user"',
+    '           -w worker       only jobs currently run by worker "worker"',
     '',
     '   get [-v] jobid',
     '',
@@ -658,13 +668,40 @@ function cmdFailed()
 
 function cmdList()
 {
-	var argv, parser, option;
+	var argv, parser, option, options;
 
 	argv = process.argv.slice(1);
-	parser = new mod_getopt.BasicParser('Ho:', argv);
+	parser = new mod_getopt.BasicParser('Ho:cs:t:u:w:', argv);
+	options = {};
 
 	while ((option = parser.getopt()) !== undefined) {
 		switch (option.option) {
+		case 'c':
+			options['cancelled'] = true;
+			break;
+
+		case 's':
+			options['state'] = option.optarg;
+			break;
+
+		case 't':
+			options['doneSince'] = parseInt(option.optarg, 10);
+			if (isNaN(options['doneSince']) ||
+			    options['doneSince'] === 0) {
+				console.error('%s: argument for "-t" must be ' +
+				    'a non-negative integer', msArg0);
+				usage();
+			}
+			break;
+
+		case 'u':
+			options['owner'] = option.optarg;
+			break;
+
+		case 'w':
+			options['worker'] = option.optarg;
+			break;
+
 		case 'H':
 			msParseable = true;
 			break;
@@ -690,7 +727,7 @@ function cmdList()
 		    'omitHeader': msParseable
 		});
 
-		var req = msApi.jobsList();
+		var req = msApi.jobsList(options);
 
 		req.on('error', function (err) {
 			console.error('%s: failed to list jobs: %s',
@@ -759,7 +796,7 @@ function makeJobRow(job, mtime)
 	    'ASSIGNED': job['timeAssigned'] || '-',
 	    'CANCELLED': job['timeCancelled'] || '-',
 	    'CREATED': job['timeCreated'] || '-',
-	    'DONE': job['timeDONE'] || '-',
+	    'DONE': job['timeDone'] || '-',
 	    'INPUTDONE': job['timeInputDone'] || '-',
 	    'JOBID': job['jobId'] || '-',
 	    'JOBNAME': (job['jobName'] || '-').substr(0, 16),
