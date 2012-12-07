@@ -35,7 +35,7 @@ var msUsage = [
     '       mrjob [-h | -? | --help]',
     '',
     '       mrjob list     [-H] [-o field1[,field2...]] [-c] [-s state]',
-    '                      [-t ms] [-u user] [-w worker]',
+    '                      [-t sec] [-u user] [-w worker]',
     '       mrjob submit   [-a key] [-c count] [-i id] [-n name] [-d size]',
     '                      [-p jobid] [-t authToken] [-m exec] [-r exec] ...',
     '       mrjob addkeys  jobid [key ...]',

@@ -77,6 +77,11 @@ exports.jobM = {
 	mod_assert.equal(jobresult['taskoutput'].length, 0);
 	mod_assert.equal(jobresult['task'].length, 3);
 	mod_assert.equal(jobresult['jobinput'].length, 3);
+
+	var stats = jobresult['job']['value']['stats'];
+	mod_assert.equal(stats['nErrors'], 0);
+	mod_assert.equal(stats['nTasksCommittedFail'], 0);
+
 	callback();
     }
 };
@@ -169,6 +174,11 @@ exports.jobMX = {
 	mod_assert.equal(jobresult['taskoutput'].length, 9);
 	mod_assert.equal(jobresult['task'].length, 3);
 	mod_assert.equal(jobresult['jobinput'].length, 3);
+
+	var stats = jobresult['job']['value']['stats'];
+	mod_assert.equal(stats['nErrors'], 0);
+	mod_assert.equal(stats['nTasksCommittedFail'], 0);
+
 	callback();
     }
 };
@@ -251,6 +261,11 @@ exports.jobMM = {
 	mod_assert.equal(jobresult['taskinput'].length, 0);
 	mod_assert.equal(jobresult['taskoutput'].length, 0);
 	mod_assert.equal(jobresult['jobinput'].length, 3);
+
+	var stats = jobresult['job']['value']['stats'];
+	mod_assert.equal(stats['nErrors'], 0);
+	mod_assert.equal(stats['nTasksCommittedFail'], 0);
+
 	callback();
     }
 };
@@ -280,6 +295,11 @@ exports.jobR = {
 	mod_assert.equal(jobresult['taskoutput'].length, 0);
 	mod_assert.equal(jobresult['task'].length, 1);
 	mod_assert.equal(jobresult['jobinput'].length, 3);
+
+	var stats = jobresult['job']['value']['stats'];
+	mod_assert.equal(stats['nErrors'], 0);
+	mod_assert.equal(stats['nTasksCommittedFail'], 0);
+
 	callback();
     }
 };
@@ -341,6 +361,11 @@ exports.jobMR = {
 	mod_assert.equal(jobresult['taskoutput'].length, 0);
 	mod_assert.equal(jobresult['task'].length, 4);
 	mod_assert.equal(jobresult['jobinput'].length, 3);
+
+	var stats = jobresult['job']['value']['stats'];
+	mod_assert.equal(stats['nErrors'], 0);
+	mod_assert.equal(stats['nTasksCommittedFail'], 0);
+
 	callback();
     }
 };
@@ -434,6 +459,11 @@ exports.jobMMRR = {
 	mod_assert.equal(jobresult['taskinput'].length, 4);
 	mod_assert.equal(jobresult['taskoutput'].length, 0);
 	mod_assert.equal(jobresult['jobinput'].length, 3);
+
+	var stats = jobresult['job']['value']['stats'];
+	mod_assert.equal(stats['nErrors'], 0);
+	mod_assert.equal(stats['nTasksCommittedFail'], 0);
+
 	callback();
     }
 };
@@ -445,7 +475,13 @@ exports.jobM500 = {
     'inputs': [],
     'timeout': 45 * 1000,
     'expected_outputs': [],
-    'expected_tasks': []
+    'expected_tasks': [],
+    'verify': function (_, jobresult, callback) {
+	var stats = jobresult['job']['value']['stats'];
+	mod_assert.equal(stats['nErrors'], 0);
+	mod_assert.equal(stats['nTasksCommittedFail'], 0);
+	callback();
+    }
 };
 
 exports.jobMRRoutput = {
@@ -501,7 +537,13 @@ exports.jobMRRoutput = {
 	'firstOutputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.2\./ ]
     } ],
     'expected_outputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.2\./ ],
-    'expected_output_content': [ '55\n' ]
+    'expected_output_content': [ '55\n' ],
+    'verify': function (_, jobresult, callback) {
+	var stats = jobresult['job']['value']['stats'];
+	mod_assert.equal(stats['nErrors'], 0);
+	mod_assert.equal(stats['nTasksCommittedFail'], 0);
+	callback();
+    }
 };
 
 var asset_body = [
@@ -881,6 +923,19 @@ function jobTestVerify(api, testspec, jobid, callback)
 		});
 
 		mod_assert.equal(ntasks, expected_tasks.length);
+
+		/* Check stat counters. */
+		var stats = job['stats'];
+		mod_assert.equal(stats['nAssigns'], 1);
+		if (!job['input'])
+			mod_assert.equal(stats['nInputsRead'],
+			    testspec['inputs'].length);
+		mod_assert.equal(stats['nJobOutputs'],
+		    testspec['expected_outputs'].length);
+		mod_assert.equal(stats['nTasksDispatched'],
+		    testspec['expected_tasks'].length);
+		mod_assert.equal(stats['nTasksDispatched'],
+		    stats['nTasksCommittedOk'] + stats['nTasksCommittedFail']);
 
 		jobTestVerifyOutputs(api, testspec, outputs, function (err2) {
 			if (err2) {

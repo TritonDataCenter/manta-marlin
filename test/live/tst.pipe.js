@@ -61,6 +61,13 @@ function setup(_, next)
 		mod_assert.equal(result['taskoutput'].length, 0);
 		mod_assert.equal(result['task'].length, expected_tasks.length);
 		mod_assert.equal(result['jobinput'].length, 0);
+
+		var stats = result['job']['value']['stats'];
+		mod_assert.equal(stats['nErrors'], 0);
+		mod_assert.equal(stats['nTasksCommittedFail'], 0);
+		mod_assert.equal(stats['nInputsRead'],
+		    testjob['expected_outputs'].length);
+
 		callback();
 	    }
 	};
