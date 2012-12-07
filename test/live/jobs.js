@@ -603,6 +603,28 @@ exports.jobM0bi = {
     'expected_output_content': [ '0 0 0\n' ]
 };
 
+/*
+ * It's surprising that this output is different than the analogous 1-phase map
+ * job, but it is, because GNU wc's output is different when you "wc <
+ * 0-byte-file" than when you "emit_zero_byte_stream | wc".
+ */
+exports.jobR0bi = {
+    'job': {
+	'phases': [ { 'type': 'reduce', 'exec': 'wc' } ]
+    },
+    'inputs': [ '/poseidon/stor/0bytes' ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.0\./ ],
+    'expected_tasks': [ {
+	'phaseNum': 0,
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.0\./ ]
+    } ],
+    'expected_output_content': [ '      0       0       0\n' ]
+};
+
 exports.jobM0bo = {
     'job': {
 	'phases': [ { 'type': 'storage-map', 'exec': 'true' } ]

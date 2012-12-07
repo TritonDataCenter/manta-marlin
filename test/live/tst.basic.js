@@ -11,6 +11,7 @@ test.pipeline({ 'funcs': [
     runTest.bind(null, jobs.jobM),
     runTest.bind(null, jobs.jobMX),
     runTest.bind(null, jobs.jobM0bi),
+    runTest.bind(null, jobs.jobR0bi),
     runTest.bind(null, jobs.jobM0bo),
     runTest.bind(null, jobs.jobR),
     runTest.bind(null, jobs.jobMM),
