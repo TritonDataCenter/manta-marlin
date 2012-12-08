@@ -6,6 +6,7 @@
  */
 
 var mod_assert = require('assert');
+var mod_fs = require('fs');
 var mod_path = require('path');
 var mod_url = require('url');
 
@@ -125,7 +126,9 @@ var msHelp = [
     '',
     '   get [-v] jobid',
     '',
-    '       Fetch details about the given job.',
+    '       Fetch details about the given job.  With -v, fetch additional ',
+    '       details that require fetching a potentially large number of ',
+    '       records from Moray.',
     '',
     '   log jobid',
     '',
@@ -160,6 +163,7 @@ var msAuthToken;
 var msMorayUrl = process.env['MORAY_URL'];
 var msParseable = false;		/* whether output should be parseable */
 var msVerbose = 0;			/* whether output should be verbose */
+var msRecordLimit = 5;			/* max nr of Moray records per bucket */
 var msColumns;				/* user-specified list of columns */
 
 var msApi;	/* marlin api */
@@ -179,7 +183,7 @@ var msCommands = {
 };
 
 /* default set of columns for list-of-jobs */
-var msColsJobs = [ 'JobId', 'S', 'NPh', 'Modified' ];
+var msColsJobs = [ 'JobId', 'NPh', 'S', 'NOut', 'NErr', 'Modified' ];
 
 /* node-tab configuration for list-of-jobs table */
 var msFieldsJobs = {
@@ -216,10 +220,19 @@ var msFieldsJobs = {
 	'width': 24,
 	'doc': 'last modified time'
     },
-    'nin': {
-	/* XXX remove? */
-	'label': 'NIN',
-	'width': 5,
+    'nerr': {
+	'label': 'NERR',
+	'width': 4,
+	'align': 'right'
+    },
+    'ninread': {
+	'label': 'NINREAD',
+	'width': 7,
+	'align': 'right'
+    },
+    'nout': {
+	'label': 'NOUT',
+	'width': 4,
 	'align': 'right'
     },
     'nph': {
@@ -228,13 +241,18 @@ var msFieldsJobs = {
 	'align': 'right',
 	'doc': 'number of phases'
     },
+    'ntasks': {
+	'label': 'NTASKS',
+	'width': 6,
+	'align': 'right'
+    },
     'owner': {
 	'label': 'OWNER',
 	'width': 36
     },
     's': {
 	'label': 'S',
-	'width': 5,
+	'width': 3,
 	'align': 'right',
 	'doc': 'state'
     },
@@ -304,7 +322,7 @@ function main()
 	if (!msCommands.hasOwnProperty(subcmd))
 		usage();
 
-	if (!msMorayUrl) {
+	if (!msMorayUrl && (msMorayUrl = readConf()) === null) {
 		console.error('MORAY_URL must be specified in the environment');
 		process.exit(2);
 	}
@@ -316,6 +334,20 @@ function main()
 	});
 
 	msCommands[subcmd]();
+}
+
+function readConf()
+{
+	var configFile = mod_path.normalize(mod_path.join(
+	    __dirname, '../etc/config.json'));
+
+	try {
+		var contents = mod_fs.readFileSync(configFile);
+		var json = JSON.parse(contents);
+		return (json['moray']['storage']['url']);
+	} catch (ex) {
+		return (null);
+	}
 }
 
 function clientInit(callback)
@@ -801,8 +833,11 @@ function makeJobRow(job, mtime)
 	    'JOBID': job['jobId'] || '-',
 	    'JOBNAME': (job['jobName'] || '-').substr(0, 16),
 	    'MODIFIED': mtime || '-',
-	    'NIN': '-',
+	    'NERR': job['stats'] ? job['stats']['nErrors'] : '-',
+	    'NINREAD': job['stats'] ? job['stats']['nInputsRead'] : '-',
+	    'NOUT': job['stats'] ? job['stats']['nJobOutputs'] : '-',
 	    'NPH': (job['phases'] || []).length,
+	    'NTASKS': job['stats'] ? job['stats']['nTasksDispatched'] : '-',
 	    'OWNER': job['owner'] || '-',
 	    'S': state,
 	    'WORKER': job['worker'] || '-'
@@ -820,6 +855,7 @@ function cmdGet()
 		switch (option.option) {
 		case 'v':
 			msVerbose++;
+			msRecordLimit = 5000;
 			break;
 
 		default:
@@ -836,7 +872,8 @@ function cmdGet()
 	msJobId = argv[parser.optind()];
 
 	clientInit(function (api) {
-		api.jobFetchDetails(msJobId, function (err, records) {
+		api.jobFetchDetails(msJobId, msVerbose > 0, msRecordLimit,
+		    function (err, records) {
 			if (err) {
 				console.error('%s: %s', msArg0, err.message);
 
@@ -846,7 +883,7 @@ function cmdGet()
 
 			printJobDetails(records);
 			clientFini();
-		});
+		    });
 	});
 }
 
@@ -854,32 +891,35 @@ function printJobDetails(records)
 {
 	var job = records['job']['value'];
 	var mtime = records['job']['_mtime'];
-	var taskinputs = {};
-	var taskoutputs = {};
+	var taskinputs, taskoutputs;
 	var taskslast = [];
-	var nout = 0, ninter = 0, nerr = 0;
-	var table, row, i, phase;
+	var nout = 0, nerr = 0, ninter = 0, nuncommitted = 0;
+	var table, row;
 
-	records['taskinput'].forEach(function (record) {
-		var taskid = record['value']['taskId'];
+	if (msVerbose > 0) {
+		taskinputs = {};
+		records['taskinput'].forEach(function (record) {
+			var taskid = record['value']['taskId'];
 
-		if (!taskinputs[taskid])
-			taskinputs[taskid] = [];
+			if (!taskinputs[taskid])
+				taskinputs[taskid] = [];
 
-		taskinputs[taskid].push(record);
-	});
+			taskinputs[taskid].push(record);
+		});
 
-	records['taskoutput'].forEach(function (record) {
-		var taskid = record['value']['taskId'];
+		taskoutputs = {};
+		records['taskoutput'].forEach(function (record) {
+			var taskid = record['value']['taskId'];
 
-		if (!taskoutputs[taskid])
-			taskoutputs[taskid] = [];
+			if (!taskoutputs[taskid])
+				taskoutputs[taskid] = [];
 
-		if (record['value']['error'])
-			nerr++;
+			if (record['value']['error'])
+				nerr++;
 
-		taskoutputs[taskid].push(record);
-	});
+			taskoutputs[taskid].push(record);
+		});
+	}
 
 	records['task'].forEach(function (record) {
 		if (record['value']['state'] == 'cancelled' ||
@@ -887,8 +927,12 @@ function printJobDetails(records)
 		    record['value']['error'])
 			nerr++;
 
-		if (record['value']['phaseNum'] != job['phases'].length - 1 ||
-		    !record['value']['timeCommitted']) {
+		if (!record['value']['timeCommitted']) {
+			nuncommitted++;
+			return;
+		}
+
+		if (record['value']['phaseNum'] != job['phases'].length - 1) {
 			ninter += record['value']['nOutputs'] || 0;
 			return;
 		}
@@ -901,61 +945,47 @@ function printJobDetails(records)
 
 	row = makeJobRow(job, mod_jsprim.iso8601(new Date(mtime)));
 
-	mod_tab.emitTable({
-	    'columns': mapColumns([ 'JobID', 'JobName' ], msFieldsJobs),
-	    'rows': [ row ]
+	println('%-7s %-36s (created  %s)', 'JOB', row['JOBID'],
+	    row['CREATED']);
+	println('%-7s %-36s (modified %s)', 'WORKER', row['WORKER'],
+	    row['MODIFIED']);
+	println('%-7s %-36s "%s"', 'USER', job['auth']['uuid'],
+	    job['auth']['login']);
+	println('%-7s %-36s %d output, %d errors, %d tasks', 'STATE',
+	    job['state'],
+	    job['stats'] ? job['stats']['nJobOutputs'] : '-',
+	    job['stats'] ? job['stats']['nErrors'] : '-',
+	    job['stats'] ? job['stats']['nTasksDispatched'] : '-');
+
+	if (records['task'].length < msRecordLimit)
+		println('%-7s (%d uncommitted done, %d intermediate objects)',
+		    '', nuncommitted, ninter);
+
+	job['phases'].forEach(function (phase, i) {
+		var label = i === 0 ? 'PHASE' : '';
+		var type = phase['type'] || 'storage-map';
+		if (type == 'reduce')
+			type += ' (' + (phase['count'] || 1) + ')';
+		println('%-7s %2d %-11s %s', label, i, type,
+		    JSON.stringify(phase['exec']));
 	});
 
-	mod_tab.emitTable({
-	    'columns': mapColumns([ 'User', 'Created' ], msFieldsJobs),
-	    'rows': [ row ]
+	records['jobinput'].sort(function (a, b) {
+		return (a['value']['key'] < b['value']['key'] ? -1 :
+		    b['value']['key'] > a['value']['key'] ? 1 : 0);
 	});
 
-	mod_tab.emitTable({
-	    'columns': mapColumns([ 'Worker', 'Modified' ], msFieldsJobs),
-	    'rows': [ row ]
-	});
+	if (records['jobinput'].length === 0) {
+		println('INPUTS');
+	} else {
+		records['jobinput'].forEach(function (input, i) {
+			var label = i === 0 ? 'INPUTS' : '';
+			println('%-7s %s', label, input['value']['key']);
+		});
 
-	mod_tab.emitTable({
-	    'columns': [ {
-		'label': 'STATE',
-		'width': 15
-	    }, {
-		'label': 'NPHASES',
-		'width': 7,
-		'align': 'right'
-	    }, {
-		'label': 'NINPUT',
-		'width': 10,
-		'align': 'right'
-	    }, {
-		'label': 'NTASKS',
-		'width': 10,
-		'align': 'right'
-	    }, {
-		'label': 'NINTERMED',
-		'width': 10,
-		'align': 'right'
-	    }, {
-		'label': 'NOUTPUT',
-		'width': 10,
-		'align': 'right'
-	    }, {
-		'label': 'NERRORS',
-		'width': 7,
-		'align': 'right'
-	    } ],
-	    'rows': [ {
-		/* XXX # of errors */
-		'STATE': job['state'],
-		'NPHASES': job['phases'].length,
-		'NINPUT': records['jobinput'].length,
-		'NTASKS': records['task'].length,
-		'NINTERMED': ninter,
-		'NOUTPUT': nout,
-		'NERRORS': nerr
-	    } ]
-	});
+		if (records['jobinput'].length >= msRecordLimit)
+			println('%-7s ...', '');
+	}
 
 	if (job['timeCancelled'])
 		println('NOTE: Cancelled at %s', job['timeCancelled']);
@@ -966,34 +996,16 @@ function printJobDetails(records)
 	else if (!job['timeInputDone'])
 		println('NOTE: Job is waiting for user input');
 
+	if (msVerbose > 0 && job['stats'] && job['stats']['nErrors'] != nerr)
+		println('WARN: found %d errors, but job reports %d errors',
+		    nerr, job['stats']['nErrors']);
+
+	if (msVerbose > 0 && job['stats'] &&
+	    job['stats']['nJobOutputs'] != nout)
+		println('WARN: found %d outputs, but job reports %d outputs',
+		    nerr, job['stats']['nJobOutputs']);
+
 	println('');
-
-	table = new mod_tab.TableOutputStream({
-	    'columns': [ {
-		'label': 'PHASE',
-		'width': 5,
-		'align': 'right'
-	    }, {
-		'label': 'TYPE',
-		'width': 12
-	    }, {
-		'label': 'EXEC'
-	    } ]
-	});
-
-	for (i = 0; i < job['phases'].length; i++) {
-		phase = job['phases'][i];
-		table.writeRow([ i, phase['type'] || 'storage-map',
-		    '"' + phase['exec'] + '"' ]);
-	}
-
-	println('\nJOB INPUT OBJECTS', records['jobinput'].length);
-
-	iterList(records['jobinput'], 3, function (record) {
-		println('    %s', record['value']['key']);
-	}, function () {
-		println('    ...');
-	});
 
 	records['task'].sort(function (a, b) {
 		var r1 = a['value']['phaseNum'] - b['value']['phaseNum'];
@@ -1006,7 +1018,6 @@ function printJobDetails(records)
 		return (0);
 	});
 
-	println('');
 	table = new mod_tab.TableOutputStream({
 	    'columns': [ {
 		'label': 'TASKID',
@@ -1030,9 +1041,12 @@ function printJobDetails(records)
 	    } ]
 	});
 
-	iterList(records['task'], 3, function (record) {
+	records['task'].forEach(function (record, j) {
 		var taskid = record['value']['taskId'];
 		var internal;
+
+		if (j !== 0)
+			println('');
 
 		table.writeRow([
 		    record['value']['taskId'],
@@ -1042,7 +1056,8 @@ function printJobDetails(records)
 		    record['value']['nOutputs'] || 0
 		]);
 
-		var input = record['value']['key'] || (taskinputs[taskid] ?
+		var input = record['value']['key'] ||
+		    (taskinputs && taskinputs[taskid] ?
 		    taskinputs[taskid].length  + ' keys' : 'none');
 		println('    INPUT:  %s', input);
 
@@ -1060,52 +1075,51 @@ function printJobDetails(records)
 				    internal);
 		}
 
-		if (taskinputs[taskid])
-			iterList(taskinputs[taskid], 3, function (rec) {
+		if (taskinputs && taskinputs[taskid])
+			taskinputs[taskid].forEach(function (rec) {
 				println('    INPUT:  %s', rec['value']['key']);
-			}, function () { println('    ...'); });
+			});
 
 		var outs = (record['value']['firstOutputs'] || []).map(
 		    function (out) { return (out['key']); });
-		outs = outs.concat((taskoutputs[taskid] || []).filter(
+		outs = outs.concat((taskoutputs && taskoutputs[taskid] ?
+		    taskoutputs[taskid] : []).filter(
 		    function (rec) { return (!rec['value']['error']); }).
 		    map(
 		    function (rec) { return (rec['value']['key']); }));
 
-		iterList(outs, 1, function (out) {
+		outs.forEach(function (out) {
 			println('    OUTPUT: %s', out);
-		}, function () { println('        ...'); });
+		});
 
 		var errs = (record['value']['firstOutputs'] || []).filter(
 		    function (out) { return (out['error']); }).map(
 		    function (out) { return (out['error']); });
-		errs = errs.concat((taskoutputs[taskid] || []).filter(
+		errs = errs.concat((taskoutputs && taskoutputs[taskid] ?
+		    taskoutputs[taskid] : []).filter(
 		    function (rec) { return (rec['value']['error']); }).map(
 		    function (rec) { return (rec['value']['error']); }));
 
-		iterList(errs, 1, function (error) {
+		if (msVerbose === 0 &&
+		    record['value']['nOutputs'] >
+		    (record['value']['firstOutputs'] ?
+		    record['value']['firstOutputs'].length : 0))
+			println('    ...', '');
+
+		errs.forEach(function (error) {
 			internal = error['messageInternal'];
 			println('    ERROR:  %-10s  %s', error['code'],
 			    error['message']);
 			if (internal)
 				println('            internal: %s', internal);
-		}, function () { println('        ...'); });
+		});
 
 		if (record['value']['stderr'])
 			println('    STDERR: %s', record['value']['stderr']);
-	}, function () { println('\n...\n'); });
-}
+	});
 
-function iterList(list, count, func, separator)
-{
-	if (msVerbose >= 1 || list.length <= 2 * count)
-		list.forEach(func);
-	else {
-		list.slice(0, count).forEach(func);
-		if (separator)
-			separator();
-		list.slice(list.length - count).forEach(func);
-	}
+	if (records['task'].length >= msRecordLimit)
+		println('...', '');
 }
 
 function cmdLog()

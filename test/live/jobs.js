@@ -865,7 +865,8 @@ function jobTestVerifyTimeout(api, testspec, jobid, callback)
 
 function jobTestVerify(api, testspec, jobid, callback)
 {
-	api.jobFetchDetails(jobid, exnAsync(function (err, jobresult) {
+	api.jobFetchDetails(jobid, true, 1000,
+	    exnAsync(function (err, jobresult) {
 		if (err) {
 			callback(err);
 			return;
@@ -982,8 +983,7 @@ function jobTestVerify(api, testspec, jobid, callback)
 				callback();
 			    });
 		});
-
-	}, callback));
+	    }, callback));
 }
 
 function jobTestVerifyOutputs(api, testspec, outputs, callback)
