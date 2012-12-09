@@ -215,6 +215,10 @@ var msFieldsJobs = {
 	'label': 'JOBNAME',
 	'width': 24
     },
+    'login': {
+	'label': 'LOGIN',
+	'width': 24
+    },
     'modified': {
 	'label': 'MODIFIED',
 	'width': 24,
@@ -832,6 +836,7 @@ function makeJobRow(job, mtime)
 	    'INPUTDONE': job['timeInputDone'] || '-',
 	    'JOBID': job['jobId'] || '-',
 	    'JOBNAME': (job['jobName'] || '-').substr(0, 16),
+	    'LOGIN': job['auth']['login'],
 	    'MODIFIED': mtime || '-',
 	    'NERR': job['stats'] ? job['stats']['nErrors'] : '-',
 	    'NINREAD': job['stats'] ? job['stats']['nInputsRead'] : '-',
