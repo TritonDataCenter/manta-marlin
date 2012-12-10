@@ -86,3 +86,7 @@ echo "done."
 echo -n "Removing zone \"$mr_zonename\" ... \c "
 zone_remove $mr_zonename || fail "failed"
 echo "done."
+
+echo -n "Removing com.joyent.manta:marlin property ... \c "
+zfs inherit com.joyent.manta:marlin zones/$mr_zonename || fail "failed"
+echo "done."
