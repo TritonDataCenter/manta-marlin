@@ -44,6 +44,7 @@ JS_FILES	+= \
     cmd/mpipe	\
     cmd/mrjob 	\
     cmd/msplit	\
+    cmd/msplit-json	\
     cmd/mtee	\
     tools/mrpound
 
