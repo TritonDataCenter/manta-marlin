@@ -28,6 +28,7 @@
 	},
 
 	"tunables": {
+		"httpMaxSockets": 512,
 		"maxPendingPuts": 25,
 		"timeJobSave": 3000,
 		"timePoll": 50,

@@ -933,7 +933,9 @@ function printJobDetails(records)
 			nerr++;
 
 		if (!record['value']['timeCommitted']) {
-			nuncommitted++;
+			if (record['value']['state'] == 'done' ||
+			    record['value']['state'] == 'aborted')
+				nuncommitted++;
 			return;
 		}
 
@@ -1061,10 +1063,19 @@ function printJobDetails(records)
 		    record['value']['nOutputs'] || 0
 		]);
 
-		var input = record['value']['key'] ||
-		    (taskinputs && taskinputs[taskid] ?
-		    taskinputs[taskid].length  + ' keys' : 'none');
-		println('    INPUT:  %s', input);
+		if (record['value']['key']) {
+			println('    INPUT:  %s', record['value']['key']);
+		} else if (taskinputs && taskinputs[taskid]) {
+			println('    INPUT:  %d keys',
+			    taskinputs[taskid].length);
+		} else if (msVerbose > 0) {
+			println('    INPUT:  0 keys');
+		} else if (record['value']['nInputs']) {
+			println('    INPUT:  expects %d keys',
+			    record['value']['nInputs']);
+		} else {
+			println('    INPUT:  unknown');
+		}
 
 		if (record['value']['error']) {
 			var errobj = record['value']['error'];
