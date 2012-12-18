@@ -487,6 +487,11 @@ HyprlofsFilesystem::doIoctl(int cmd, void *arg)
 		(void) fprintf(stderr, "    hyprlofs ioctl (%s) returned %d "
 		    "(error = %s)\n", this->hfs_label, this->hfs_rv,
 		    strerror(errno));
+
+	if (this->hfs_rv == -1 && this->hfs_errno == ENOTTY) {
+		(void) close(this->hfs_fd);
+		this->hfs_fd = -1;
+	}
 }
 
 /*
