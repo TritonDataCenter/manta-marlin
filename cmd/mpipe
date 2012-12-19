@@ -127,7 +127,7 @@ function dpUploadFile()
 	var log = new mod_bunyan({ 'name': 'mpipe', 'level': 'fatal' });
 
 	var client = mod_manta.createClient({
-	    'url': 'http://localhost:8080/',
+	    'url': process.env['MANTA_URL'],
 	    'log': log,
 	    'retry': false,
 	    'sign': mod_mautil.mantaSignNull
