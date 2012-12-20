@@ -48,7 +48,7 @@
 		"maxPendingPuts": 100,
 		"maxRecentRequests": 300,
 		"maxRecordsPerQuery": 1000,
-		"timePoll": 50,
+		"timePoll": 200,
 		"timeTick": 20,
 		"timeJobAbandon": 30000,
 		"timeJobSave": 10000,

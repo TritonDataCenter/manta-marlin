@@ -31,7 +31,7 @@
 		"httpMaxSockets": 512,
 		"maxPendingPuts": 25,
 		"timeJobSave": 3000,
-		"timePoll": 50,
+		"timePoll": 200,
 		"timeTick": 20,
 		"zoneReserveMin": 1,
 		"zoneReservePercent": 12
