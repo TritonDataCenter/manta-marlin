@@ -12,46 +12,50 @@ document describes the desired end state for version 1.
 
 # Overview and Public API
 
-For an overview of what Marlin is and how users interact with it, see the
+For an overview of what Marlin is and how users interact with it, see the Manta
 documentation in muskie.git.  Really, go read that first.  This document assumes
 familiarity with that, including how the rest of the Manta object store works.
 
 
-# Design goals
+# First principles
 
-Marlin is designed to facilitate the following use cases:
+Marlin provides two main functions:
 
-* MapReduce in a Unix-based environment (e.g., log analysis using awk)
-* MapReduce in a node-based environment (i.e., make it easy for node apps)
-* Straight Map with no reduce (e.g., video transcoding)
-* Allowing others to run compute on your data (e.g., for government
-  organizations with lots of public data, e.g.,
-  http://community.topcoder.com/pds-challenge/)
-* Hadoop itself?
+* a non-interactive Unix shell environment for doing "work" on Manta objects as
+  local files
+* a framework for distributing such work to the right physical servers, tracking
+  which pieces are complete, capturing the output, and repeating the whole
+  process to facilitate multi-phase computation on objects at rest
 
-Marlin must be easy to use, monitor, and debug.  A good barometer is that "word
-count", the MR equivalent of "hello world", should be trivial to run from the
-command line.
+Example use cases include:
 
-# APIs
+* log processing: grepping through logs, reformatting log entries, or generating
+  summary reports
+* image processing: converting formats, generating thumbnails
+* video processing: transcoding, extracting segments, resizing
+* "hardcore" data analysis, using NumPy, SciPy, R, or the like
+* SQL-like queries over structured data (similar to what Hive provides for
+  Hadoop)
 
-The **Job API** is what end users use to submit, cancel, and monitor compute
-jobs.  This is actually part of the Manta API, and is documented with the rest
-of Manta.  The rest of this document assumes familiarity with this API.
+Since the primitive abstraction is the Unix shell, lots of these operations can
+be done with built-in tools like `awk`, `grep`, `sort`, `json`, `bunyan`, and so
+on.  We'll also provide a rich suite of software like ImageMagic, ffmpeg, and so
+on, as well as runtime environments like Perl, Python, Java, R, and so on so
+that users can run their own software, too.
 
-The **Task Control API** is used by user code running inside Marlin to
-coordinate execution and report progress.  It's not available externally,
-since it's scoped to a particular zone.  This is discussed in detail below.
+Besides that, using Unix as the basic abstraction makes it possible to develop
+software locally and then run it in Marlin with little to no changes required.
 
-All DateTimes in these APIs use W3C DTF in UTC ("YYYY-MM-DDThh:mm:ss.sZ").
+With rich access controls in Manta, it will be possible to run compute on other
+users' data that's been made available to you.  This may be especially useful
+for government organizations with lots of public data (e.g.,
+http://community.topcoder.com/pds-challenge/).
+
+Marlin must be easy to use, monitor, and debug.  "Word frequency count", the MR
+equivalent of "hello world", should be trivial to run from the command line.
 
 
-# Example jobs
-
-The following examples include whitespace for readability, but JSON does not
-allow whitespace within strings.  To use these examples, either remove the
-newlines or save the phase contents as a file in Manta and use that file as an
-asset.
+# Examples
 
 ## Total word count
 
@@ -60,15 +64,12 @@ Input: a list of plain text objects (e.g., plaintext mailbox files, source code)
 Output: a single object with one line containing the total number of characters,
 words, and lines in all files (e.g., "wc" output)
 
-    {
-        "jobName": "total word count",
-        "phases": [ {
-            "exec": "wc"
-        }, {
-            "type": "reduce",
-            "exec": "awk '{ l += $1; w += $2; c += $3 } END { print l, w, c }'"
-        } ]
-    }
+    "phases": [ {
+        "exec": "wc"
+    }, {
+        "type": "reduce",
+        "exec": "awk '{ l += $1; w += $2; c += $3 } END { print l, w, c }'"
+    } ]
 
 Example output (exactly the same format as "wc"):
 
@@ -83,34 +84,31 @@ Output: a single object with one line *per whitespace-delimited* word in the
 input objects identifying how many times that word occurred in all of the input
 files.  The result should be sorted by count.
 
-    {
-        "jobName": "word frequency count",
-        "phases": [ {
-            "exec": "awk '
-                {
-                    for (i = 1; i < NF; i++) {
-                        counts[$i]++
-                    }
+    "phases": [ {
+        "exec": "awk '
+            {
+                for (i = 1; i < NF; i++) {
+                    counts[$i]++
                 }
-                END {
-                    for (i in counts) {
-                        print i, counts[i]
-                    }
-                }'
-            "
-        }, {
-            "type": "reduce",
-            "exec": "awk '
-                {
-                    byword[$1] += $2
+            }
+            END {
+                for (i in counts) {
+                    print i, counts[i]
                 }
-                END {
-                    for (i in byword) {
-                        print i, byword[i]
-                    }
-                }' | sort -k2,2 -n"
-        } ]
-    }
+            }'
+        "
+    }, {
+        "type": "reduce",
+        "exec": "awk '
+            {
+                byword[$1] += $2
+            }
+            END {
+                for (i in byword) {
+                    print i, byword[i]
+                }
+            }' | sort -k2,2 -n"
+    } ]
 
 Example output:
 
@@ -125,9 +123,8 @@ Input: a list of text files (e.g., source code)
 Output: a total count of lines by file extension
 
     {
-        "jobName": "total lines by file extension",
         "phases": [ {
-            "exec": "wc -l $mr_input_key |
+            "exec": "wc -l $mc_input_key |
                 (read count file; echo $count ${file##*.}",
         }, {
             "type": "reduce",
@@ -144,7 +141,7 @@ Output: a total count of lines by file extension
         } ]
     }
 
-Note: we use $mr\_input\_key rather than reading from stdin so that "wc" prints
+Note: we use $mc\_input\_key rather than reading from stdin so that "wc" prints
 out the filename after the word count.
 
 Example output:
@@ -162,45 +159,38 @@ Input: a list of text files (e.g., plaintext emails)
 Output: a file with one word per line indicating which files and lines the word
 appears in the input files.
 
-Example output:
-aardvark mail0100.txt:12,13
-curmudgeon file1.txt:30 file2.txt:10,12,14 file3.txt:15
-
-    {
-        "jobName": "word index",
-        "phases": [ {
-            "exec": "awk '
-                {
-                    for (i = 1; i <= NF; i++) {
-                        if ($i in indx) {
-                            indx[$i] = indx[$i] "," NR
-                        } else {
-                            indx[$i] = FILENAME ":" NR
-                        }
+    "phases": [ {
+        "exec": "awk '
+            {
+                for (i = 1; i <= NF; i++) {
+                    if ($i in indx) {
+                        indx[$i] = indx[$i] "," NR
+                    } else {
+                        indx[$i] = FILENAME ":" NR
                     }
                 }
-                END {
-                    for (word in indx) {
-                        print word, indx[word]
-                    }
-                }'
-            "
-        }, {
-            "type": "reduce",
-            "exec": "awk '
-                {
-                    for (i = 2; i <= NF; i++) {
-                        indx[$1] = indx[$1] " " $i
-                    }
+            }
+            END {
+                for (word in indx) {
+                    print word, indx[word]
                 }
-                END {
-                    for (word in indx) {
-                        print word, indx[word]
-                    }
-                }'
-            "
-        } ]
-    }
+            }'
+        "
+    }, {
+        "type": "reduce",
+        "exec": "awk '
+            {
+                for (i = 2; i <= NF; i++) {
+                    indx[$1] = indx[$1] " " $i
+                }
+            }
+            END {
+                for (word in indx) {
+                    print word, indx[word]
+                }
+            }'
+        "
+    } ]
 
 Example output:
 
@@ -221,17 +211,14 @@ Input: list of arbitrary image files
 
 Output: list of same images converted to PNGs
 
-Assumes: ImageMagick package installed in the zone
+This example uses the ImageMagick package that's installed in all compute zones.
 
-    {
-        "jobName": "convert images to PNGs",
-        "phases": [ {
-            "exec": "convert $mr_input_file ${mr_input_file##*.}.png &&
-                mpipe < ${mr_input_file##*.}.png"
-        } ]
-    }
+    "phases": [ {
+        "exec": "convert $mr_input_file ${mr_input_file##*.}.png &&
+            mpipe < ${mr_input_file##*.}.png"
+    } ]
 
-The output here is a list of keys of the converted images, as in:
+The output here is a list of objects corresponding to converted images, as in:
 
     img001.png
     img002.png
@@ -242,17 +229,14 @@ Input: list of arbitrary video files
 
 Output: list of same videos encoded with webm using default ffmpeg presets
 
-Assumes: ffmpeg package installed in the zone
+This example uses the ffmpeg package that's installed in all compute zones.
 
-    {
-        "jobName": "transcode video to webm",
-        "phases": [ {
-            "exec": "ffmpeg -i $mr_input_file ${mr_input_file##*.}.webm &&
-                mpipe < ${mr_input_file##*.}.webm"
-        } ]
-    }
+    "phases": [ {
+        "exec": "ffmpeg -i $mr_input_file ${mr_input_file##*.}.webm &&
+            mpipe < ${mr_input_file##*.}.webm"
+    } ]
 
-The output here is a list of keys of the transcoded videos, as in:
+The output here is a list of objects corresponding to transcoded videos, as in:
 
     video001.webm
     video002.webm
@@ -264,17 +248,14 @@ Input: list of logs in Apache common log format
 Output: count of all queries decomposed by URI
 
 Assumes: apache2json tool, which converts each Apache common log record into a
-    JSON object with named fields
+JSON object with named fields
 
-    {
-        "jobName": "count HTTP requests by URI"
-        "phases": [ {
-            "exec": "apache2json | json -a url"
-        }, {
-            "type": "reduce",
-            "exec": "sort | uniq -c | sort -n"
-        } ]
-    }
+    "phases": [ {
+        "exec": "apache2json | json -a url"
+    }, {
+        "type": "reduce",
+        "exec": "sort | uniq -c | sort -n"
+    } ]
 
 Example output:
 
@@ -288,23 +269,20 @@ Input: list of logs in Apache common log format
 
 Output: SQL database describing all of the HTTP requests
 
-    {
-        "jobName": "aggregate HTTP requests into a SQL database",
-        "phases": [ {
-            "exec": "awk '{
-                print \"INSERT INTO Requests (SourceIP, User, URI, Status, Size)
-                  VALUES (\" $1 \",\" $3 \",\" $7 \",\" $9 \",\" $10 \");\" }'"
-        }, {
-            "type": "reduce",
-            "exec": "echo 'CREATE TABLE Requests (
-                SourceIP VARCHAR(20),
-                User VARCHAR(20),
-                URI VARCHAR(256),
-                Status VARCHAR(4),
-                Size INT(7)
-            );'; cat"
-        } ]
-    }
+    "phases": [ {
+        "exec": "awk '{
+            print \"INSERT INTO Requests (SourceIP, User, URI, Status, Size)
+              VALUES (\" $1 \",\" $3 \",\" $7 \",\" $9 \",\" $10 \");\" }'"
+    }, {
+        "type": "reduce",
+        "exec": "echo 'CREATE TABLE Requests (
+            SourceIP VARCHAR(20),
+            User VARCHAR(20),
+            URI VARCHAR(256),
+            Status VARCHAR(4),
+            Size INT(7)
+        );'; cat"
+    } ]
 
 Note: this assumes URIs have no spaces in them.  A more robust solution would
 use an actual Apache log parser in place of awk here, but the idea would be the
@@ -353,237 +331,112 @@ the resulting bundle stored in Manta.  If we add a post-commit hook to our git
 repos that save a "git bundle" into Manta, then the distributed build system is
 a pretty simple map job:
 
-    {
-        "jobName": "build SDC",
-        "phases": [ {
-            "dataset": "smartos-1.6.3",
-            "exec": "git clone $mr_input_file repo && cd repo && make &&
-                mpipe < build/dist/latest.tar.bz2"
-        } ]
-    }
+    "phases": [ {
+        "dataset": "smartos-1.8.4",
+        "exec": "git clone $mr_input_file repo && cd repo && make &&
+            mpipe < build/dist/latest.tar.bz2"
+    } ]
 
-The input keys would be the keys identifying the git bundle for each repo in
-Manta.  If different repos needed to be built with different datasets, those
-would have to be separate jobs.
+The input objects would be the git bundle for each repo in Manta.  If different
+repos needed to be built with different datasets, those would have to be
+separate jobs.
 
 
-# Task Control API
+# Advanced topics for users
 
-At the lowest level, the user code running as a task is managed by an in-zone
-agent that's part of Marlin.  This agent runs an HTTP server that communicates
-securely with the global zone agent, which proxies most requests directly to the
-Manta front door.  Since the global zone agent knows which zone it's talking to,
-all requests can be automatically authenticated for the user running the job.
-This enables user code to make authenticated requests to operate on Manta
-objects without having to worry about secure keys.
+## Task output
 
-In addition to proxying the full Manta API, the in-zone server supports a few
-additional entry points that are used to pass parameters and control information
-between the global zone agent and the in-zone agent.  To avoid conflicting with
-anything else in Manta, these URIs are prefixed with `/my/jobs/task`.  (As
-described above, the global zone agent always knows which job and task are being
-operated on since it knows which zone made the request.)
+Each task may emit one or more output objects.  If the job has a subsequent
+phase, these output objects become input for the subsequent phase.  If not,
+these become output objects for the overall job.  Intermediate objects are not
+directly exposed to users, and may never even be stored in Manta, but final
+outputs are always Manta objects.
 
-* `GET  /my/jobs/task/task`: retrieve job and task parameters
-* `POST /my/jobs/task/live`: report task liveness
-* `POST /my/jobs/task/commit`: report successful task completion
-* `POST /my/jobs/task/fail`: report task failure
+By default, the stdout for the user's process is captured and is emitted as a
+single output object.  This happens even if no bytes are emitted to stdout.
 
-These entry points are not for direct consumption by user code, and are not
-available at all outside the context of a task running inside a compute zone.
-These APIs are *not* used to monitor task status; that's provided by the
-public-facing Job API.
+If a task fails, the stderr for the user's process is captured and made
+available as a Manta object.
 
 
-## GET /my/jobs/task/task
+### mpipe
 
-Retrieves information about the current job and task.
+Several facilities are available for more advanced types of output, most of
+which make use of a primitive command called `mpipe`, which emits a single
+object from the current task.  With no arguments, `mpipe` emits everything it
+reads on stdin.  For example:
 
-### Returns
+    wc | mpipe
 
-This field returns the entire job info (as `GET /jobs/:jobid` does) plus the
-following fields:
+is exactly equivalent to just:
 
-|| **Field** || **Type** || **Description** ||
-|| taskId || String || Task identifier ||
-|| taskPhase || Object || See "job" object in Jobs API ||
-|| taskErrorKey || String || Suggested key for task stderr object, if any ||
-|| taskOutputKey || String || Suggested key for first task output object ||
-|| taskOutputBase || String || Suggested base key for task output objects ||
-|| taskInputKeys || Array of Strings || List of keys to process ||
-|| taskInputDone || Boolean || Whether all input keys have been passed (reduce only) ||
-|| taskInputRemote || String || URL of Manta for use in fetching records (non-local data only) ||
-|| taskInputFile || String || Filename of first input key (local data only) ||
+    wc
 
-Object metadata (e.g., user-specified headers) are not included in the task
-info.  Users can retrieve this by querying Manta directly.
+since both capture the stdout of wc and emit it as a single output object.
 
+`mpipe` is used for several reasons:
 
-## POST /my/jobs/task/commit
+* **Naming**: Objects created through automatic stdout capture or through mpipe
+  with no arguments are automatically given unique names.  You can control the
+  name yourself by specifying an argument to `mpipe`:
 
-Report that the given key has been successfully processed.  Tasks *must* report
-when they finish processing each key.
+        wc | mpipe /dap/stor/count
 
-This information is used for two purposes: first, it is recorded in the job
-state so that end users can see what progress is being made while the job runs.
-Second, any objects created since the last progress report are committed to the
-job.  See `PUT /:key`.
+  You may want to use environment variables like `$mc_input_key` (see "Task
+  environment" below) to keep these names unique.
 
-When the key has been completed, the task may be terminated immediately,
-potentially before this request even completes.  Any cleanup the task wishes to
-complete should be done before the final call to this URI.
+* **Multiple outputs**: you can invoke `mpipe` as many times as you want from a
+  single task to emit more than one object for the next phase (or as a final job
+  output).
+* **Special headers**: You can specify headers to be set on output objects using
+  the "-H" option to `mpipe`, which behaves exactly like the same option on the
+  Manta CLI tool `mput`.
+* **Reducer routing**: Finally, in jobs with multiple reducers, you can specify
+  which reducer a given output object should be routed to using the "-r" option
+  to `mpipe`.  See "Multiple reducers" below.
 
-### Input
+### mcat: emit an object by reference
 
-|| **Field** || **Type** || **Description** ||
-|| key || String || Key for input object successfully completed ||
+`mcat` emits the contents of a Manta object, but without actually fetching the
+data.  For example:
 
-### Returns
+    mcat /dap/stor/scores.csv
 
-Returns 204 (no content) on success.
-
-### Example
-
-Request:
-
-    {
-        "key": "logs/2012-03-11.log"
-    }
-
-Response:
-
-    HTTP/1.1 204 No content
-    Access-Control-Allow-Origin: *
-    Access-Control-Allow-Methods: GET, POST
-    Connection: close
-    Date: Tue, 20 Mar 2012 17:19:26 GMT
-    X-Request-Id: 4bcf467e-4b88-4ab4-b7ab-65fad7464de9
-    X-Response-Time: 32
-
-
-## PUT /:key
-
-Writes a new Manta object named "key" associated with this task.  The arguments,
-semantics, and return value for this URI exactly match the Manta API for
-creating a new object, with the following additions:
-
-* Any object created using this URI since the last call to `POST /commit` will
-  be discarded if the job fails.  Such objects will not be included in the
-  job's output, but will be listed in the task state for *postmortem*
-  debugging.
-* Jobs using pipelined reducers may specify a "X-Marlin-Reducer" header whose
-  value is an integer from 0 to N - 1, where N is the number of reducers in the
-  next phase.  Any other input results in a 409 Conflict error.  This value
-  indicates which of several reducers this output file should be fed to.  If
-  this value is unspecified and there are multiple reducers in the next phase,
-  output keys will be randomly assigned to reducers.
-* The "X-Marlin-Reference" header may be set to the value "true" to indicate
-  that the given key should be output by reference, instead of overwriting
-  whatever's there.
-
-For examples, see the Manta documentation.
-
-## POST /my/jobs/task/fail
-
-Fail the current task.  Any objects created since the last call to `POST
-/commit` will be discarded (but will be linked in the task state for
-*postmortem* analysis).
-
-### Input
-
-The input should have at least the following fields:
-
-|| **message** || String || human-readable error message ||
-
-It's also recommended to include a "code" field for a machine-parseable error
-code in string form.  Other fields may also be specified up to a maximum
-request size.
-
-### Returns
-
-Returns 204 (no content) on success, but may not return at all, as the task may
-be terminated immediately.
-
-Callers can assume that this call will never fail.
-
-
-### Example
-
-Request:
-
-    {
-        "message": "corrupt log record"
-    }
-
-Response:
-
-    HTTP/1.1 204 No content
-    Access-Control-Allow-Origin: *
-    Access-Control-Allow-Methods: GET, POST
-    Connection: close
-    Date: Tue, 20 Mar 2012 17:19:26 GMT
-    X-Request-Id: 4bcf467e-4b88-4ab4-b7ab-65fad7464de9
-    X-Response-Time: 12
-
-## POST /my/jobs/task/abort
-
-Not yet implemented.
-
-Exactly like `POST /fail`, except that additional *postmortem* state will be
-kept around and linked to the job state.  Core dumps of currently running user
-processes and the entire filesystem contents will be preserved.
-
-
-# Advanced topics
-
-## Built-in facilities
-
-We'll provide several facilities for dealing with common tasks in MR jobs.
-
-### mpipe: output to the next job pipeline
-
-mpipe [&lt;manta_key&gt;] [reducer]
-
-Reads content from stdin and outputs it from this task.  If &lt;manta\_key&gt;
-is not given, a new name will be created.
-
-This is exactly equivalent to:
-
-    $ curl -X PUT -T- http://localhost/$manta_key
-
-If "reducer" is specified, it must be an integer from 0 to N - 1, where N is the
-number of reducers in the next stage of the job pipeline.  This indicates that
-this object should be routed to the given reducer.
+emits the object `/dap/stor/scores.csv` as an input to the next phase (or as a
+final job output), but *without* actually downloading it as part of the current
+phase.
 
 
 ### msplit: demux a stream for reducers
 
-msplit [-n number_of_reducers] [-d &lt;delimiter&gt;] [-f &lt;field_list&gt;]
-
-Reads content from stdin and outputs to the number of mpipes for the number of
-reducers that are specified.  The field list is an optional list of fields that
-are used as input to the partitioning function.  The field list defaults to [1].
-The delimiter is used to split the line to extract the key fields.  The
-delimiter defaults to (tab).  For example, this will split stdin by comma and
-use the 5th and 3rd fields for the partioning key, going to 4 reducers:
+Reads content from stdin and outputs to the number of `mpipe` processes for the
+number of reducers that are specified.  The field list is an optional list of
+fields that are used as input to the partitioning function.  The field list
+defaults to 1.  The delimiter is used to split the line to extract the key
+fields.  The delimiter defaults to (tab).  For example, this will split stdin by
+comma and use the 5th and 3rd fields for the partioning key, going to 4
+reducers:
 
     $ msplit -d ',' -f 5,3 -n 4
 
 
 ### mtee: save stdout to a manta object in a stream of commands
 
-mtee manta_object_key
+`mtee` is like `mput`, but takes input on stdin instead of a file, and emits its
+input on stdout as well, much like tee(1).
 
-mtee is used to capture stdin and write to both stdout and a manta object.
+`mtee` is also similar to `mpipe`, except that the newly created object does
+*not* become an output object for the current task.
+
 For example, this will capture the output of cmd to manta object
-/$MANTA_USER/stor/tee.out and still pipe what was coming from cmd to cmd2:
+`/$MANTA_USER/stor/tee.out` and still pipe what was coming from cmd to cmd2:
 
     $ cmd | mtee /$MANTA_USER/stor/tee.out | cmd2
 
 
-### aggr: aggregate rows of numbers
+### maggr: aggregate rows of numbers
 
-aggr &lt;sum|avg|pctile99...&gt;
+maggr &lt;sum|avg|pctile99...&gt;
 
 Reads a set of "key: value" pairs on stdin, aggregates them key-wise according
 to the given function, and emits the result.
@@ -598,7 +451,7 @@ Example input:
 
 Example output:
 
-    $ aggr sum < data.txt
+    $ maggr sum < data.txt
     manta: 53
     marlin: 12.8
     moray: 3
@@ -606,19 +459,56 @@ Example output:
 The "key:" bit may also be omitted.
 
 
-### apache2json: parse Apache log records and emit JSON objects
+### Future work: apache2json (parse Apache log records and emit JSON objects)
+
+## Task environment
+
+Tasks are executed as privileged user in an isolated container similar to a
+standard SmartMachine.  Tasks cannot see processes or data belonging to any
+other users.  Tasks have a variety of software available to them, currently
+based on the SmartOS 1.8.4 image.
+
+In the normal case, Marlin executes a shell process for each task.  The task
+ends when that process exits, and the result is successful if that process exits
+successfully (i.e., with status 0).
+
+This first process may fork children, which may fork again.  In that case, the
+task does not end until all children have exited.  The status is still
+determined by the exit status of the first process.  For this reason, it's
+strongly recommended that the first process wait for all children to exit and
+propagate any errors from child processes (whatever that means for the user's
+application).
+
+If any user process dumps core, the task ends as a failure, regardless of what
+other processes are still running and regardless of the exit status of the main
+process.
+
+For convenience, several environment variables are set:
+
+* `PATH`: includes paths to system software, installed packages, standard Manta
+  CLI tools, and Marlin-specific tools like `mpipe`.  The specific paths to
+  these tools are subject to change, and it's not recommended to remove
+  directories from the PATH.
+* `MANTA_URL`: set to a URL valid for use by Manta API consumers.  The current
+  implementation uses HTTP (not HTTPS), but the traffic flows over a secure
+  network.
+* `mc_input_key` (name subject to change, available in map tasks only): the name
+  of the Manta object being processed.
+* `mc_input_file` (name subject to change, available in map tasks only): the
+  full path to the local file corresponding to the Manta object being processed.
+* `MANTA_OUTPUT_BASE`: suggested base name for output objects, automatically
+  generated based on the type of task and input object(s).
 
 
-## Pipelined reducers
+## Multiple reducers
 
 Sometimes it's necessary to pipeline the reduce phase so that instead of
-processing all input keys in one pass, the input keys are processed in chunks
-across multiple passes.  For example, you may want to process half of the input
-keys in each of two parallel tasks, and then process the output of that, to
+processing all input objects in one pass, the input objects are processed in
+chunks across multiple passes.  For example, you may want to process half of the
+inputs in each of two parallel tasks, and then process the output of that, to
 avoid having to load the entire data set in memory at once.
 
-We already support multiple "reduce" phases in a job, but to support this you
-also need to parallelize a single reduce phase.  You can do this with the
+To support multiple reducers in parallel (i.e., in the same job phase), use the
 "count" property:
 
     "phases": [
@@ -635,15 +525,15 @@ also need to parallelize a single reduce phase.  You can do this with the
 
 In this example, some number of map phases are followed by a phase with two
 reducers running in parallel, followed by a final reduce stage.  The two
-parallel reducers are identical except for their input and output keys.  By
-default, input keys are randomly assigned to one of the reducers.  If a more
+parallel reducers are identical except for their input and output objects.  By
+default, inputs are randomly assigned to one of the reducers.  If a more
 sophisticated assignment is necessary, the previous map phase may specify to
-which reducer a given output object will be assigned using the X-Marlin-Reducer
-header, which must be an integer between 0 and N - 1, where N is the total
+which reducer a given output object will be assigned using the "-r" flag to
+`mpipe`, which must be an integer between 0 and N - 1, where N is the total
 number of reducers in the next phase.
 
 
-## Node, Python, Ruby, etc. interface
+## Future work: Node, Python, Ruby, etc. framework
 
 The Jobs API is built in terms of Unix shell commands for generality.  This
 makes it easy to run simple jobs like "grep" and "wc".  For slightly more
@@ -652,13 +542,13 @@ existing system utilities without writing significant new code.  For more
 complex cases you want entirely custom code, you can simply run your program via
 the "exec" string.
 
-We'll also provide a higher-level interface for Node.js, so that people that
-want to build jobs with custom code can use Node easily.  Likely we'll have
+We may also provide a higher-level interface for Node.js, so that people that
+want to build jobs with custom code can use Node easily.  We could have
 consumers implement an interface like:
 
     function processObject(file, callback) { ... }
 
-and we'll provide convenience routines for API operations (like "taskParams()",
+and we'd provide convenience routines for API operations (like "taskParams()",
 "commit()", "abort()", and so on).
 
 Without fleshing this out completely, we know such an interface can be
@@ -670,7 +560,7 @@ API, we tell them to write phases like this:
         "exec": "mnode /assets/my/npm/package"
     } ]
 
-"mnode" is an executable Node.js program included with the dataset that installs
+"mnode" is an executable Node.js program included with the zone that installs
 the given npm package (and therefore its dependencies, too) and then invokes our
 Marlin interface in that package.
 
@@ -680,14 +570,190 @@ Users would only need to reference a third party asset:
 
     "phases": [ {
         "assets": [
-            "third-party/framework/start.sh"
-            "my/script"
+            "/third-party/public/framework/start.sh"
+            "/dap/stor/script"
         ],
-        "exec": "/assets/third-party/framework/start.sh /assets/my/script"
+        "exec": "/assets/third-party/public/framework/start.sh /assets/dap/stor/script"
     } ]
 
 
+# Cookbook
+
+These are some patterns we expect to see a lot.
+
+## Iterating on jobs
+
+When iterating with the CLI, it's convenient to keep the jobid in a variable.
+Instead of this:
+
+    $ mmkjob -m "grep password"
+    83790e24-4b01-11e2-ae6a-9b835d9b76f9
+
+    $ mfind /dap/public | maddkeys 83790e24-4b01-11e2-ae6a-9b835d9b76f9
+
+    $ mjob 83790e24-4b01-11e2-ae6a-9b835d9b76f9
+
+and repeating that several times as you tweak your "grep" pattern, do this:
+
+    $ jobid=$(mmkjob -m "grep password"); echo $jobid
+    83790e24-4b01-11e2-ae6a-9b835d9b76f9
+
+    $ mfind /dap/public | maddkeys $jobid
+
+    $ mjob $jobid
+
+Then you can run commands from your history unmodified, except for the one that
+creates the job.
+
+## Quoting madness
+
+Quoting jobs on the command line can be a nightmare, particularly when writing
+`awk` one-liners (which tend to use variables like `$1` that must not be
+interpreted by either the local shell or the shell in Marlin).  You can store
+the script in an asset and just invoke that, or you can store the script in a
+local file and use bash shell expansion.  So instead of this:
+
+    $ mmkjob -m "awk '{ print \$1 }'"
+
+You can throw the unescaped script in a local file called "myscript.awk", and
+do:
+
+    $ mmkjob -m "$(cat myscript.awk)"
+
+
+## Uploading a directory tree to Manta
+
+First, upload a tarball to Manta, then run "muntar" in a Marlin job to expand
+it.  For example, to copy /etc to /dap/stor/backup/etc:
+
+    $ cd /
+    $ tar czf /var/tmp/backup.tar.gz etc
+    $ mput -f /var/tmp/backup.tar.gz /dap/stor/backup.tar.gz
+    $ jobid=$(mmkjob -m gzcat -m "muntar -f $mc_input_file /dap/stor)
+    $ echo /dap/stor/backup.tar.gz | maddkeys -e $jobid
+
+The resulting output file will be a list of all of the objects created while
+extracting the tarball.
+
+
+## Take the list of input objects from a Manta object
+
+If you tend to run lots of jobs on the same set of objects, you may find it
+easier to store the set of objects in a separate "manifest" object and have the
+first phase of your job process that.  This is especially useful when you have
+a lot of input objects, since it can take a while simply to upload the list of
+them.
+
+So instead of this:
+
+    $ jobid=$(mmkjob -m wc)
+    $ mfind /dap/public | maddkeys -e $jobid
+
+which may take a long time if `mfind` returns a lot of objects, you could do
+this once:
+
+    $ mfind /dap/public > /var/tmp/inputs
+    $ mput -f /var/tmp/inputs /dap/public/inputs
+
+And then for subsequent jobs, just do this:
+
+    $ jobid=$(mmkjob -m "xargs -n1 mcat" -m wc)
+    $ echo /dap/public/inputs | maddkeys -e $jobid
+
+This is much quicker, since you're just uploading one object name.  Note that we
+had to add a first phase to the job which goes through the file line-by-line
+(using "xargs -n1") and calls "mcat" on each one (which emits an output object
+by reference).  So if your input object contains a sequence of lines like:
+
+    /dap/public/game1.csv
+    /dap/public/game2.csv
+    ...
+
+then the first phase emits each of these objects to the second phase, but
+without copying it inside the job.
+
+
+## Concatenating output
+
+Single-phase map jobs that run a single Unix command (e.g., `grep`) produce one
+output object for each input object.  Sometimes it's desirable to combine these,
+which you can do with just "cat" as a reduce phase:
+
+    $ mmkjob -m "grep pattern" -r cat
+
+This runs "grep pattern" on all the input objects and produces one output object
+with the concatenated results.
+
+Note that this just combines all the individual grep outputs, which won't
+include labels saying which input object it came from.  This may be fine, but
+if you want to know which file each match came from, see "Grepping files".
+
+
+## Grepping files
+
+You can grep files for "pattern" with just:
+
+    $ mmkjob -m "grep pattern"
+
+but you'll get one output for each input object.  As described above, if you
+want to combine them, you can add a "cat" reduce phase:
+
+    $ mmkjob -m "grep pattern" -r cat
+
+The problem with this is that the matching lines from all files will be combined
+in one file with no labels, so you won't know what came from where.  GNU grep
+provides an option for labeling the stdin stream, and combined with "-H" (which
+tells it to print the name of the file in the first place), you can get more
+useful output:
+
+    $ mmkjob -m 'grep -H --label=$mc_input_key pattern' -r cat
+
+
+## Producing a list of output objects as a single file
+
+If your job produces lots of output objects, you can create a single object
+listing them all by appending a map phase that echoes the object name followed
+by a "cat" reduce phase.  For example, this may create tons of output objects:
+
+    $ mmkjob -m wc
+
+You can have the job emit a single object that *lists* all the results of the
+previous phases using:
+
+    $ mmkjob -m wc -m 'echo $mc_input_key' -r cat
+
+
+## Using awk
+
+See [http://www.pement.org/awk/awk1line.txt](http://www.pement.org/awk/awk1line.txt).
+
+
+
 # Marlin implementation
+
+The following sections are somewhat out-of-date and subject to change.  When in
+doubt, check the source.
+
+
+## APIs
+
+End users manage compute jobs through the "jobs" entry points under the main
+Manta API.  See the Manta API documentation for details.
+
+Internally, Marlin worker processes (which are responsible for managing the
+distributed execution of jobs) communicate with agents (which actually execute
+user commands) through small JSON records stored in Moray, the Manta metadata
+tier.  This mechanism is documented in the worker source code.
+
+On each physical server where jobs are executed, the Marlin agent communicates
+with an agent running inside each compute zone using a private HTTP API which is
+documented in the agent source code.  This API is a superset of the public Manta
+API, allowing allowing users to securely perform the usual Manta operations from
+within jobs.  The non-public entry points in this API are private implementation
+details, though future versions may stabilize these for consumption by
+higher-level frameworks.
+
+All DateTimes in all APIs use W3C DTF in UTC ("YYYY-MM-DDThh:mm:ss.sZ").
 
 ## Network architecture
 
@@ -1001,16 +1067,6 @@ In order to survive transient failure, the agent must store state on disk.  The
 current plan is to use sqlite for this because it already has usable Node
 bindings.
 
-## Open questions
-
-Roughly in order of importance:
-
-* When user code wants to write files to manta, how exactly does that work? Do
-  we have a way to tell Manta to write one copy on the local box, and if so, do
-  we avoid sending it across the network twice?
-* What metrics do we want to provide via CA?  How will we implement these?
-  What other changes must be made to CA to support Marlin and Manta?
-
 ## Management API?
 
 cancel tasks, take compute zones and servers in and out of service
@@ -1109,6 +1165,9 @@ Instead of using taskgroups, we may need to switch to more fine-grained records.
 See below.
 
 # Project: Fine-grained records
+
+Like the implementation section above, this is out-of-date and subject to
+change.  See the source.
 
 Following is a proposal for splitting up the existing job and taskgroup records
 into more fine-grained records.  This is necessary because processing large
