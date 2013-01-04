@@ -13,6 +13,10 @@
 <dependency name="filesystem" grouping="require_all" restart_on="error" type="service">
 	<service_fmri value="svc:/system/filesystem/local" />
 </dependency>
+<dependency name="mdata" grouping="require_all" restart_on="none" type="service">
+	<service_fmri value="svc:/smartdc/mdata:execute" />
+</dependency>
+
 
 <exec_method type="method" name="start" exec="/opt/smartdc/marlin/build/node/bin/node /opt/smartdc/marlin/lib/worker/server.js /opt/smartdc/marlin/etc/config.json &amp;" timeout_seconds="30" />
 <exec_method type="method" name="stop" exec=":kill" timeout_seconds="30" />
