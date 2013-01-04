@@ -22,7 +22,7 @@
 <stability value='Unstable' />
 
 <template>
-	<common_name><loctext xml:lang="C">Joyent Marlin Agent</loctext></common_name>
+	<common_name><loctext xml:lang="C">Joyent Marlin Worker</loctext></common_name>
 </template>
 
 </service>

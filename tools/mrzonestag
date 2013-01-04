@@ -1,0 +1,44 @@
+#!/bin/bash
+
+#
+# Tag all zones given as command-line arguments for use by Marlin
+#
+
+function fail
+{
+	echo "$mzt_arg0: $*" >&2
+	exit 1
+}
+
+mzt_arg0=$(basename $0)
+mzt_already=/var/tmp/$mzt_arg0.$$
+
+pgrep -z global -f marlin/build/node && \
+    fail "marlin agent appears to be running"
+
+vmadm lookup tags.manta_role=marlincompute > $mzt_already || \
+    fail "failed to find zones with tag"
+
+set -o xtrace
+set -o errexit
+
+for zone in $*; do
+	if grep ^$zone\$ $mzt_already > /dev/null; then
+		echo "mrzonestag: skipping zone \"$zone\" (already done)"
+		continue
+	fi
+
+	if ! zfs list zones/$zone@marlin_init > /dev/null 2>&1; then
+		echo "mrzonestag: WARN: zone \"$zone\" has no marlin_init snap"
+		continue
+	fi
+
+	echo "mrzonestag: updating zone \"$zone\""
+	vmadm halt $zone
+	zfs rollback zones/$zone@marlin_init
+	zfs rename zones/$zone@marlin_init zones/$zone@old_marlin_init
+	vmadm update $zone <<-EOF
+	{"set_tags": {"manta_role": "marlincompute"}}
+	EOF
+	zfs snapshot zones/$zone@marlin_init
+done

@@ -25,12 +25,14 @@ mac_serverid=$(sysinfo | json UUID)
 mac_manta_host=$1
 mac_moray_host=$2
 mac_root=$(dirname $0)/..
-mac_zones_file=$mac_root/etc/marlinzones
+mac_confdir=/opt/smartdc/marlin/etc
 
-mac_code="instanceUuid='$mac_serverid'; zonesFile='$mac_zones_file'"
+mac_code="instanceUuid='$mac_serverid'"
 mac_code="$mac_code; moray.url='tcp://$mac_moray_host:2020'"
 mac_code="$mac_code; manta.url='http://$mac_manta_host:80/'"
 mac_code="$mac_code; dns.nameservers = []"
+
+mkdir -p "$mac_confdir" || fail "failed to mkdir $mac_confdir"
 
 shift 2
 for ns in "$@"; do
@@ -38,6 +40,6 @@ for ns in "$@"; do
 done
 
 json -e "$mac_code" < $mac_root/etc/agentconfig.coal.json > \
-    $mac_root/etc/agentconfig.json || fail "failed to rewrite config"
-svcadm disable -s marlin-agent || fail "failed to disable marlin-agent"
+    $mac_confdir/agentconfig.json || fail "failed to rewrite config"
+svcadm disable -st marlin-agent || fail "failed to disable marlin-agent"
 svcadm enable -s marlin-agent || fail "failed to enable marlin-agent"

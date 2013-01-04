@@ -15,7 +15,6 @@ mdc_arg0="$(basename $0)"
 mdc_zonename="$1"
 mdc_tmpfile="/var/tmp/$mdc_arg0.$$"
 mdc_tools="$(dirname $0)"
-mdc_zonesfile="$mdc_tools/../etc/marlinzones"
 
 function fail
 {
@@ -34,15 +33,9 @@ function usage
 vmadm list | awk '{print $1}' | grep -w "$mdc_zonename" || \
     fail "no such zone: $mdc_zonename"
 
-echo "Enabling zone ... \c "
-zfs set com.joyent.manta:marlin=enabled zones/$mdc_zonename
-echo "done."
-
 echo "Creating snapshot zones/$mdc_zonename@marlin_init ... \c "
 zfs snapshot zones/$mdc_zonename@marlin_init
 echo "done."
-
-echo $mdc_zonename >> $mdc_zonesfile && echo "Updated $mdc_zonesfile"
 
 #
 # mrzone failure is not fatal, since compute zones can be deployed before the

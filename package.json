@@ -58,7 +58,8 @@
 		"wordwrap",
 		"zsock"
 	],
-    "scripts": {
-		"postinstall": "./npm/postinstall.sh"
+	"scripts": {
+		"postinstall": "./npm/postinstall.sh",
+		"preuninstall": "./npm/preuninstall.sh"
 	}
 }
