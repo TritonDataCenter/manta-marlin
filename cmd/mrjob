@@ -533,7 +533,7 @@ function cmdAddkeys()
 
 function cmdInputs()
 {
-	if (process.argv.length < 4)
+	if (process.argv.length != 4)
 		usage();
 
 	var jobid = process.argv[3];
@@ -557,7 +557,7 @@ function cmdInputs()
 
 function cmdEndinput()
 {
-	if (process.argv.length < 4)
+	if (process.argv.length != 4)
 		usage();
 
 	var opts = {
@@ -592,7 +592,7 @@ function cmdEndinput()
 
 function cmdCancel()
 {
-	if (process.argv.length < 4)
+	if (process.argv.length != 4)
 		usage();
 
 	var opts = {
@@ -623,7 +623,7 @@ function cmdCancel()
 
 function cmdOutputs()
 {
-	if (process.argv.length < 4)
+	if (process.argv.length != 4)
 		usage();
 
 	var jobid = process.argv[3];
@@ -659,7 +659,7 @@ function cmdOutputs()
 
 function cmdErrors()
 {
-	if (process.argv.length < 4)
+	if (process.argv.length != 4)
 		usage();
 
 	var jobid = process.argv[3];
@@ -685,7 +685,7 @@ function cmdErrors()
 
 function cmdFailed()
 {
-	if (process.argv.length < 4)
+	if (process.argv.length != 4)
 		usage();
 
 	var jobid = process.argv[3];
@@ -759,6 +759,9 @@ function cmdList()
 			break;
 		}
 	}
+
+	if (parser.optind() != argv.length)
+		usage();
 
 	clientInit(function (api) {
 		var columns = mapColumns(msColumns || msColsJobs, msFieldsJobs);
@@ -877,7 +880,7 @@ function cmdGet()
 		}
 	}
 
-	if (parser.optind() >= argv.length)
+	if (parser.optind() != argv.length - 1)
 		usage();
 
 	msJobId = argv[parser.optind()];
@@ -1146,7 +1149,7 @@ function printJobDetails(records)
 
 function cmdLog()
 {
-	if (process.argv.length < 4)
+	if (process.argv.length != 4)
 		usage();
 
 	var jobid = process.argv[3];
