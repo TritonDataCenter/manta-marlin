@@ -41,14 +41,14 @@ BASH_FILES	 = \
 DOC_FILES	 = index.restdown
 JS_FILES	:= $(shell find src lib test -name '*.js')
 JS_FILES	+= \
-    cmd/maggr	\
-    cmd/mcat	\
-    cmd/mlocate \
-    cmd/mpipe	\
-    cmd/mrjob 	\
-    cmd/msplit	\
-    cmd/msplit-json	\
-    cmd/mtee	\
+    bin/maggr	\
+    bin/mcat	\
+    bin/mlocate \
+    bin/mpipe	\
+    bin/mrjob 	\
+    bin/msplit	\
+    bin/msplit-json	\
+    bin/mtee	\
     tools/mrpound
 
 JSL_CONF_NODE	 = tools/jsl.node.conf

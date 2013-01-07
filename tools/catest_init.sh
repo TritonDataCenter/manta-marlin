@@ -8,7 +8,7 @@ function catest_init
 
 	if [[ -z "$MAHI_URL" ]]; then
 		((nfailed++))
-		echo "MORAY_URL must be set in the environment." >&2
+		echo "MAHI_URL must be set in the environment." >&2
 	fi
 
 	if [[ -z "$MORAY_URL" ]]; then
