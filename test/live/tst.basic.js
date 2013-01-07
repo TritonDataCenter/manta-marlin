@@ -19,6 +19,7 @@ test.pipeline({ 'funcs': [
     runTest.bind(null, jobs.jobMMRR),
     runTest.bind(null, jobs.jobMRRoutput),
     runTest.bind(null, jobs.jobMasset),
+    runTest.bind(null, jobs.jobMcore),
     teardown
 ] });
 

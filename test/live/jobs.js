@@ -647,6 +647,38 @@ exports.jobM0bo = {
     'expected_output_content': [ '' ]
 };
 
+exports.jobMcore = {
+	'job': {
+	    'phases': [ {
+		'type': 'storage-map',
+		'exec': 'node -e "process.abort();"'
+	    } ]
+	},
+	'inputs': [ '/poseidon/stor/obj1' ],
+	'timeout': 20 * 1000,
+	'expected_outputs': [],
+	'expected_tasks': [ {
+	    'phaseNum': 0,
+	    'key': '/poseidon/stor/obj1',
+	    'state': 'aborted',
+	    'result': 'fail',
+	    'nOutputs': 1,
+	    'firstOutputs': [
+		/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+	    ]
+	} ],
+	'verify': function (testspec, jobresult, callback) {
+		var task = jobresult['task'][0];
+		var error = task['value']['error'];
+
+		mod_assert.equal(error['code'], 'EJ_USER');
+		mod_assert.equal(error['message'],
+		    'user command or child process dumped core');
+
+		callback();
+	}
+};
+
 
 function initJobs()
 {

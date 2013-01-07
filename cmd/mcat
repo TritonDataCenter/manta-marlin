@@ -65,30 +65,32 @@ function main()
 		process.exit(2);
 	}
 
-	var uri = process.argv[parser.optind()];
+	process.argv.slice(parser.optind()).forEach(function (uri) {
+		var headers = {
+		    'x-marlin-reference': true,
+		    'x-marlin-stream': 'stdout'
+		};
 
-	var headers = {
-	    'x-marlin-reference': true
-	};
+		if (mcReducer !== undefined)
+			headers['x-marlin-reducer'] = mcReducer;
 
-	if (mcReducer !== undefined)
-		headers['x-marlin-reducer'] = mcReducer;
+		var request = mod_http.request({
+		    'host': 'localhost',
+		    'port': 8080,
+		    'method': 'PUT',
+		    'path': uri,
+		    'headers': headers
+		});
 
-	var request = mod_http.request({
-	    'host': 'localhost',
-	    'port': 8080,
-	    'method': 'PUT',
-	    'path': uri,
-	    'headers': headers
-	});
+		request.end();
 
-	request.end();
-
-	request.on('response', function (response) {
-		if (response.statusCode != 204) {
-			console.error('server returned ' + response.statusCode);
-			process.exit(1);
-		}
+		request.on('response', function (response) {
+			if (response.statusCode != 204) {
+				console.error('server returned ' +
+				    response.statusCode);
+				process.exit(1);
+			}
+		});
 	});
 }
 
