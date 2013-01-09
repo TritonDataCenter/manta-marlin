@@ -1535,3 +1535,114 @@ As part of these changes, we should also modify the worker to have only one
 connection to Moray rather than one per job, which should simplify a bunch of
 things, and makes it possible to throttle on a per-node basis rather than
 per-job.
+
+
+# Project: stateless polling
+
+## Crash course: the way things work today
+
+There are five types of records:
+
+* **job**: represents the overall job configuration and fixed-size state
+* **jobinput**: represents each job input object
+* **task**: represents each "map" or "reduce" operation -- one per key for map,
+  or a small fixed number (usually 1) per phase for reduce
+* **taskinput**: represents one input object, used for reduce tasks only (map
+  tasks store the key directly in the task record)
+* **taskoutput**: represents one output object from a task, used for any task
+  that emits more than 5 output records
+
+In the simple case of a 1-phase map job where each map task emits exactly one
+output object, the basic flow looks like this:
+
+1. Muskie writes **job** record.
+2. Marlin worker picks up the job and scans for **jobinput** records.
+3. Muskie writes jobinput records for submitted input objects.
+4. For each input object, the worker writes out a new **task**.
+5. An agent picks up the task, executes it, and updates it to indicate that the
+   task is completed.
+6. Marlin worker sees the completed task and updates it to indicate that the
+   task has been committed.
+7. At some point, Muskie updates job record to indicate that input is done.
+
+If the map task emits more than 5 output objects, the first 5 are listed in the
+task record itself, and subsequent ones are denoted with separate **taskoutput**
+records.  (This was done in attempt to avoid having to use separate records in
+the common case of just a few output objects.)
+
+For reduce tasks, only one **task** record is written for each reducer, and each
+input to the reducer is specified with a **taskinput** record.  Otherwise,
+things work exactly the same.
+
+## Problems with the way things work today
+
+There are several issues with the way things work today:
+
+1. The way the worker and agent keep track of which records they've already seen
+   and which require additional processing is not scalable.  In particular, they
+   assume records have monotonically increasing generation counters.  Each
+   request for new records selects those with a newer generation count than the
+   last record seen.  This works, but requires that Moray (Postgres, really) use
+   "global lock" to serialize operations, causing both writes and reads to back
+   up.  In production, we've seen query timeouts resulting from requests backed
+   up on this global lock.
+2. Restarting jobs correctly is very difficult.  It's hard to know where a
+   worker or agent actually left off, because there's in-memory state not
+   recorded in Moray itself.
+3. Paginating job output records for the frontend is basically impossible due to
+   the non-uniformity of outputs across records (i.e. 0-5 in some records, 1 in
+   others).
+
+## Solution
+
+The suggested solution is to replace in-memory state and polling based on
+monotonically increasing generation numbers with polling based on actual Moray
+state.  This requires writing out additional state changes in Moray that were
+previously just stored in memory.
+
+The full set of queries is described here:
+https://docs.google.com/a/joyent.com/document/d/1oAZJyfW4bPUAhr7gOSpZ0WZgBvL0Nr3aMa8sr7wVxBo/edit
+
+Before, in our 1-phase 1:1 map job, each input key resulted in the following
+operations:
+
+1. muskie writes jobinput record
+2. worker writes task record
+3. agent updates task record (after completing the task)
+4. worker updates task record (to commit the output)
+
+Under these changes, it looks like this:
+
+1. muskie writes jobinput record
+2. in a transaction, worker updates jobinput record (to indicate that it's been
+   processed) and writes a new task record
+3. agent immediately updates the task record (to indicate that it's been read)
+4. agent writes a taskoutput record (while processing the task)
+5. agent updates the task record (after completing the task)
+6. worker commits the task record
+
+There are a few new writes:
+
+* In (2), the worker has to update the job record, but this is cheap since it's
+  part of a transaction that already had to happen.
+* In (3), the agent has to update a task record.  This is a cost of storing this
+  "read" state in Moray instead of implicitly in-memory.
+* In (4), we're paying the cost of separating outputs into separate records.
+
+So that's a net 2 additional writes per key.  In the common case, we could also
+batch writes (4) and (5) so that there's only one additional write.
+
+The other issue with this is that there's no good way to stream the output out
+of a job, which means piped jobs can no longer stream.
+
+## Open questions
+
+1. Is that write cost acceptable?
+2. Is it okay to remove support for streaming piped jobs?
+3. How exactly does restarting work?
+
+## Future ideas
+
+1. Removing the extra worker round-trips by having agents be smart enough to
+   dispatch next-phase records.
+2. Remove the phase 0 round trip by having muskie do this too.
