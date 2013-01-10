@@ -6,22 +6,26 @@ var test = require('../common');
 var jobs = require('./jobs');
 var client;
 
-test.pipeline({ 'funcs': [
-    setup,
-    runTest.bind(null, jobs.jobM),
-    runTest.bind(null, jobs.jobMX),
-    runTest.bind(null, jobs.jobM0bi),
-    runTest.bind(null, jobs.jobR0bi),
-    runTest.bind(null, jobs.jobM0bo),
-    runTest.bind(null, jobs.jobR),
-    runTest.bind(null, jobs.jobMM),
-    runTest.bind(null, jobs.jobMR),
-    runTest.bind(null, jobs.jobMMRR),
-    runTest.bind(null, jobs.jobMRRoutput),
-    runTest.bind(null, jobs.jobMasset),
-    runTest.bind(null, jobs.jobMcore),
-    teardown
-] });
+var funcs = [ setup ];
+
+if (process.argv.length > 2) {
+	process.argv.slice(2).forEach(function (name) {
+		if (!jobs.hasOwnProperty(name)) {
+			console.error('no such test: %s', name);
+			process.exit(1);
+		}
+
+		funcs.push(runTest.bind(null, jobs[name]));
+	});
+} else {
+	jobs.jobsAll.forEach(function (testjob) {
+		funcs.push(runTest.bind(null, testjob));
+	});
+}
+
+funcs.push(teardown);
+
+test.pipeline({ 'funcs': funcs });
 
 function setup(_, next)
 {

@@ -8,20 +8,7 @@ var test = require('../common');
 var jobs = require('./jobs');
 var client;
 
-var tests = [
-    jobs.jobM,
-    jobs.jobMX,
-    jobs.jobM0bi,
-    jobs.jobR0bi,
-    jobs.jobM0bo,
-    jobs.jobR,
-    jobs.jobMM,
-    jobs.jobMR,
-    jobs.jobMMRR,
-    jobs.jobMRRoutput,
-    jobs.jobMasset,
-    jobs.jobMcore
-];
+var tests = jobs.jobsAll;
 
 test.pipeline({ 'funcs': [
     setup,

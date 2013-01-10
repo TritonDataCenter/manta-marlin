@@ -183,6 +183,180 @@ exports.jobMX = {
     }
 };
 
+exports.jobMmpipeAnon = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'echo foo; echo bar | mpipe'
+	} ]
+    },
+    'inputs': [
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj2',
+	'/poseidon/stor/obj3'
+    ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
+    ],
+    'expected_output_content': [ 'bar\n', 'bar\n', 'bar\n' ],
+    'expected_tasks': [ {
+	'phaseNum': 0,
+	'key': '/poseidon/stor/obj1',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+	]
+    }, {
+	'phaseNum': 0,
+	'key': '/poseidon/stor/obj2',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./
+	]
+    }, {
+	'phaseNum': 0,
+	'key': '/poseidon/stor/obj3',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [
+	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
+	]
+    } ],
+    'verify': function (testspec, jobresult, callback) {
+	mod_assert.equal(jobresult['taskinput'].length, 0);
+	mod_assert.equal(jobresult['taskoutput'].length, 0);
+	mod_assert.equal(jobresult['task'].length, 3);
+	mod_assert.equal(jobresult['jobinput'].length, 3);
+
+	var stats = jobresult['job']['value']['stats'];
+	mod_assert.equal(stats['nErrors'], 0);
+	mod_assert.equal(stats['nTasksCommittedFail'], 0);
+
+	callback();
+    }
+};
+
+exports.jobMmpipeNamed = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'echo foo; echo bar | mpipe -p /poseidon/stor/extra/out1'
+	} ]
+    },
+    'inputs': [
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj2',
+	'/poseidon/stor/obj3'
+    ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [
+	'/poseidon/stor/extra/out1',
+	'/poseidon/stor/extra/out1',
+	'/poseidon/stor/extra/out1'
+    ],
+    'expected_output_content': [ 'bar\n', 'bar\n', 'bar\n' ],
+    'expected_tasks': [ {
+	'phaseNum': 0,
+	'key': '/poseidon/stor/obj1',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/poseidon/stor/extra/out1' ]
+    }, {
+	'phaseNum': 0,
+	'key': '/poseidon/stor/obj2',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/poseidon/stor/extra/out1' ]
+    }, {
+	'phaseNum': 0,
+	'key': '/poseidon/stor/obj3',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/poseidon/stor/extra/out1' ]
+    } ],
+    'verify': function (testspec, jobresult, callback) {
+	mod_assert.equal(jobresult['taskinput'].length, 0);
+	mod_assert.equal(jobresult['taskoutput'].length, 0);
+	mod_assert.equal(jobresult['task'].length, 3);
+	mod_assert.equal(jobresult['jobinput'].length, 3);
+
+	var stats = jobresult['job']['value']['stats'];
+	mod_assert.equal(stats['nErrors'], 0);
+	mod_assert.equal(stats['nTasksCommittedFail'], 0);
+
+	callback();
+    }
+};
+
+exports.jobMmcat = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'echo foo; mcat /poseidon/stor/obj1'
+	} ]
+    },
+    'inputs': [
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj2',
+	'/poseidon/stor/obj3'
+    ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj1'
+    ],
+    'expected_output_content': [
+	'auto-generated content for key /poseidon/stor/obj1',
+	'auto-generated content for key /poseidon/stor/obj1',
+	'auto-generated content for key /poseidon/stor/obj1'
+    ],
+    'expected_tasks': [ {
+	'phaseNum': 0,
+	'key': '/poseidon/stor/obj1',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/poseidon/stor/obj1' ]
+    }, {
+	'phaseNum': 0,
+	'key': '/poseidon/stor/obj2',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/poseidon/stor/obj1' ]
+    }, {
+	'phaseNum': 0,
+	'key': '/poseidon/stor/obj3',
+	'state': 'done',
+	'result': 'ok',
+	'nOutputs': 1,
+	'firstOutputs': [ '/poseidon/stor/obj1' ]
+    } ],
+    'verify': function (testspec, jobresult, callback) {
+	mod_assert.equal(jobresult['taskinput'].length, 0);
+	mod_assert.equal(jobresult['taskoutput'].length, 0);
+	mod_assert.equal(jobresult['task'].length, 3);
+	mod_assert.equal(jobresult['jobinput'].length, 3);
+
+	var stats = jobresult['job']['value']['stats'];
+	mod_assert.equal(stats['nErrors'], 0);
+	mod_assert.equal(stats['nTasksCommittedFail'], 0);
+
+	callback();
+    }
+};
 
 exports.jobMM = {
     'job': {
@@ -679,6 +853,23 @@ exports.jobMcore = {
 	}
 };
 
+exports.jobsAll = [
+    exports.jobM,
+    exports.jobMX,
+    exports.jobMmpipeAnon,
+    exports.jobMmpipeNamed,
+    exports.jobMmcat,
+    exports.jobM0bi,
+    exports.jobR0bi,
+    exports.jobM0bo,
+    exports.jobR,
+    exports.jobMM,
+    exports.jobMR,
+    exports.jobMMRR,
+    exports.jobMRRoutput,
+    exports.jobMasset,
+    exports.jobMcore
+];
 
 function initJobs()
 {
