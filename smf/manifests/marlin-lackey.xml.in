@@ -5,7 +5,7 @@
  -->
 
 <service_bundle type="manifest" name="smartdc-ca-castashsvc">
-<service name="smartdc/marlin/zone-agent" type="service" version="1">
+<service name="smartdc/marlin/lackey" type="service" version="1">
 
 <dependency name="network" grouping="require_all" restart_on="error" type="service">
 	<service_fmri value="svc:/network/physical" />
@@ -14,7 +14,7 @@
 	<service_fmri value="svc:/system/filesystem/local" />
 </dependency>
 
-<exec_method type="method" name="start" exec="/opt/marlin/build/node/bin/node /opt/marlin/lib/agent/zone-agent.js /tmp/.marlin.sock &amp;" timeout_seconds="30" />
+<exec_method type="method" name="start" exec="/opt/marlin/build/node/bin/node /opt/marlin/lib/agent/lackey.js /tmp/.marlin.sock &amp;" timeout_seconds="30" />
 <exec_method type="method" name="stop" exec=":kill" timeout_seconds="30" />
 
 <instance name="default" enabled="true" />
@@ -22,7 +22,7 @@
 <stability value='Unstable' />
 
 <template>
-	<common_name><loctext xml:lang="C">Joyent Marlin Zone Agent</loctext></common_name>
+	<common_name><loctext xml:lang="C">Joyent Marlin Lackey</loctext></common_name>
 </template>
 
 </service>

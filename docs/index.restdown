@@ -958,7 +958,7 @@ up to N seconds, sharply reducing the number of requests required.  Similarly,
 job workers can batch job state updates for many jobs up to N seconds.  Batching
 of "location" GET requests is discussed above, under "job workers".  Thus, the
 total number of Moray-wide requests should be boundable to something like (# of
-workers \* # of compute zone agents) / (N seconds), where N is how frequently
+workers \* # of compute zone lackeys) / (N seconds), where N is how frequently
 each agent updates Moray.  These requests should mostly be distributed across
 all shards.
 
@@ -1108,7 +1108,7 @@ Here's the current plan:
 ### Multiple keys at once
 
 In order to process multiple keys at once, several pieces of both the global
-zone agent and in-zone agent must be generalized because they assume only one
+zone agent and lackey must be generalized because they assume only one
 input key at a time, and that a sequence of input keys (tasks) make up a
 complete task group.  These changes are straightforward.
 
@@ -1484,7 +1484,7 @@ input keys are available.  It allocates a zone, downloads any required assets,
 and starts processing tasks.
 
 For map phases, we process the keys serially by mapping each key into the zone,
-signalling the in-zone agent to invoke the user's command, unmapping the key,
+signalling the lackey to invoke the user's command, unmapping the key,
 updating the task record with the result, and moving on to the next key.  As new
 tasks arrive for the same group, we just add them to the back of the queue.  If
 the queue runs out, we can reset the zone for use by another job, or hold onto

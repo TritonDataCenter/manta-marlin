@@ -7,5 +7,5 @@ cscope.in.out
 cscope.po.out
 cscope.out
 smf/manifests/marlin-agent.xml
+smf/manifests/marlin-lackey.xml
 smf/manifests/marlin-mock-manta.xml
-smf/manifests/marlin-zone-agent.xml

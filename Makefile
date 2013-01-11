@@ -56,7 +56,7 @@ JSL_FILES_NODE   = $(JS_FILES)
 JSSTYLE_FILES	 = $(JS_FILES)
 SMF_MANIFESTS_IN = \
     smf/manifests/marlin-agent.xml.in \
-    smf/manifests/marlin-zone-agent.xml.in
+    smf/manifests/marlin-lackey.xml.in
 
 #
 # v8plus uses the CTF tools as part of its build, but they can safely be
