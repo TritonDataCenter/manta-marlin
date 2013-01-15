@@ -34,6 +34,7 @@
 	},
 
 	"buckets": {
+		"error": "marlin_errors",
 		"job": "marlin_jobs",
 		"jobinput": "marlin_jobinputs",
 		"task": "marlin_tasks",
