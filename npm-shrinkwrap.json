@@ -274,14 +274,17 @@
         "assert-plus": {
           "version": "0.1.2"
         },
+        "backoff": {
+          "version": "1.2.0"
+        },
         "clone": {
-          "version": "0.1.1"
+          "version": "0.1.5"
         },
         "fast": {
           "version": "0.2.3",
           "dependencies": {
-            "backoff": {
-              "version": "1.2.0"
+            "clone": {
+              "version": "0.1.1"
             },
             "crc": {
               "version": "0.2.0"
@@ -303,6 +306,25 @@
               "dependencies": {
                 "extsprintf": {
                   "version": "1.0.0"
+                }
+              }
+            }
+          }
+        },
+        "native-dns": {
+          "version": "0.4.0",
+          "dependencies": {
+            "buffercursor": {
+              "version": "0.0.5"
+            },
+            "binaryheap": {
+              "version": "0.0.2"
+            },
+            "ipaddr.js": {
+              "version": "0.1.1",
+              "dependencies": {
+                "coffee-script": {
+                  "version": "1.4.0"
                 }
               }
             }
