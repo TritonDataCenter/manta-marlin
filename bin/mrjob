@@ -48,7 +48,9 @@ var msUsage = [
     '       mrjob get      [-v] jobid',
     '       mrjob inputs   jobid',
     '       mrjob log      jobid',
-    '       mrjob outputs  jobid'
+    '       mrjob outputs  jobid',
+    '       mrjob taskdone [-c code] [-e message] [-o noutput] taskid',
+    '       mrjob tocommit taskid'
 ].join('\n');
 
 var msHelp = [
@@ -134,6 +136,22 @@ var msHelp = [
     '',
     '       Fetch history about the given job.',
     '',
+    '   taskdone [-c code] [-e message] [-o noutputs] taskid',
+    '',
+    '       Update the given task to indicate that it has been completed. ',
+    '       This is intended to simulate agent behavior in development only ',
+    '       and should not be used when an actual agent is running.  By ',
+    '       default, the task is marked "ok" with no outputs.  If -c or -e ',
+    '       is specified, the task is marked "failed".',
+    '',
+    '       -c code             Mark the task "failed" with the given error',
+    '       -e message          Mark the task "failed" with the given message',
+    '       -o noutputs         Mark the task "ok" with "noutputs" outputs',
+    '',
+    '   tocommit taskid',
+    '',
+    '       For development only.',
+    '',
     'MORAY',
     '',
     '   The remote Moray instance to use must be specified via the MORAY_URL ',
@@ -179,7 +197,9 @@ var msCommands = {
     'errors': cmdErrors,
     'failed': cmdFailed,
     'get': cmdGet,
-    'log': cmdLog
+    'log': cmdLog,
+    'taskdone': cmdTaskdone,
+    'tocommit': cmdTocommit
 };
 
 /* default set of columns for list-of-jobs */
@@ -483,8 +503,14 @@ function cmdSubmit()
 	    'jobId': msJobId,
 	    'jobName': msJobName,
 	    'phases': msPhases,
-	    'owner': process.env['USER'],
-	    'authToken': msAuthToken
+	    'owner': process.env['MANTA_USER_UUID'],
+	    'authToken': msAuthToken,
+	    'auth': {
+	        'login': process.env['MANTA_USER'],
+		'uuid': process.env['MANTA_USER_UUID'],
+		'groups': [ 'operator' ],
+		'token': msAuthToken
+	    }
 	};
 
 	if (msPipeSource)
@@ -1222,6 +1248,125 @@ function logPrint(entries)
 		'alias': 'WHAT',
 		'width': 11
 	    } ]
+	});
+}
+
+function cmdTaskdone()
+{
+	var parser, option;
+	var ecode, emessage, noutput;
+
+	parser = new mod_getopt.BasicParser('c:e:o:', process.argv.slice(1));
+	while ((option = parser.getopt()) !== undefined) {
+		switch (option.option) {
+		case 'c':
+			ecode = option.optarg;
+			break;
+
+		case 'e':
+			emessage = option.optarg;
+			break;
+
+		case 'o':
+			noutput = parseInt(option.optarg, 10);
+			if (isNaN(noutput) || noutput < 0) {
+				console.error('%s: not a positive integer ' +
+				    'for -o: %s', msArg0, option.optarg);
+				usage();
+			}
+			break;
+
+		default:
+			/* error message already emitted by getopt */
+			mod_assert.equal('?', option.option);
+			usage();
+			break;
+		}
+	}
+
+	if (parser.optind() + 1 >= process.argv.length)
+		usage();
+
+	if (noutput !== undefined &&
+	    (ecode !== undefined || emessage !== undefined)) {
+		console.error('%s: -o is exclusive with both -c and -e',
+		    msArg0);
+		usage();
+	}
+
+	if (noutput === undefined &&
+	    ecode === undefined &&
+	    emessage === undefined)
+		noutput = 0;
+
+	if (noutput === undefined) {
+		if (ecode === undefined)
+			ecode = 'EJ_MAINT';
+		if (emessage === undefined)
+			emessage = 'aborted by administrator';
+	}
+
+	clientInit(function (api) {
+		api.taskDone(process.argv[parser.optind() + 1], noutput, ecode,
+		    emessage, function (err) {
+			if (err) {
+				console.error('%s: %s', msArg0, err.message);
+				process.exit(1);
+			}
+
+			clientFini();
+		    });
+	});
+}
+
+function cmdTocommit()
+{
+	if (process.argv.length != 4)
+		usage();
+
+	var taskid = process.argv[3];
+
+	/*
+	 * We're not going to pretend like this is a useful API; it's completely
+	 * a stop-gap until we have batch update from Moray.
+	 */
+	clientInit(function (api) {
+		var client = api.ma_client;
+		var bucket = api.ma_buckets['taskoutput'];
+		var req, barrier;
+
+		barrier = mod_vasync.barrier();
+		barrier.start('find');
+		req = client.findObjects(bucket, '(taskId=' + taskid + ')',
+		    { 'noCache': true });
+
+		req.on('error', function (err) {
+			console.error('%s: failed to fetch records: %s',
+			    msArg0, err.mesage);
+			process.exit(1);
+		});
+
+		req.on('record', function (record) {
+			barrier.start(record['key']);
+			record['value']['timeCommitted'] =
+			    mod_jsprim.iso8601(Date.now());
+
+			client.putObject(record['bucket'], record['key'],
+			    record['value'], { 'etag': record['_etag'] },
+			    function (err) {
+				barrier.done(record['key']);
+				if (err)
+					console.error('%s: write %s: %s',
+					    msArg0, record['key'], err.message);
+				else
+					console.log('updated %s',
+					    record['key']);
+			    });
+		});
+
+		req.on('end', function () { barrier.done('find'); });
+
+		barrier.on('drain', clientFini);
 	});
 }
 
