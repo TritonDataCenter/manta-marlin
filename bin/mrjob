@@ -889,13 +889,22 @@ function cmdGet()
 	var argv, parser, option;
 
 	argv = process.argv.slice(1);
-	parser = new mod_getopt.BasicParser('v', argv);
+	parser = new mod_getopt.BasicParser('l:v', argv);
 
 	while ((option = parser.getopt()) !== undefined) {
 		switch (option.option) {
+		case 'l':
+			msRecordLimit = parseInt(option.optarg, 10);
+			if (isNaN(msRecordLimit) || msRecordLimit < 1) {
+				console.error('%s: value "%s" for -l is not ' +
+				    'a positive integer', msArg0,
+				    option.optarg);
+				usage();
+			}
+			break;
+
 		case 'v':
 			msVerbose++;
-			msRecordLimit = 5000;
 			break;
 
 		default:
@@ -931,8 +940,7 @@ function printJobDetails(records)
 {
 	var job = records['job']['value'];
 	var mtime = records['job']['_mtime'];
-	var taskinputs, taskoutputs;
-	var taskslast = [];
+	var taskinputs, taskoutputs, globalerrors, taskerrors;
 	var nout = 0, nerr = 0, ninter = 0, nuncommitted = 0;
 	var table, row;
 
@@ -946,30 +954,36 @@ function printJobDetails(records)
 
 			taskinputs[taskid].push(record);
 		});
-
-		taskoutputs = {};
-		records['taskoutput'].forEach(function (record) {
-			var taskid = record['value']['taskId'];
-
-			if (!taskoutputs[taskid])
-				taskoutputs[taskid] = [];
-
-			if (record['value']['error'])
-				nerr++;
-
-			taskoutputs[taskid].push(record);
-		});
 	}
 
-	records['task'].forEach(function (record) {
-		if (record['value']['state'] == 'cancelled' ||
-		    record['value']['state'] == 'aborted' ||
-		    record['value']['error'])
-			nerr++;
+	taskoutputs = {};
+	records['taskoutput'].forEach(function (record) {
+		var taskid = record['value']['taskId'];
 
+		if (!taskoutputs[taskid])
+			taskoutputs[taskid] = [];
+
+		taskoutputs[taskid].push(record);
+	});
+
+	globalerrors = [];
+	taskerrors = {};
+	records['error'].forEach(function (record) {
+		nerr++;
+
+		if (!record['value']['taskId'])
+			globalerrors.push(record['value']);
+
+		var taskid = record['value']['taskId'];
+		if (!taskerrors[taskid])
+			taskerrors[taskid] = [];
+
+		taskerrors[taskid].push(record);
+	});
+
+	records['task'].forEach(function (record) {
 		if (!record['value']['timeCommitted']) {
-			if (record['value']['state'] == 'done' ||
-			    record['value']['state'] == 'aborted')
+			if (record['value']['state'] == 'done')
 				nuncommitted++;
 			return;
 		}
@@ -981,8 +995,6 @@ function printJobDetails(records)
 
 		if (record['value']['nOutputs'])
 			nout += record['value']['nOutputs'];
-
-		taskslast.push(record);
 	});
 
 	row = makeJobRow(job, mod_jsprim.iso8601(new Date(mtime)));
@@ -1031,23 +1043,41 @@ function printJobDetails(records)
 
 	if (job['timeCancelled'])
 		println('NOTE: Cancelled at %s', job['timeCancelled']);
+	else if (!job['input'] && !job['timeInputDone'])
+		println('NOTE: Job is waiting for user input');
 
 	if (job['input'])
 		println('NOTE: Job\'s input is piped from job "%s"',
 		    job['input']);
-	else if (!job['timeInputDone'])
-		println('NOTE: Job is waiting for user input');
 
-	if (msVerbose > 0 && job['stats'] && job['stats']['nErrors'] != nerr)
+	if (records['error'].length < msRecordLimit &&
+	    job['stats']['nErrors'] != nerr)
 		println('WARN: found %d errors, but job reports %d errors',
 		    nerr, job['stats']['nErrors']);
 
-	if (msVerbose > 0 && job['stats'] &&
+	if (records['taskoutput'].length < msRecordLimit &&
 	    job['stats']['nJobOutputs'] != nout)
 		println('WARN: found %d outputs, but job reports %d outputs',
 		    nerr, job['stats']['nJobOutputs']);
 
 	println('');
+
+	if (globalerrors.length > 0) {
+		println('DISPATCH ERRORS');
+
+		globalerrors.forEach(function (error) {
+			println('phase %2d: %s',
+			    error['phaseNum'], error['errorMessage']);
+			if (error['errorMessageInternal'])
+				println('    (internal: %s)',
+				    error['errorMessageInternal']);
+		});
+
+		if (records['error'].length >= msRecordLimit)
+			println('...', '');
+
+		println('');
+	}
 
 	records['task'].sort(function (a, b) {
 		var r1 = a['value']['phaseNum'] - b['value']['phaseNum'];
@@ -1112,58 +1142,37 @@ function printJobDetails(records)
 			println('    INPUT:  unknown');
 		}
 
-		if (record['value']['error']) {
-			var errobj = record['value']['error'];
-			var message = errobj['message'] ||
-			    '(no error specified)';
-
-			internal = errobj['messageInternal'];
-
-			println('    ERROR:  %s', message);
-
-			if (internal)
-				println('            internal error: %s',
-				    internal);
-		}
-
 		if (taskinputs && taskinputs[taskid])
 			taskinputs[taskid].forEach(function (rec) {
 				println('    INPUT:  %s', rec['value']['key']);
 			});
 
-		var outs = (record['value']['firstOutputs'] || []).map(
-		    function (out) { return (out['key']); });
-		outs = outs.concat((taskoutputs && taskoutputs[taskid] ?
-		    taskoutputs[taskid] : []).filter(
-		    function (rec) { return (!rec['value']['error']); }).
-		    map(
-		    function (rec) { return (rec['value']['key']); }));
+		var outs = (taskoutputs && taskoutputs[taskid] ?
+		    taskoutputs[taskid] : []).map(
+		    function (rec) { return (rec['value']['key']); });
 
 		outs.forEach(function (out) {
 			println('    OUTPUT: %s', out);
 		});
 
-		var errs = (record['value']['firstOutputs'] || []).filter(
-		    function (out) { return (out['error']); }).map(
-		    function (out) { return (out['error']); });
-		errs = errs.concat((taskoutputs && taskoutputs[taskid] ?
-		    taskoutputs[taskid] : []).filter(
-		    function (rec) { return (rec['value']['error']); }).map(
-		    function (rec) { return (rec['value']['error']); }));
-
-		if (msVerbose === 0 &&
-		    record['value']['nOutputs'] >
-		    (record['value']['firstOutputs'] ?
-		    record['value']['firstOutputs'].length : 0))
+		if (record['value']['nOutputs'] > outs.length)
 			println('    ...', '');
 
-		errs.forEach(function (error) {
-			internal = error['messageInternal'];
-			println('    ERROR:  %-10s  %s', error['code'],
-			    error['message']);
-			if (internal)
-				println('            internal: %s', internal);
-		});
+		if (taskerrors[taskid]) {
+			taskerrors[taskid].forEach(function (error) {
+				var value = error['value'];
+				var message = value['errorMessage'] ||
+				    '(no error specified)';
+
+				internal = value['errorMessageInternal'];
+
+				println('    ERROR:  %s', message);
+
+				if (internal)
+					println('            internal error: ' +
+					    '%s', internal);
+			});
+		}
 
 		if (record['value']['stderr'])
 			println('    STDERR: %s', record['value']['stderr']);
