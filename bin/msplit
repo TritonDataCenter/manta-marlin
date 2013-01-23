@@ -1,10 +1,16 @@
 #!/usr/node/bin/node
+// -*- mode: js -*-
+// Copyright (c) 2012, Joyent, Inc. All rights reserved.
 
 var mod_assert = require('assert');
+var mod_bunyan = require('bunyan');
 var mod_carrier = require('carrier');
-var mod_child_process = require('child_process');
 var mod_crypto = require('crypto');
+var mod_fs = require('fs');
 var mod_getopt = require('posix-getopt');
+var mod_manta = require('manta');
+var mod_mautil = require('../lib/util');
+var mod_uuid = require('node-uuid');
 
 /*
  * msplit: demux streams to send to multiple reducers
@@ -33,10 +39,14 @@ var msUsageMessage = [
 var msDelimiter = '\t';
 var msFields = [1];
 var msHashAlgo = 'md5';
-var msPipes = [];
 var msNumReducers = null;
+var msObjPrefix = null;
+var msStreams = [];
+var msTest = false;
+var msTmpFilePrefix = '/var/tmp/msplit.' + process.pid + '.';
 
-function main() {
+function main()
+{
 	var carrier;
 	var i = 0;
 	var option;
@@ -88,18 +98,23 @@ function main() {
 		usage();
 	}
 
+	if (!process.env['MANTA_OUTPUT_BASE']) {
+		usage('msplit: MANTA_OUTPUT_BASE not set');
+	}
+	msObjPrefix = process.env['MANTA_OUTPUT_BASE'] + mod_uuid.v4() + '.';
+
 	// Pipes
+	var streamsClosed = 0;
 	for (i = 0; i < msNumReducers; ++i) {
-		var spawn = createReducerPipe(i);
-		spawn.on('exit', function (code) {
-			if (code !== 0) {
-				var m = 'msplit reducer %d exited with ' +
-					'status code %d';
-				console.error(m, spawn.reducerNumber, code);
-				process.exit(code);
+		var filename = msTmpFilePrefix + i;
+		var stream = mod_fs.createWriteStream(filename);
+		msStreams.push(stream);
+		stream.on('close', function () {
+			++streamsClosed;
+			if (streamsClosed === msNumReducers) {
+				msUploadFiles();
 			}
 		});
-		msPipes.push(spawn);
 	}
 
 	// Carrier takes care of the rest
@@ -108,19 +123,20 @@ function main() {
 	carrier.on('line', function (line) {
 		var r = selectReducer(line, msDelimiter, msFields,
 				      msNumReducers);
-		msPipes[r].stdin.write(line + '\n');
+		msStreams[r].write(line + '\n');
 	});
 
 	carrier.on('end', function () {
 		for (i = 0; i < msNumReducers; ++i) {
-			msPipes[i].stdin.end();
+			msStreams[i].end();
 		}
 	});
 
 	process.stdin.resume();
 }
 
-function selectReducer(line, delimiter, fields, nReducers) {
+function selectReducer(line, delimiter, fields, nReducers)
+{
 	var parts = line.split(delimiter);
 	var key = '';
 	for (var i = 0; i < fields.length; ++i) {
@@ -144,14 +160,11 @@ function selectReducer(line, delimiter, fields, nReducers) {
 	return (digestNumber % nReducers);
 }
 
-function createReducerPipe(reducer) {
-	var p = mod_child_process.spawn('mpipe', ['-r', reducer]);
-	p.reducerNumber = reducer;
-	return (p);
-}
-
-function usage()
+function usage(message)
 {
+	if (message) {
+		console.error(message + '\n');
+	}
 	console.error(msUsageMessage);
 	process.exit(2);
 }
@@ -160,6 +173,50 @@ function msFatal(message)
 {
 	console.error(message);
 	process.exit(1);
+}
+
+function msUploadFile(args, cb)
+{
+	mod_mautil.mantaFileSave(args, function (err) {
+		if (err) {
+			args.log.fatal(err, 'Error uploading file');
+			process.exit(1);
+		}
+		cb(args);
+	}, false);
+}
+
+function msUploadFiles()
+{
+	var log = new mod_bunyan({ 'name': 'msplit',
+				    'level': 'fatal',
+				    'stream': process.stderr
+				    });
+
+	var client = mod_manta.createClient({
+		'url': process.env['MANTA_URL'],
+		'log': log,
+		'retry': false,
+		'sign': mod_mautil.mantaSignNull
+	});
+
+	var uploaded = 0;
+	for (var i = 0; i < msNumReducers; ++i) {
+		var filename = msTmpFilePrefix + i;
+		var objname = msObjPrefix + i;
+		msUploadFile({
+			'client': client,
+			'filename': filename,
+			'key': objname,
+			'log': log,
+			'rIdx': i
+		}, function (args) {
+			++uploaded;
+			if (uploaded === msNumReducers) {
+				process.exit(0);
+			}
+		});
+	}
 }
 
 main();

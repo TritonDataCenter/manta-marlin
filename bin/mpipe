@@ -1,4 +1,6 @@
 #!/usr/node/bin/node
+// -*- mode: js -*-
+// Copyright (c) 2012, Joyent, Inc. All rights reserved.
 
 var mod_assert = require('assert');
 var mod_fs = require('fs');
@@ -133,15 +135,13 @@ function dpUploadFile()
 	    'sign': mod_mautil.mantaSignNull
 	});
 
-	if (dpReducer !== undefined)
-		dpHeaders['x-marlin-reducer'] = dpReducer;
-
 	mod_mautil.mantaFileSave({
 	    'client': client,
 	    'filename': dpTmpfile,
 	    'headers': dpHeaders,
 	    'key': dpObjkey,
-	    'log': log
+	    'log': log,
+	    'rIdx': dpReducer
 	}, function (err) {
 		if (err)
 			dpFatal(err.message);
