@@ -306,10 +306,8 @@ var msFieldAliases = {
 
 /* Mapping of task state values to a shorter form for display. */
 var msTaskStates = {
-    'aborted': 'abrt',
     'dispatched': 'disp',
-    'running': 'run',
-    'cancelled': 'cncl',
+    'accepted': 'acc',
     'done': 'done'
 };
 
