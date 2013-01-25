@@ -47,7 +47,6 @@
 		"maxPendingDeletes": 1000,
 		"maxPendingLocates": 100,
 		"maxPendingPuts": 100,
-		"maxRecentRequests": 300,
 		"maxRecordsPerQuery": 1000,
 		"timePoll": 200,
 		"timeTick": 20,

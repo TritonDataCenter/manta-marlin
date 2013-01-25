@@ -181,7 +181,7 @@ var msAuthToken;
 var msMorayUrl = process.env['MORAY_URL'];
 var msParseable = false;		/* whether output should be parseable */
 var msVerbose = 0;			/* whether output should be verbose */
-var msRecordLimit = 5;			/* max nr of Moray records per bucket */
+var msRecordLimit = 10;			/* max nr of Moray records per bucket */
 var msColumns;				/* user-specified list of columns */
 
 var msApi;	/* marlin api */
@@ -991,7 +991,8 @@ function printJobDetails(records)
 			return;
 		}
 
-		if (record['value']['nOutputs'])
+		if (record['value']['result'] == 'ok' &&
+		    record['value']['nOutputs'])
 			nout += record['value']['nOutputs'];
 	});
 
@@ -1056,7 +1057,7 @@ function printJobDetails(records)
 	if (records['taskoutput'].length < msRecordLimit &&
 	    job['stats']['nJobOutputs'] != nout)
 		println('WARN: found %d outputs, but job reports %d outputs',
-		    nerr, job['stats']['nJobOutputs']);
+		    nout, job['stats']['nJobOutputs']);
 
 	println('');
 

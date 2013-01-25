@@ -210,7 +210,7 @@ function timedCheck(ntries, waittime, test, onsuccess)
 			return;
 		}
 
-		if (ntries == 1)
+		if (ntries == 1 || err.noRetry)
 			throw (err);
 
 		log.info('timedCheck: retrying');

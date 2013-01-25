@@ -44,46 +44,7 @@ exports.jobM = {
 	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
 	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
     ],
-    'expected_tasks': [ {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj1',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
-	]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj2',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./
-	]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj3',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
-	]
-    } ],
-    'verify': function (testspec, jobresult, callback) {
-	mod_assert.equal(jobresult['taskinput'].length, 0);
-	mod_assert.equal(jobresult['taskoutput'].length, 0);
-	mod_assert.equal(jobresult['task'].length, 3);
-	mod_assert.equal(jobresult['jobinput'].length, 3);
-
-	var stats = jobresult['job']['value']['stats'];
-	mod_assert.equal(stats['nErrors'], 0);
-	mod_assert.equal(stats['nTasksCommittedFail'], 0);
-
-	callback();
-    }
+    'errors': []
 };
 
 /* Like jobM, but makes use of separate external task output objects */
@@ -129,58 +90,7 @@ exports.jobMX = {
 	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
 	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
     ],
-    'expected_tasks': [ {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj1',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 8,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
-	]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj2',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 8,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./
-	]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj3',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 8,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
-	]
-    } ],
-    'verify': function (testspec, jobresult, callback) {
-	mod_assert.equal(jobresult['taskinput'].length, 0);
-	mod_assert.equal(jobresult['taskoutput'].length, 9);
-	mod_assert.equal(jobresult['task'].length, 3);
-	mod_assert.equal(jobresult['jobinput'].length, 3);
-
-	var stats = jobresult['job']['value']['stats'];
-	mod_assert.equal(stats['nErrors'], 0);
-	mod_assert.equal(stats['nTasksCommittedFail'], 0);
-
-	callback();
-    }
+    'errors': []
 };
 
 exports.jobMmpipeAnon = {
@@ -202,46 +112,7 @@ exports.jobMmpipeAnon = {
 	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
     ],
     'expected_output_content': [ 'bar\n', 'bar\n', 'bar\n' ],
-    'expected_tasks': [ {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj1',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
-	]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj2',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./
-	]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj3',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
-	]
-    } ],
-    'verify': function (testspec, jobresult, callback) {
-	mod_assert.equal(jobresult['taskinput'].length, 0);
-	mod_assert.equal(jobresult['taskoutput'].length, 0);
-	mod_assert.equal(jobresult['task'].length, 3);
-	mod_assert.equal(jobresult['jobinput'].length, 3);
-
-	var stats = jobresult['job']['value']['stats'];
-	mod_assert.equal(stats['nErrors'], 0);
-	mod_assert.equal(stats['nTasksCommittedFail'], 0);
-
-	callback();
-    }
+    'errors': []
 };
 
 exports.jobMmpipeNamed = {
@@ -263,40 +134,7 @@ exports.jobMmpipeNamed = {
 	'/poseidon/stor/extra/out1'
     ],
     'expected_output_content': [ 'bar\n', 'bar\n', 'bar\n' ],
-    'expected_tasks': [ {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj1',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/extra/out1' ]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj2',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/extra/out1' ]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj3',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/extra/out1' ]
-    } ],
-    'verify': function (testspec, jobresult, callback) {
-	mod_assert.equal(jobresult['taskinput'].length, 0);
-	mod_assert.equal(jobresult['taskoutput'].length, 0);
-	mod_assert.equal(jobresult['task'].length, 3);
-	mod_assert.equal(jobresult['jobinput'].length, 3);
-
-	var stats = jobresult['job']['value']['stats'];
-	mod_assert.equal(stats['nErrors'], 0);
-	mod_assert.equal(stats['nTasksCommittedFail'], 0);
-
-	callback();
-    }
+    'errors': []
 };
 
 exports.jobMmcat = {
@@ -322,40 +160,7 @@ exports.jobMmcat = {
 	'auto-generated content for key /poseidon/stor/obj1',
 	'auto-generated content for key /poseidon/stor/obj1'
     ],
-    'expected_tasks': [ {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj1',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj1' ]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj2',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj1' ]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj3',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [ '/poseidon/stor/obj1' ]
-    } ],
-    'verify': function (testspec, jobresult, callback) {
-	mod_assert.equal(jobresult['taskinput'].length, 0);
-	mod_assert.equal(jobresult['taskoutput'].length, 0);
-	mod_assert.equal(jobresult['task'].length, 3);
-	mod_assert.equal(jobresult['jobinput'].length, 3);
-
-	var stats = jobresult['job']['value']['stats'];
-	mod_assert.equal(stats['nErrors'], 0);
-	mod_assert.equal(stats['nTasksCommittedFail'], 0);
-
-	callback();
-    }
+    'errors': []
 };
 
 exports.jobMM = {
@@ -376,72 +181,7 @@ exports.jobMM = {
 	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.1\./,
 	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.1\./
     ],
-    'expected_tasks': [ {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj1',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
-	]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj2',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./
-	]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj3',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
-	]
-    }, {
-	'phaseNum': 1,
-	'key': /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.1\./
-	]
-    }, {
-	'phaseNum': 1,
-	'key': /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.1\./
-	]
-    }, {
-	'phaseNum': 1,
-	'key': /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.1\./
-	]
-    } ],
-    'verify': function (testspec, jobresult, callback) {
-	mod_assert.equal(jobresult['taskinput'].length, 0);
-	mod_assert.equal(jobresult['taskoutput'].length, 0);
-	mod_assert.equal(jobresult['jobinput'].length, 3);
-
-	var stats = jobresult['job']['value']['stats'];
-	mod_assert.equal(stats['nErrors'], 0);
-	mod_assert.equal(stats['nTasksCommittedFail'], 0);
-
-	callback();
-    }
+    'errors': []
 };
 
 exports.jobR = {
@@ -457,25 +197,7 @@ exports.jobR = {
     'expected_outputs': [
 	/\/poseidon\/jobs\/.*\/stor\/reduce\.0\./
     ],
-    'expected_tasks': [ {
-	'phaseNum': 0,
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.0\./ ]
-    } ],
-    'verify': function (testspec, jobresult, callback) {
-	mod_assert.equal(jobresult['taskinput'].length, 3);
-	mod_assert.equal(jobresult['taskoutput'].length, 0);
-	mod_assert.equal(jobresult['task'].length, 1);
-	mod_assert.equal(jobresult['jobinput'].length, 3);
-
-	var stats = jobresult['job']['value']['stats'];
-	mod_assert.equal(stats['nErrors'], 0);
-	mod_assert.equal(stats['nTasksCommittedFail'], 0);
-
-	callback();
-    }
+    'errors': []
 };
 
 exports.jobMR = {
@@ -494,54 +216,7 @@ exports.jobMR = {
     'expected_outputs': [
 	/\/poseidon\/jobs\/.*\/stor\/reduce\.1\./
     ],
-    'expected_tasks': [ {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj1',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
-	]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj2',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./
-	]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj3',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
-	]
-    }, {
-	'phaseNum': 1,
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/reduce\.1\./
-	]
-    } ],
-    'verify': function (testspec, jobresult, callback) {
-	mod_assert.equal(jobresult['taskinput'].length, 3);
-	mod_assert.equal(jobresult['taskoutput'].length, 0);
-	mod_assert.equal(jobresult['task'].length, 4);
-	mod_assert.equal(jobresult['jobinput'].length, 3);
-
-	var stats = jobresult['job']['value']['stats'];
-	mod_assert.equal(stats['nErrors'], 0);
-	mod_assert.equal(stats['nTasksCommittedFail'], 0);
-
-	callback();
-    }
+    'errors': []
 };
 
 exports.jobMMRR = {
@@ -562,84 +237,7 @@ exports.jobMMRR = {
     'expected_outputs': [
 	/\/poseidon\/jobs\/.*\/stor\/reduce\.3\./
     ],
-    'expected_tasks': [ {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj1',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
-	]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj2',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./
-	]
-    }, {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj3',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
-	]
-    }, {
-	'phaseNum': 1,
-	'key': /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.1\./
-	]
-    }, {
-	'phaseNum': 1,
-	'key': /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.1\./
-	]
-    }, {
-	'phaseNum': 1,
-	'key': /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.1\./
-	]
-    }, {
-	'phaseNum': 2,
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.2\./ ]
-    }, {
-	'phaseNum': 3,
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.3\./ ]
-    } ],
-    'verify': function (testspec, jobresult, callback) {
-	mod_assert.equal(jobresult['taskinput'].length, 4);
-	mod_assert.equal(jobresult['taskoutput'].length, 0);
-	mod_assert.equal(jobresult['jobinput'].length, 3);
-
-	var stats = jobresult['job']['value']['stats'];
-	mod_assert.equal(stats['nErrors'], 0);
-	mod_assert.equal(stats['nTasksCommittedFail'], 0);
-
-	callback();
-    }
+    'errors': []
 };
 
 exports.jobM500 = {
@@ -649,13 +247,7 @@ exports.jobM500 = {
     'inputs': [],
     'timeout': 45 * 1000,
     'expected_outputs': [],
-    'expected_tasks': [],
-    'verify': function (_, jobresult, callback) {
-	var stats = jobresult['job']['value']['stats'];
-	mod_assert.equal(stats['nErrors'], 0);
-	mod_assert.equal(stats['nTasksCommittedFail'], 0);
-	callback();
-    }
+    'errors': []
 };
 
 exports.jobMRRoutput = {
@@ -674,50 +266,9 @@ exports.jobMRRoutput = {
     },
     'inputs': [ '/poseidon/stor/obj1' ],
     'timeout': 90 * 1000,
-    'expected_tasks': [ {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj1',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 3,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
-	]
-    }, {
-	'phaseNum': 1,
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.1\./ ]
-    }, {
-	'phaseNum': 1,
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.1\./ ]
-    }, {
-	'phaseNum': 1,
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.1\./ ]
-    }, {
-	'phaseNum': 2,
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.2\./ ]
-    } ],
     'expected_outputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.2\./ ],
     'expected_output_content': [ '55\n' ],
-    'verify': function (_, jobresult, callback) {
-	var stats = jobresult['job']['value']['stats'];
-	mod_assert.equal(stats['nErrors'], 0);
-	mod_assert.equal(stats['nTasksCommittedFail'], 0);
-	callback();
-    }
+    'errors': []
 };
 
 var asset_body = [
@@ -742,17 +293,8 @@ exports.jobMasset = {
     'expected_outputs': [
 	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
     ],
-    'expected_tasks': [ {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj1',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
-	]
-    } ],
-    'expected_output_content': [ 'sarabi 17\n' ]
+    'expected_output_content': [ 'sarabi 17\n' ],
+    'errors': []
 };
 
 exports.jobM0bi = {
@@ -764,17 +306,8 @@ exports.jobM0bi = {
     'expected_outputs': [
 	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/0bytes\.0\./
     ],
-    'expected_tasks': [ {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/0bytes',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/0bytes\.0\./
-	]
-    } ],
-    'expected_output_content': [ '0 0 0\n' ]
+    'expected_output_content': [ '0 0 0\n' ],
+    'errors': []
 };
 
 /*
@@ -789,14 +322,8 @@ exports.jobR0bi = {
     'inputs': [ '/poseidon/stor/0bytes' ],
     'timeout': 15 * 1000,
     'expected_outputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.0\./ ],
-    'expected_tasks': [ {
-	'phaseNum': 0,
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.0\./ ]
-    } ],
-    'expected_output_content': [ '      0       0       0\n' ]
+    'expected_output_content': [ '      0       0       0\n' ],
+    'errors': []
 };
 
 exports.jobM0bo = {
@@ -808,17 +335,8 @@ exports.jobM0bo = {
     'expected_outputs': [
 	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
     ],
-    'expected_tasks': [ {
-	'phaseNum': 0,
-	'key': '/poseidon/stor/obj1',
-	'state': 'done',
-	'result': 'ok',
-	'nOutputs': 1,
-	'firstOutputs': [
-	    /\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
-	]
-    } ],
-    'expected_output_content': [ '' ]
+    'expected_output_content': [ '' ],
+    'errors': []
 };
 
 exports.jobMcore = {
@@ -831,26 +349,14 @@ exports.jobMcore = {
 	'inputs': [ '/poseidon/stor/obj1' ],
 	'timeout': 20 * 1000,
 	'expected_outputs': [],
-	'expected_tasks': [ {
-	    'phaseNum': 0,
+	'errors': [ {
+	    'phaseNum': '0',
+	    'what': 'phase 0: map input "/poseidon/stor/obj1"',
 	    'key': '/poseidon/stor/obj1',
-	    'state': 'aborted',
-	    'result': 'fail',
-	    'nOutputs': 1,
-	    'firstOutputs': [
-		/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
-	    ]
-	} ],
-	'verify': function (testspec, jobresult, callback) {
-		var task = jobresult['task'][0];
-		var error = task['value']['error'];
-
-		mod_assert.equal(error['code'], 'EJ_USER');
-		mod_assert.equal(error['message'],
-		    'user command or child process dumped core');
-
-		callback();
-	}
+	    'p0key': '/poseidon/stor/obj1',
+	    'code': 'EJ_USER',
+	    'message': 'user command or child process dumped core'
+	} ]
 };
 
 exports.jobsAll = [
@@ -880,15 +386,7 @@ function initJobs()
 		var okey = '/poseidon/jobs/.*/stor' + key;
 
 		job['inputs'].push(key);
-		job['expected_outputs'] = new RegExp(okey);
-		job['expected_tasks'].push({
-		    'phaseNum': 0,
-		    'key': key,
-		    'state': 'done',
-		    'result': 'ok',
-		    'nOutputs': 1,
-		    'firstOutputs': [ new RegExp(okey) ]
-		});
+		job['expected_outputs'].push(new RegExp(okey));
 	}
 }
 
@@ -1083,130 +581,212 @@ function jobTestVerifyTimeout(api, testspec, jobid, callback)
 	var interval = testspec['timeout'];
 
 	mod_testcommon.timedCheck(Math.ceil(interval / 1000), 1000,
-	    jobTestVerify.bind(null, api, testspec, jobid), callback);
+	    function (subcallback) {
+		jobTestVerify(api, testspec, jobid, function (err) {
+			if (err)
+				err.noRetry = !err.retry;
+			subcallback(err);
+		});
+	    }, callback);
 }
 
 function jobTestVerify(api, testspec, jobid, callback)
 {
-	api.jobFetchDetails(jobid, true, 1000,
-	    exnAsync(function (err, jobresult) {
-		if (err) {
-			callback(err);
-			return;
+	mod_vasync.pipeline({
+	    'arg': {
+		'api': api,
+		'testspec': testspec,
+		'jobid': jobid,
+		'job': undefined,
+		'inputs': [],
+		'outputs': [],
+		'errors': [],
+		'content': []
+	    },
+	    'funcs': [
+		jobTestVerifyFetchJob,
+		jobTestVerifyFetchInputs,
+		jobTestVerifyFetchErrors,
+		jobTestVerifyFetchOutputs,
+		jobTestVerifyFetchOutputContent,
+		jobTestVerifyResult
+	    ]
+	}, callback);
+}
+
+function jobTestVerifyFetchJob(verify, callback)
+{
+	verify['api'].jobFetch(verify['jobid'], function (err, job) {
+		if (!err && job['value']['state'] != 'done') {
+			err = new VError('job is not finished');
+			err.retry = true;
 		}
 
-		/* This is really verifying that jobSubmit worked. */
-		var inputs = jobresult['jobinput'].map(
-		    function (rec) { return (rec['value']['key']); });
-		var expected_inputs = testspec['inputs'].slice(0);
-		mod_assert.deepEqual(inputs.sort(), expected_inputs.sort());
+		if (!err)
+			verify['job'] = job['value'];
 
-		var job = jobresult['job']['value'];
-		mod_assert.deepEqual(testspec['job']['phases'], job['phases']);
+		callback(err);
+	});
+}
 
-		/* Wait for the job to be completed. */
-		mod_assert.equal(job['state'], 'done');
+function jobTestVerifyFetchInputs(verify, callback)
+{
+	var req = verify['api'].jobFetchInputs(verify['jobid']);
+	req.on('key', function (key) { verify['inputs'].push(key); });
+	req.on('end', callback);
+	req.on('error', callback);
+}
 
-		/* Sanity-check the rest of the job record. */
-		mod_assert.ok(job['worker']);
-		mod_assert.ok(!job['timeCancelled']);
-		if (!testspec['input'])
-			mod_assert.ok(job['timeInputDone'] >=
-			    job['timeCreated']);
-		mod_assert.ok(job['timeDone'] >= job['timeCreated']);
+function jobTestVerifyFetchErrors(verify, callback)
+{
+	var req = verify['api'].jobFetchErrors(verify['jobid']);
+	req.on('err', function (error) { verify['errors'].push(error); });
+	req.on('end', callback);
+	req.on('error', callback);
+}
 
-		/* Check expected job outputs. */
-		var outputs = [];
+function jobTestVerifyFetchOutputs(verify, callback)
+{
+	var pi = verify['job']['phases'].length - 1;
+	var req = verify['api'].jobFetchOutputs(verify['jobid'], pi,
+	    { 'limit': 1000 });
+	req.on('key', function (key) { verify['outputs'].push(key); });
+	req.on('end', callback);
+	req.on('error', callback);
+}
 
-		mod_jsprim.forEachKey(jobresult['task'],
-		    function (taskid, record) {
-			if (record['value']['phaseNum'] !=
-			    testspec['job']['phases'].length - 1)
+function jobTestVerifyFetchOutputContent(verify, callback)
+{
+	var manta = verify['api'].manta;
+
+	mod_vasync.forEachParallel({
+	    'inputs': verify['outputs'],
+	    'func': function (objectpath, subcallback) {
+		log.info('fetching output "%s"', objectpath);
+		manta.get(objectpath, function (err, mantastream) {
+			if (err) {
+				subcallback(err);
 				return;
+			}
 
-			if (!record['value']['timeCommitted'] ||
-			    record['value']['result'] != 'ok')
-				return;
-
-			record['value']['firstOutputs'].forEach(function (out) {
-				outputs.push(out['key']);
+			var data = '';
+			mantastream.on('data', function (chunk) {
+				data += chunk.toString('utf8');
 			});
-		    });
 
-		mod_jsprim.forEachKey(jobresult['taskoutput'],
-		    function (_, record) {
-			outputs.push(record['value']['key']);
-		    });
+			mantastream.on('end', function () {
+				verify['content'].push(data);
+				subcallback();
+			});
+		});
+	    }
+	}, callback);
+}
 
-		outputs.sort();
+function jobTestVerifyResult(verify, callback)
+{
+	try {
+		jobTestVerifyResultSync(verify);
+	} catch (ex) {
+		if (ex.name == 'AssertionError')
+			ex.message = ex.toString();
+		var err = new VError(ex, 'verifying job "%s"', verify['jobid']);
+		log.fatal(err);
+		callback(err);
+		return;
+	}
 
-		var expected_outputs = testspec['expected_outputs'].slice(0);
-		expected_outputs.sort();
+	callback();
+}
 
-		mod_assert.equal(outputs.length, expected_outputs.length);
-		for (var i = 0; i < outputs.length; i++) {
-			if (typeof (expected_outputs[i]) == 'string')
-				mod_assert.equal(expected_outputs[i],
-				    outputs[i],
-				    'output ' + i + ' doesn\'t match');
-			else
-				mod_assert.ok(
-				    expected_outputs[i].test(outputs[i]));
+function jobTestVerifyResultSync(verify)
+{
+	var job = verify['job'];
+	var inputs = verify['inputs'];
+	var outputs = verify['outputs'];
+	var errors = verify['errors'];
+	var testspec = verify['testspec'];
+
+	/* verify jobSubmit, jobFetch, jobFetchInputs */
+	mod_assert.deepEqual(testspec['job']['phases'], job['phases']);
+	mod_assert.deepEqual(testspec['inputs'].slice(0).sort(), inputs.sort());
+
+	/* Wait for the job to be completed. */
+	mod_assert.equal(job['state'], 'done');
+
+	/* Sanity-check the rest of the job record. */
+	mod_assert.ok(job['worker']);
+	mod_assert.ok(!job['timeCancelled']);
+	mod_assert.ok(job['timeInputDone'] >= job['timeCreated']);
+	mod_assert.ok(job['timeDone'] >= job['timeCreated']);
+
+	/* Check job execution and jobFetchOutputs */
+	var expected_outputs = testspec['expected_outputs'].slice(0);
+	expected_outputs.sort();
+	outputs.sort();
+	mod_assert.equal(outputs.length, expected_outputs.length);
+
+	for (var i = 0; i < outputs.length; i++) {
+		if (typeof (expected_outputs[i]) == 'string')
+			mod_assert.equal(expected_outputs[i], outputs[i],
+			    'output ' + i + ' doesn\'t match');
+		else
+			mod_assert.ok(expected_outputs[i].test(outputs[i]),
+			    'output ' + i + ' doesn\'t match');
+	}
+
+	/* Check job execution and jobFetchErrors */
+	mod_assert.equal(errors.length, testspec['errors'].length);
+	testspec['errors'].forEach(function (expected_error, idx) {
+		var okay = false;
+
+		errors.forEach(function (actual_error) {
+			var match = true;
+
+			for (var k in expected_error) {
+				if (actual_error[k] !== expected_error[k]) {
+					match = false;
+					break;
+				}
+			}
+
+			if (match)
+				okay = true;
+		});
+
+		if (!okay)
+			throw (new VError('no match for error %d: %j %j',
+			    idx, expected_error, errors));
+	});
+
+	/* Check stat counters. */
+	var stats = job['stats'];
+	mod_assert.equal(stats['nAssigns'], 1);
+	mod_assert.equal(stats['nInputsRead'], testspec['inputs'].length);
+	mod_assert.equal(stats['nJobOutputs'], outputs.length);
+	mod_assert.equal(stats['nTasksDispatched'],
+	    stats['nTasksCommittedOk'] + stats['nTasksCommittedFail']);
+
+	/* Check output content */
+	if (!testspec['expected_output_content'])
+		return;
+
+	var bodies = verify['content'];
+	var expected = testspec['expected_output_content'];
+	var j;
+	for (i = 0; i < expected.length; i++) {
+		for (j = 0; j < bodies.length; j++) {
+			if (expected[i] == bodies[j])
+				break;
 		}
 
-		/* Check expected task records. */
-		var ntasks = Object.keys(jobresult['task']).length;
-		var expected_tasks = testspec['expected_tasks'].slice(0);
-		expected_tasks.forEach(function (etask) {
-			for (var key in jobresult['task']) {
-				var task = jobresult['task'][key]['value'];
-				if (jobTaskMatches(etask, task))
-					return;
-			}
-
-			throw (new VError('no matching task for %j (of %j)',
-			    etask, jobresult['task']));
-		});
-
-		mod_assert.equal(ntasks, expected_tasks.length);
-
-		/* Check stat counters. */
-		var stats = job['stats'];
-		mod_assert.equal(stats['nAssigns'], 1);
-		if (!job['input'])
-			mod_assert.equal(stats['nInputsRead'],
-			    testspec['inputs'].length);
-		mod_assert.equal(stats['nJobOutputs'],
-		    testspec['expected_outputs'].length);
-		mod_assert.equal(stats['nTasksDispatched'],
-		    testspec['expected_tasks'].length);
-		mod_assert.equal(stats['nTasksDispatched'],
-		    stats['nTasksCommittedOk'] + stats['nTasksCommittedFail']);
-
-		jobTestVerifyOutputs(api, testspec, outputs, function (err2) {
-			if (err2) {
-				log.fatal(err2, 'output mismatch');
-				throw (err2);
-			}
-
-			if (!testspec['verify']) {
-				callback();
-				return;
-			}
-
-			/*
-			 * On success, the "verify" function must invoke its
-			 * callback.  However, if it's going to fail, it may
-			 * either throw an exception synchronously or emit an
-			 * error to the callback.
-			 */
-			testspec['verify'](testspec, jobresult,
-			    function (err3) {
-				mod_assert.ok(!err3, 'job verify failed');
-				callback();
-			    });
-		});
-	    }, callback));
+		if (j == bodies.length)
+			log.fatal('expected content not found',
+			    expected[i], bodies);
+		mod_assert.ok(j < bodies.length, 'expected content not found');
+		log.info('output matched', bodies[j]);
+		bodies = bodies.splice(j, 1);
+	}
 }
 
 function jobTestVerifyOutputs(api, testspec, outputs, callback)
@@ -1268,47 +848,6 @@ function jobTestVerifyOutputs(api, testspec, outputs, callback)
 
 		callback();
 	});
-}
-
-function jobTaskMatches(etask, task)
-{
-	for (var prop in etask) {
-		if (prop != 'firstOutputs' && prop != 'key') {
-			if (etask[prop] !== task[prop])
-				return (false);
-			continue;
-		}
-
-		if (prop == 'key') {
-			if (typeof (etask[prop]) == 'string') {
-				if (etask[prop] != task[prop])
-					return (false);
-			} else {
-				if (!etask[prop].test(task[prop]))
-					return (false);
-			}
-
-			continue;
-		}
-
-		var expected = etask[prop];
-		var actual = task[prop];
-		if (expected.length != actual.length)
-			return (false);
-
-		actual.sort();
-		expected.sort();
-
-		for (var i = 0; i < expected.length; i++) {
-			if ((typeof (expected[i]) == 'string' &&
-			    expected[i] != actual[i]['key']) ||
-			    (typeof (expected[i]) != 'string' &&
-			    !expected[i].test(actual[i]['key'])))
-				return (false);
-		}
-	}
-
-	return (true);
 }
 
 function populateData(manta, keys, callback)
