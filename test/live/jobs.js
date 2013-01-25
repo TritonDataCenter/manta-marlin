@@ -340,24 +340,99 @@ exports.jobM0bo = {
 };
 
 exports.jobMcore = {
-	'job': {
-	    'phases': [ {
-		'type': 'storage-map',
-		'exec': 'node -e "process.abort();"'
-	    } ]
-	},
-	'inputs': [ '/poseidon/stor/obj1' ],
-	'timeout': 20 * 1000,
-	'expected_outputs': [],
-	'errors': [ {
-	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/poseidon/stor/obj1"',
-	    'key': '/poseidon/stor/obj1',
-	    'p0key': '/poseidon/stor/obj1',
-	    'code': 'EJ_USER',
-	    'message': 'user command or child process dumped core'
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'node -e "process.abort();"'
 	} ]
+    },
+    'inputs': [ '/poseidon/stor/obj1' ],
+    'timeout': 20 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/poseidon/stor/obj1"',
+	'key': '/poseidon/stor/obj1',
+	'p0key': '/poseidon/stor/obj1',
+	'code': 'EJ_USER',
+	'message': 'user command or child process dumped core'
+    } ]
 };
+
+exports.jobMenv = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'env | egrep ^MANTA_ | sort'
+	} ]
+    },
+    'inputs': [ '/poseidon/stor/obj1' ],
+    'timeout': 10 * 1000,
+    'expected_outputs': [
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+    ],
+    'errors': [],
+    'expected_output_content': [
+	'MANTA_INPUT_FILE=/manta/poseidon/stor/obj1\n' +
+	'MANTA_INPUT_KEY=/poseidon/stor/obj1\n' +
+	'MANTA_JOB_ID=$jobid\n' +
+	'MANTA_NO_AUTH=true\n' +
+	'MANTA_OUTPUT_BASE=/poseidon/jobs/$jobid/stor/' +
+	    'poseidon/stor/obj1.0.\n' +
+	'MANTA_URL=http://localhost:8080/\n'
+    ]
+};
+
+exports.jobRenv = {
+    'job': {
+	'phases': [ {
+	    'type': 'reduce',
+	    'count': 3,
+	    /* Workaround MANTA-992 */
+	    'exec': 'cat > /dev/null; env | egrep ^MANTA_ | sort'
+	} ]
+    },
+    'inputs': [
+	/* XXX MANTA-928: workaround 0-key reduce tasks not working */
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj1'
+    ],
+    'timeout': 30 * 1000,
+    'expected_outputs': [
+	/\/poseidon\/jobs\/.*\/stor\/reduce\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/reduce\.0\./,
+	/\/poseidon\/jobs\/.*\/stor\/reduce\.0\./
+    ],
+    'errors': [],
+    'expected_output_content': [
+	'MANTA_JOB_ID=$jobid\n' +
+	'MANTA_NO_AUTH=true\n' +
+	'MANTA_OUTPUT_BASE=/poseidon/jobs/$jobid/stor/reduce.0.\n' +
+	'MANTA_REDUCER=0\n' +
+	'MANTA_URL=http://localhost:8080/\n',
+
+	'MANTA_JOB_ID=$jobid\n' +
+	'MANTA_NO_AUTH=true\n' +
+	'MANTA_OUTPUT_BASE=/poseidon/jobs/$jobid/stor/reduce.0.\n' +
+	'MANTA_REDUCER=1\n' +
+	'MANTA_URL=http://localhost:8080/\n',
+
+	'MANTA_JOB_ID=$jobid\n' +
+	'MANTA_NO_AUTH=true\n' +
+	'MANTA_OUTPUT_BASE=/poseidon/jobs/$jobid/stor/reduce.0.\n' +
+	'MANTA_REDUCER=2\n' +
+	'MANTA_URL=http://localhost:8080/\n'
+    ]
+};
+
 
 exports.jobsAll = [
     exports.jobM,
@@ -772,7 +847,8 @@ function jobTestVerifyResultSync(verify)
 		return;
 
 	var bodies = verify['content'];
-	var expected = testspec['expected_output_content'];
+	var expected = testspec['expected_output_content'].map(
+	    function (o) { return (o.replace(/\$jobid/g, verify['jobid'])); });
 	var j;
 	for (i = 0; i < expected.length; i++) {
 		for (j = 0; j < bodies.length; j++) {
@@ -785,7 +861,7 @@ function jobTestVerifyResultSync(verify)
 			    expected[i], bodies);
 		mod_assert.ok(j < bodies.length, 'expected content not found');
 		log.info('output matched', bodies[j]);
-		bodies = bodies.splice(j, 1);
+		bodies.splice(j, 1);
 	}
 }
 
