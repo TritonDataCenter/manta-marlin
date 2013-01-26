@@ -35,6 +35,7 @@
 
 	"buckets": {
 		"error": "marlin_errors_v2",
+		"health": "marlin_health_v2",
 		"job": "marlin_jobs_v2",
 		"jobinput": "marlin_jobinputs_v2",
 		"task": "marlin_tasks_v2",
@@ -48,10 +49,10 @@
 		"maxPendingLocates": 100,
 		"maxPendingPuts": 100,
 		"maxRecordsPerQuery": 1000,
+		"timeAgentPoll": 5000,
 		"timePoll": 200,
 		"timeTick": 20,
 		"timeJobAbandon": 30000,
-		"timeJobSave": 10000,
-		"timeTaskAbandon": 10000
+		"timeJobSave": 10000
 	}
 }
