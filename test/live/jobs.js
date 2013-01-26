@@ -433,6 +433,34 @@ exports.jobRenv = {
     ]
 };
 
+exports.jobMcancel = {
+    'job': {
+	'phases': [
+	    { 'type': 'storage-map', 'exec': 'wc && sleep 3600' }
+	]
+    },
+    'inputs': [
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj2',
+	'/poseidon/stor/obj3'
+    ],
+    'timeout': 30 * 1000,
+    'expected_outputs': [],
+    'post_submit': function (api, jobid) {
+	setTimeout(function () {
+		log.info('cancelling job');
+		api.jobCancel(jobid, function (err) {
+			if (err) {
+				log.fatal('failed to cancel job');
+				throw (err);
+			}
+
+			log.info('job cancelled');
+		});
+	}, 10 * 1000);
+    },
+    'errors': []
+};
 
 exports.jobsAll = [
     exports.jobM,
@@ -448,8 +476,11 @@ exports.jobsAll = [
     exports.jobMR,
     exports.jobMMRR,
     exports.jobMRRoutput,
+    exports.jobMcancel,
     exports.jobMasset,
-    exports.jobMcore
+    exports.jobMcore,
+    exports.jobMenv,
+    exports.jobRenv
 ];
 
 function initJobs()
@@ -607,47 +638,48 @@ function jobSubmit(api, testspec, callback)
 		    });
 	}
 
-	if (!testspec['input']) {
-		funcs.push(function (_, stepcb) {
-			var final_err;
+	funcs.push(function (_, stepcb) {
+		var final_err;
 
-			var queue = mod_vasync.queuev({
-				'concurrency': 15,
-				'worker': function (key, subcallback) {
-					if (final_err) {
-						subcallback();
-						return;
-					}
-
-					log.info('job "%s": adding key %s',
-					    jobid, key);
-					api.jobAddKey(jobid, key,
-					    function (err) {
-						if (err)
-							final_err = err;
-						subcallback();
-					    });
+		var queue = mod_vasync.queuev({
+			'concurrency': 15,
+			'worker': function (key, subcallback) {
+				if (final_err) {
+					subcallback();
+					return;
 				}
-			});
 
-			testspec['inputs'].forEach(function (key) {
-				queue.push(key);
-			});
-
-			queue.drain = function () { stepcb(final_err); };
+				log.info('job "%s": adding key %s',
+				    jobid, key);
+				api.jobAddKey(jobid, key,
+				    function (err) {
+					if (err)
+						final_err = err;
+					subcallback();
+				    });
+			}
 		});
 
-		funcs.push(function (_, stepcb) {
-			log.info('job "%s": ending input', jobid);
-			api.jobEndInput(jobid, { 'retry': { 'retries': 3 } },
-			    stepcb);
+		testspec['inputs'].forEach(function (key) {
+			queue.push(key);
 		});
-	}
+
+		queue.drain = function () { stepcb(final_err); };
+	});
+
+	funcs.push(function (_, stepcb) {
+		log.info('job "%s": ending input', jobid);
+		api.jobEndInput(jobid, { 'retry': { 'retries': 3 } },
+		    stepcb);
+	});
 
 	mod_vasync.pipeline({ 'funcs': funcs }, function (err) {
 		if (!err)
 			log.info('job "%s": job submission complete', jobid);
 		callback(err, jobid);
+
+		if (testspec['post_submit'])
+			testspec['post_submit'](api, jobid);
 	});
 }
 
@@ -791,7 +823,6 @@ function jobTestVerifyResultSync(verify)
 
 	/* Sanity-check the rest of the job record. */
 	mod_assert.ok(job['worker']);
-	mod_assert.ok(!job['timeCancelled']);
 	mod_assert.ok(job['timeInputDone'] >= job['timeCreated']);
 	mod_assert.ok(job['timeDone'] >= job['timeCreated']);
 
@@ -839,8 +870,10 @@ function jobTestVerifyResultSync(verify)
 	mod_assert.equal(stats['nAssigns'], 1);
 	mod_assert.equal(stats['nInputsRead'], testspec['inputs'].length);
 	mod_assert.equal(stats['nJobOutputs'], outputs.length);
-	mod_assert.equal(stats['nTasksDispatched'],
-	    stats['nTasksCommittedOk'] + stats['nTasksCommittedFail']);
+
+	if (job['timeCancelled'] === undefined)
+		mod_assert.ok(stats['nTasksDispatched'],
+		    stats['nTasksCommittedOk'] + stats['nTasksCommittedFail']);
 
 	/* Check output content */
 	if (!testspec['expected_output_content'])
