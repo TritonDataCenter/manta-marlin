@@ -374,7 +374,7 @@ exports.jobMenv = {
     'errors': [],
     'expected_output_content': [
 	'MANTA_INPUT_FILE=/manta/poseidon/stor/obj1\n' +
-	'MANTA_INPUT_KEY=/poseidon/stor/obj1\n' +
+	'MANTA_INPUT_OBJECT=/poseidon/stor/obj1\n' +
 	'MANTA_JOB_ID=$jobid\n' +
 	'MANTA_NO_AUTH=true\n' +
 	'MANTA_OUTPUT_BASE=/poseidon/jobs/$jobid/stor/' +
