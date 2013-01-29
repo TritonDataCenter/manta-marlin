@@ -359,6 +359,20 @@ exports.jobMcore = {
     } ]
 };
 
+exports.jobR0inputs = {
+    'job': {
+	'phases': [ {
+	    'type': 'reduce',
+	    'exec': 'wc'
+	} ]
+    },
+    'inputs': [],
+    'timeout': 15 * 1000,
+    'expected_outputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.0\./ ],
+    'errors': [],
+    'expected_output_content': [ '      0       0       0\n' ]
+};
+
 exports.jobMenv = {
     'job': {
 	'phases': [ {
@@ -392,19 +406,7 @@ exports.jobRenv = {
 	    'exec': 'cat > /dev/null; env | egrep ^MANTA_ | sort'
 	} ]
     },
-    'inputs': [
-	/* XXX MANTA-928: workaround 0-key reduce tasks not working */
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj1'
-    ],
+    'inputs': [],
     'timeout': 30 * 1000,
     'expected_outputs': [
 	/\/poseidon\/jobs\/.*\/stor\/reduce\.0\./,
@@ -472,6 +474,7 @@ exports.jobsAll = [
     exports.jobR0bi,
     exports.jobM0bo,
     exports.jobR,
+    exports.jobR0inputs,
     exports.jobMM,
     exports.jobMR,
     exports.jobMMRR,
@@ -640,6 +643,11 @@ function jobSubmit(api, testspec, callback)
 
 	funcs.push(function (_, stepcb) {
 		var final_err;
+
+		if (testspec['inputs'].length === 0) {
+			stepcb();
+			return;
+		}
 
 		var queue = mod_vasync.queuev({
 			'concurrency': 15,
@@ -962,6 +970,11 @@ function jobTestVerifyOutputs(api, testspec, outputs, callback)
 function populateData(manta, keys, callback)
 {
 	log.info('populating keys', keys);
+
+	if (keys.length === 0) {
+		callback();
+		return;
+	}
 
 	var final_err;
 
