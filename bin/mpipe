@@ -107,9 +107,12 @@ function main()
 
 	console.error('saving stdin to %s', dpTmpfile);
 	dpOutstream = mod_fs.createWriteStream(dpTmpfile);
+	dpOutstream.on('close', dpUploadFile);
 	process.stdin.pipe(dpOutstream);
 	process.stdin.resume();
-	process.stdin.on('end', dpUploadFile);
+	process.stdin.on('end', function () {
+		dpOutstream.end();
+	});
 }
 
 function usage()
