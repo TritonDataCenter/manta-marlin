@@ -21,16 +21,18 @@
 	},
 
 	"buckets": {
-		"job": "marlin_jobs",
-		"task": "marlin_tasks",
-		"taskinput": "marlin_taskinputs",
-		"taskoutput": "marlin_taskoutputs"
+		"error": "marlin_errors_v2",
+		"health": "marlin_health_v2",
+		"job": "marlin_jobs_v2",
+		"task": "marlin_tasks_v2",
+		"taskinput": "marlin_taskinputs_v2",
+		"taskoutput": "marlin_taskoutputs_v2"
 	},
 
 	"tunables": {
 		"httpMaxSockets": 512,
 		"maxPendingPuts": 25,
-		"timeJobSave": 3000,
+		"timeHeartbeat": 3000,
 		"timePoll": 200,
 		"timeTick": 20,
 		"zoneReserveMin": 1,
