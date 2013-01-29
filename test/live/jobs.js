@@ -245,7 +245,7 @@ exports.jobM500 = {
 	'phases': [ { 'type': 'storage-map', 'exec': 'wc' } ]
     },
     'inputs': [],
-    'timeout': 45 * 1000,
+    'timeout': 90 * 1000,
     'expected_outputs': [],
     'errors': []
 };
