@@ -1024,8 +1024,8 @@ function printJobDetails(records)
 	});
 
 	records['jobinput'].sort(function (a, b) {
-		return (a['value']['key'] < b['value']['key'] ? -1 :
-		    b['value']['key'] > a['value']['key'] ? 1 : 0);
+		return (a['value']['input'] < b['value']['input'] ? -1 :
+		    b['value']['input'] > a['value']['input'] ? 1 : 0);
 	});
 
 	if (records['jobinput'].length === 0) {
@@ -1033,7 +1033,7 @@ function printJobDetails(records)
 	} else {
 		records['jobinput'].forEach(function (input, i) {
 			var label = i === 0 ? 'INPUTS' : '';
-			println('%-7s %s', label, input['value']['key']);
+			println('%-7s %s', label, input['value']['input']);
 		});
 
 		if (records['jobinput'].length >= msRecordLimit)
@@ -1082,9 +1082,9 @@ function printJobDetails(records)
 		var r1 = a['value']['phaseNum'] - b['value']['phaseNum'];
 		if (r1 != 0)
 			return (r1);
-		if (a['value']['key'] < b['value']['key'])
+		if (a['value']['input'] < b['value']['input'])
 			return (-1);
-		if (a['value']['key'] > b['value']['keky'])
+		if (a['value']['input'] > b['value']['input'])
 			return (1);
 		return (0);
 	});
@@ -1127,15 +1127,15 @@ function printJobDetails(records)
 		    record['value']['nOutputs'] || 0
 		]);
 
-		if (record['value']['key']) {
-			println('    INPUT:  %s', record['value']['key']);
+		if (record['value']['input']) {
+			println('    INPUT:  %s', record['value']['input']);
 		} else if (taskinputs && taskinputs[taskid]) {
-			println('    INPUT:  %d keys',
+			println('    INPUT:  %d inputs',
 			    taskinputs[taskid].length);
 		} else if (msVerbose > 0) {
-			println('    INPUT:  0 keys');
+			println('    INPUT:  0 inputs');
 		} else if (record['value']['nInputs']) {
-			println('    INPUT:  expects %d keys',
+			println('    INPUT:  expects %d inputs',
 			    record['value']['nInputs']);
 		} else {
 			println('    INPUT:  unknown');
@@ -1143,12 +1143,13 @@ function printJobDetails(records)
 
 		if (taskinputs && taskinputs[taskid])
 			taskinputs[taskid].forEach(function (rec) {
-				println('    INPUT:  %s', rec['value']['key']);
+				println('    INPUT:  %s',
+				    rec['value']['input']);
 			});
 
 		var outs = (taskoutputs && taskoutputs[taskid] ?
 		    taskoutputs[taskid] : []).map(
-		    function (rec) { return (rec['value']['key']); });
+		    function (rec) { return (rec['value']['output']); });
 
 		outs.forEach(function (out) {
 			println('    OUTPUT: %s', out);
