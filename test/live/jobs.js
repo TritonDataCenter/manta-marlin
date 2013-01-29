@@ -250,6 +250,20 @@ exports.jobM500 = {
     'errors': []
 };
 
+exports.jobMR1000 = {
+    'job': {
+	'phases': [
+	    { 'type': 'storage-map', 'exec': 'wc' },
+	    { 'type': 'reduce', 'exec': 'wc' }
+	]
+    },
+    'inputs': [],
+    'timeout': 180 * 1000,
+    'expected_outputs': [ /poseidon\/jobs\/.*\/stor\/reduce\.1\./ ],
+    'expected_output_content': [ '   1000    3000    9000\n' ],
+    'errors': []
+};
+
 exports.jobMRRoutput = {
     'job': {
 	'phases': [ {
@@ -496,6 +510,12 @@ function initJobs()
 
 		job['inputs'].push(key);
 		job['expected_outputs'].push(new RegExp(okey));
+	}
+
+	job = exports.jobMR1000;
+	for (i = 0; i < 1000; i++) {
+		key = '/poseidon/stor/obj' + i;
+		job['inputs'].push(key);
 	}
 }
 
