@@ -61,6 +61,7 @@ function setup(callback)
 		throw (new VError('MANTA_USER not specified'));
 
 	exports.manta = mod_manta.createClient({
+	    'agent': false,
 	    'log': log, /* manta client creates a child logger */
 	    'url': manta_url,
 	    'user': manta_user,
