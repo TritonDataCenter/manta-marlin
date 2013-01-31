@@ -203,7 +203,7 @@ var msCommands = {
 };
 
 /* default set of columns for list-of-jobs */
-var msColsJobs = [ 'JobId', 'NPh', 'S', 'NOut', 'NErr', 'Modified' ];
+var msColsJobs = [ 'JobId', 'login', 'NPh', 'S', 'NOut', 'NErr' ];
 
 /* node-tab configuration for list-of-jobs table */
 var msFieldsJobs = {
