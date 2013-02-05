@@ -12,13 +12,14 @@ var mod_json = require('jsontool');
 var mod_manta = require('manta');
 var mod_mautil = require('../lib/util');
 var mod_uuid = require('node-uuid');
+var mod_vm = require('vm');
 
 /*
  * msplit: demux streams to send to multiple reducers
  */
 var msUsageMessage = [
 	'usage: msplit [-n number_of_reducers] [-d delimiter] [-f field_list]',
-	'              [-j]',
+	'              [-j] [-e javascript]',
 	'',
 	'msplit is used to split a stream into many mpipes, one per the number',
 	'of reducers for your job.  The -n option specifies the number of',
@@ -48,7 +49,20 @@ var msUsageMessage = [
 	'',
 	'For example, to split json records on the id and type fields to ',
 	'demux to 6 reducers:',
-	'... | msplit -j -f id,type'
+	'... | msplit -j -f id,type -n 4',
+	'',
+	'Using the exec option (-e):',
+	'You can also write arbitrary javascript to work over your records.',
+	'If you are consuming text, you can reference the text with the',
+	'\'line\' variable.  For example, to work off the first 16 characters',
+	'of the text:',
+	'... | msplit -e "line.substring(0,16)" -n 4',
+	'',
+	'If you are using the -j option, the object will be parsed as json and',
+	'properties can be accessed directly.  For example, given this object:',
+	'{"id":"1234567890-22-0987654321", "name":...}',
+	'You can use the first 9 characters of the id field with:',
+	'... | msplit -e "id.substring(0,9)" -n 4'
 ].join('\n');
 
 var msHashAlgo = 'md5';
@@ -63,13 +77,13 @@ function main()
 	var i = 0;
 	var option;
 	var parser;
-	var parseLike = 'cut';
 	var opts = {};
 	opts.delimiter = '\t';
 	opts.fields = [];
 	opts.nReducers = null;
+	opts.parseJson = false;
 
-	parser = new mod_getopt.BasicParser('d:f:n:jt', process.argv);
+	parser = new mod_getopt.BasicParser('d:f:n:e:jt', process.argv);
 
 	while ((option = parser.getopt()) !== undefined) {
 		switch (option.option) {
@@ -80,13 +94,17 @@ function main()
 			}
 			break;
 
+		case 'e':
+			opts.exec = option.optarg;
+			break;
+
 		case 'f':
 			var tmpFields = option.optarg.split(',');
 			opts.fields = opts.fields.concat(tmpFields);
 			break;
 
 		case 'j':
-			parseLike = 'json';
+			opts.parseJson = true;
 			break;
 
 		case 'n':
@@ -121,7 +139,9 @@ function main()
 	}
 
 	// Select the line splitter and verify we have everything
-	if (parseLike === 'json') {
+	if (opts.exec !== undefined) {
+		opts.parseKey = parseAndExec;
+	} else if (opts.parseJson) { // Just json
 		opts.parseKey = parseLikeJson;
 		if (opts.fields.length < 1) {
 			usage('no fields specified');
@@ -176,6 +196,43 @@ function main()
 	process.stdin.resume();
 }
 
+// Only factored out so that the large comment isn't duplicated everywhere.
+function parseJson(line) {
+	var obj = null;
+	try {
+		obj = JSON.parse(line);
+	} catch (e) {
+		// The options we had here were to (1) use the line as the key,
+		// (2) ignore the line completely, or (3) blow up.  #3 seemed
+		// like the best thing to do sine (1) is hard to debug and #3
+		// would cause data to mysteriously disappear.
+		msFatal('error: input is not json: ' + line);
+	}
+	return (obj);
+}
+
+function parseAndExec(line, opts)
+{
+	var exec = opts.exec;
+	var parse = opts.parseJson;
+
+	var context = null;
+	if (parse) {
+		context = parseJson(line);
+	} else {
+		context = { line: line };
+	}
+
+	var key = null;
+	try {
+		key = mod_vm.runInNewContext(exec, context);
+	} catch (e) {
+		msFatal('Error running ' + exec + ' on line ' + line +
+			': ' + e);
+	}
+	return (key);
+}
+
 function parseLikeCut(line, opts)
 {
 	var delimiter = opts.delimiter;
@@ -203,17 +260,8 @@ function parseLikeJson(line, opts)
 {
 	var delimiter = opts.delimiter;
 	var fields = opts.fields;
-	var obj = null;
+	var obj = parseJson(line);
 	var key = '';
-	try {
-		obj = JSON.parse(line);
-	} catch (e) {
-		// The options we had here were to (1) use the line as the key,
-		// (2) ignore the line completely, or (3) blow up.  #3 seemed
-		// like the best thing to do sine (1) is hard to debug and #3
-		// would cause data to mysteriously disappear.
-		msFatal('error: input is not json: ' + line);
-	}
 	for (var i = 0; i < fields.length; ++i) {
 		var lookup = mod_json.parseLookup(fields[i]);
 		var datum = mod_json.lookupDatum(obj, lookup);
