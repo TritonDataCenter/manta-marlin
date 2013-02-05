@@ -29,7 +29,7 @@
 		"vasync": "1.3.3",
 		"verror": "1.3.3",
 		"wordwrap": "0.0.2",
-		"zsock": "git://github.com/mcavage/node-zsock.git"
+		"zsock": "1.3.0"
 	},
 	"optionalDependencies": {
 		"hyprlofs": "0.0.1",
