@@ -230,6 +230,13 @@ function parseAndExec(line, opts)
 		msFatal('Error running ' + exec + ' on line ' + line +
 			': ' + e);
 	}
+
+	var t = typeof (key);
+	// Blow up if the key isn't a String
+	if (t !== 'string') {
+		msFatal(key + ' must be of type string, but was type ' + t);
+	}
+
 	return (key);
 }
 
@@ -284,6 +291,9 @@ function selectReducer(line, opts)
 {
 	var nReducers = opts.nReducers;
 	var key = opts.parseKey(line, opts);
+	if (msTestMode) {
+		console.error(line + ' => { hash_key:' + key + ' }');
+	}
 	var hash = mod_crypto.createHash(msHashAlgo);
 	hash.update(key);
 	var digest = hash.digest('hex');
