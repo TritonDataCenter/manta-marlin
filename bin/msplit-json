@@ -1,4 +1,6 @@
 #!/usr/node/bin/node
+// -*- mode: js -*-
+// Copyright (c) 2012, Joyent, Inc. All rights reserved.
 
 var mod_assert = require('assert');
 var mod_carrier = require('carrier');

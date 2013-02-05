@@ -8,6 +8,7 @@ var mod_carrier = require('carrier');
 var mod_crypto = require('crypto');
 var mod_fs = require('fs');
 var mod_getopt = require('posix-getopt');
+var mod_json = require('jsontool');
 var mod_manta = require('manta');
 var mod_mautil = require('../lib/util');
 var mod_uuid = require('node-uuid');
@@ -16,13 +17,18 @@ var mod_uuid = require('node-uuid');
  * msplit: demux streams to send to multiple reducers
  */
 var msUsageMessage = [
-	'usage: msplit [-n number_of_reducers] [-d delimiter] [-f field list]',
+	'usage: msplit [-n number_of_reducers] [-d delimiter] [-f field_list]',
+	'              [-j]',
 	'',
 	'msplit is used to split a stream into many mpipes, one per the number',
 	'of reducers for your job.  The -n option specifies the number of',
 	'reducers your job has and must match the number of reducers for the',
 	'next phase of your job.',
 	'',
+	'msplit can work on newline sepaerated text or json records.  By',
+	'default msplit works on text lines, similar to the unix cut utility.',
+	'',
+	'Using to parse text:',
 	'The -d and -f fields are optional and specify the delimiter to use',
 	'when splitting fields and the field list to use to construct the key',
 	'used to map to reducers.  The delimiter defaults to (tab).  The field',
@@ -33,16 +39,22 @@ var msUsageMessage = [
 	'',
 	'For example, to split on comma and use the 5th and 3rd fields to ',
 	'demux to 4 reducers:',
-	'... | msplit -d \',\' -f 5,3 -n 4'
+	'... | msplit -d \',\' -f 5,3 -n 4',
+	'',
+	'Using to parse json (using the -j option):',
+	'The -f field is required and is used to specify the fields that will',
+	'be used to map the record to a reducer.  Similar to text processing,',
+	'if the field doesn\'t exist, the field will be ignored.',
+	'',
+	'For example, to split json records on the id and type fields to ',
+	'demux to 6 reducers:',
+	'... | msplit -j -f id,type'
 ].join('\n');
 
-var msDelimiter = '\t';
-var msFields = [1];
 var msHashAlgo = 'md5';
-var msNumReducers = null;
 var msObjPrefix = null;
 var msStreams = [];
-var msTest = false;
+var msTestMode = false;
 var msTmpFilePrefix = '/var/tmp/msplit.' + process.pid + '.';
 
 function main()
@@ -51,38 +63,41 @@ function main()
 	var i = 0;
 	var option;
 	var parser;
+	var parseLike = 'cut';
+	var opts = {};
+	opts.delimiter = '\t';
+	opts.fields = [];
+	opts.nReducers = null;
 
-	parser = new mod_getopt.BasicParser('d:f:n:', process.argv);
+	parser = new mod_getopt.BasicParser('d:f:n:jt', process.argv);
 
 	while ((option = parser.getopt()) !== undefined) {
 		switch (option.option) {
 		case 'd':
-			msDelimiter = option.optarg;
-			if (msDelimiter === '\n') {
-				console.error('msplit: cannot use newline as ' +
-					      'a delimiter.');
-				usage();
+			opts.delimiter = option.optarg;
+			if (opts.delimiter === '\n') {
+				usage('cannot use newline as a delimiter.');
 			}
 			break;
 
 		case 'f':
-			msFields = option.optarg.split(',');
-			for (i = 0; i < msFields.length; ++i) {
-				msFields[i] = parseInt(msFields[i], 10);
-				if (isNaN(msFields[i])) {
-					console.error('msplit: invalid field');
-					usage();
-				}
-			}
+			var tmpFields = option.optarg.split(',');
+			opts.fields = opts.fields.concat(tmpFields);
+			break;
+
+		case 'j':
+			parseLike = 'json';
 			break;
 
 		case 'n':
-			msNumReducers = parseInt(option.optarg, 10);
-			if (isNaN(msNumReducers)) {
-				console.error('msplit: invalid number of ' +
-					      'reducers');
-				usage();
+			opts.nReducers = parseInt(option.optarg, 10);
+			if (isNaN(opts.nReducers)) {
+				usage('invalid number of reducers');
 			}
+			break;
+
+		case 't':
+			msTestMode = true;
 			break;
 
 		default:
@@ -93,26 +108,53 @@ function main()
 		}
 	}
 
-	if (!msNumReducers) {
-		console.error('Number of reducers must be specified.');
-		usage();
+	if (!opts.nReducers) {
+		usage('number of reducers must be specified.');
 	}
 
-	if (!process.env['MANTA_OUTPUT_BASE']) {
-		usage('msplit: MANTA_OUTPUT_BASE not set');
+	if (!msTestMode) {
+		if (!process.env['MANTA_OUTPUT_BASE']) {
+			usage('MANTA_OUTPUT_BASE not set');
+		}
+		msObjPrefix = process.env['MANTA_OUTPUT_BASE'] +
+			mod_uuid.v4() + '.';
 	}
-	msObjPrefix = process.env['MANTA_OUTPUT_BASE'] + mod_uuid.v4() + '.';
 
-	// Pipes
+	// Select the line splitter and verify we have everything
+	if (parseLike === 'json') {
+		opts.parseKey = parseLikeJson;
+		if (opts.fields.length < 1) {
+			usage('no fields specified');
+		}
+	} else { // cut
+		opts.parseKey = parseLikeCut;
+		for (i = 0; i < opts.fields.length; ++i) {
+			opts.fields[i] = parseInt(opts.fields[i], 10);
+			if (isNaN(opts.fields[i])) {
+				usage('invalid field: ' + opts.fields[i]);
+			}
+		}
+		if (opts.fields.length < 1) {
+			opts.fields.push(1);
+		}
+	}
+
+	// Streams
 	var streamsClosed = 0;
-	for (i = 0; i < msNumReducers; ++i) {
+	var fileNames = '';
+	for (i = 0; i < opts.nReducers; ++i) {
 		var filename = msTmpFilePrefix + i;
+		fileNames += filename + '\n';
 		var stream = mod_fs.createWriteStream(filename);
 		msStreams.push(stream);
 		stream.on('close', function () {
 			++streamsClosed;
-			if (streamsClosed === msNumReducers) {
-				msUploadFiles();
+			if (streamsClosed === opts.nReducers) {
+				if (!msTestMode) {
+					msUploadFiles(opts);
+				} else {
+					console.log(fileNames);
+				}
 			}
 		});
 	}
@@ -121,13 +163,12 @@ function main()
 	carrier = mod_carrier.carry(process.stdin);
 
 	carrier.on('line', function (line) {
-		var r = selectReducer(line, msDelimiter, msFields,
-				      msNumReducers);
+		var r = selectReducer(line, opts);
 		msStreams[r].write(line + '\n');
 	});
 
 	carrier.on('end', function () {
-		for (i = 0; i < msNumReducers; ++i) {
+		for (i = 0; i < opts.nReducers; ++i) {
 			msStreams[i].end();
 		}
 	});
@@ -135,8 +176,10 @@ function main()
 	process.stdin.resume();
 }
 
-function selectReducer(line, delimiter, fields, nReducers)
+function parseLikeCut(line, opts)
 {
+	var delimiter = opts.delimiter;
+	var fields = opts.fields;
 	var parts = line.split(delimiter);
 	var key = '';
 	for (var i = 0; i < fields.length; ++i) {
@@ -153,6 +196,46 @@ function selectReducer(line, delimiter, fields, nReducers)
 		// at 1 and not 0.
 		key += parts[fields[i] - 1];
 	}
+	return (key);
+}
+
+function parseLikeJson(line, opts)
+{
+	var delimiter = opts.delimiter;
+	var fields = opts.fields;
+	var obj = null;
+	var key = '';
+	try {
+		obj = JSON.parse(line);
+	} catch (e) {
+		// The options we had here were to (1) use the line as the key,
+		// (2) ignore the line completely, or (3) blow up.  #3 seemed
+		// like the best thing to do sine (1) is hard to debug and #3
+		// would cause data to mysteriously disappear.
+		msFatal('error: input is not json: ' + line);
+	}
+	for (var i = 0; i < fields.length; ++i) {
+		var lookup = mod_json.parseLookup(fields[i]);
+		var datum = mod_json.lookupDatum(obj, lookup);
+
+		// Taking a page out of cut's playbook. if the field can't be
+		// found we simply don't use it.
+		if (datum === undefined) {
+			continue;
+		}
+
+		if (key) {
+			key += delimiter;
+		}
+		key += datum;
+	}
+	return (key);
+}
+
+function selectReducer(line, opts)
+{
+	var nReducers = opts.nReducers;
+	var key = opts.parseKey(line, opts);
 	var hash = mod_crypto.createHash(msHashAlgo);
 	hash.update(key);
 	var digest = hash.digest('hex');
@@ -162,16 +245,14 @@ function selectReducer(line, delimiter, fields, nReducers)
 
 function usage(message)
 {
-	if (message) {
-		console.error(message + '\n');
-	}
-	console.error(msUsageMessage);
+	console.error('msplit: ' + message);
+	console.error('\n' + msUsageMessage);
 	process.exit(2);
 }
 
 function msFatal(message)
 {
-	console.error(message);
+	console.error('msplit: ' + message);
 	process.exit(1);
 }
 
@@ -186,7 +267,7 @@ function msUploadFile(args, cb)
 	}, false);
 }
 
-function msUploadFiles()
+function msUploadFiles(opts)
 {
 	var log = new mod_bunyan({ 'name': 'msplit',
 				    'level': 'fatal',
@@ -201,7 +282,7 @@ function msUploadFiles()
 	});
 
 	var uploaded = 0;
-	for (var i = 0; i < msNumReducers; ++i) {
+	for (var i = 0; i < opts.nReducers; ++i) {
 		var filename = msTmpFilePrefix + i;
 		var objname = msObjPrefix + i;
 		msUploadFile({
@@ -212,7 +293,7 @@ function msUploadFiles()
 			'rIdx': i
 		}, function (args) {
 			++uploaded;
-			if (uploaded === msNumReducers) {
+			if (uploaded === opts.nReducers) {
 				process.exit(0);
 			}
 		});
