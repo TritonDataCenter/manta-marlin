@@ -126,6 +126,36 @@ function runError(_, next)
 	});
 }
 
+function pause(_, next)
+{
+	log.info('pause');
+
+	var nends = 0;
+	stream = new mod_httpcat.HttpCatStream({
+	    'clients': cache,
+	    'log': log.child({ 'component': 'HttpCatStream2' })
+	});
+
+	stream.on('end', function () { nends++; });
+
+	stream.pause();
+	stream.end();
+	mod_assert.equal(nends, 0);
+
+	stream.resume();
+	mod_assert.equal(nends, 1);
+
+	stream.pause();
+	stream.resume();
+	mod_assert.equal(nends, 1);
+
+	mod_assert.throws(function () { stream.end(); },
+	    /*JSSTYLED*/
+	    /"end" already invoked/);
+
+	next();
+}
+
 function teardown(_, next)
 {
 	log.info('tearDown');
@@ -138,6 +168,7 @@ mod_vasync.pipeline({ 'funcs': [
     setup,
     runSuccess,
     runError,
+    pause,
     teardown
 ] }, function (err) {
 	if (err) {

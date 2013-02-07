@@ -76,7 +76,7 @@ function main()
 
 		var request = mod_http.request({
 		    'host': 'localhost',
-		    'port': 8080,
+		    'port': 80,
 		    'method': 'PUT',
 		    'path': uri,
 		    'headers': headers

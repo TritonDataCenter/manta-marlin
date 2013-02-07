@@ -407,7 +407,7 @@ exports.jobMenv = {
 	'MANTA_NO_AUTH=true\n' +
 	'MANTA_OUTPUT_BASE=/poseidon/jobs/$jobid/stor/' +
 	    'poseidon/stor/obj1.0.\n' +
-	'MANTA_URL=http://localhost:8080/\n'
+	'MANTA_URL=http://localhost:80/\n'
     ]
 };
 
@@ -433,19 +433,19 @@ exports.jobRenv = {
 	'MANTA_NO_AUTH=true\n' +
 	'MANTA_OUTPUT_BASE=/poseidon/jobs/$jobid/stor/reduce.0.\n' +
 	'MANTA_REDUCER=0\n' +
-	'MANTA_URL=http://localhost:8080/\n',
+	'MANTA_URL=http://localhost:80/\n',
 
 	'MANTA_JOB_ID=$jobid\n' +
 	'MANTA_NO_AUTH=true\n' +
 	'MANTA_OUTPUT_BASE=/poseidon/jobs/$jobid/stor/reduce.0.\n' +
 	'MANTA_REDUCER=1\n' +
-	'MANTA_URL=http://localhost:8080/\n',
+	'MANTA_URL=http://localhost:80/\n',
 
 	'MANTA_JOB_ID=$jobid\n' +
 	'MANTA_NO_AUTH=true\n' +
 	'MANTA_OUTPUT_BASE=/poseidon/jobs/$jobid/stor/reduce.0.\n' +
 	'MANTA_REDUCER=2\n' +
-	'MANTA_URL=http://localhost:8080/\n'
+	'MANTA_URL=http://localhost:80/\n'
     ]
 };
 

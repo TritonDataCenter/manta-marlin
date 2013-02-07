@@ -6,6 +6,7 @@
 	"private": true,
 	"main": "lib/marlin.js",
 	"dependencies": {
+		"assert-plus": "0.1.2",
 		"bunyan": "0.16.7",
 		"carrier": "0.1.7",
 		"extsprintf": "1.0.1",
