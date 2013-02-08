@@ -75,6 +75,13 @@ function zone_remove
 
 [[ -n "$mr_zonename" ]] || fail "usage: $mr_arg0 zonename"
 
+echo -n "Checking for zone \"$mr_zonename\" ... \c "
+if ! curlagent /zones | json -a zonename | grep ^$mr_zonename\$ >/dev/null; then
+	echo "zone already gone."
+	exit 0
+fi
+echo "done."
+
 echo -n "Disabling zone \"$mr_zonename\" ... \c "
 zone_disable $mr_zonename || fail "failed"
 echo "done."
@@ -85,8 +92,4 @@ echo "done."
 
 echo -n "Removing zone \"$mr_zonename\" ... \c "
 zone_remove $mr_zonename || fail "failed"
-echo "done."
-
-echo -n "Removing com.joyent.manta:marlin property ... \c "
-zfs inherit com.joyent.manta:marlin zones/$mr_zonename || fail "failed"
 echo "done."
