@@ -156,6 +156,208 @@ function pause(_, next)
 	next();
 }
 
+function resume(_, next)
+{
+	var servLimited = mod_restify.createServer({
+		'name': 'tsst.httpcat.js-timeout'
+	});
+
+	var resLength = 1000000;
+	var resumed = false;
+
+	/*
+	 * Server that (1) can handle resumes and (2) doesn't send all the
+	 * data at once.
+	 */
+	servLimited.get('/.*', function (req, res, snext) {
+		var range = req.headers['range'];
+		/*JSSTYLED*/
+		var regex = /bytes=(\d+)-/;
+		var match = range.match(regex);
+		var startAt = match[1];
+		var sentBytes = parseInt(startAt, 10);
+
+		res.writeHead(200, {
+			'content-length': resLength - sentBytes
+		});
+
+		res.socket.setTimeout(100);
+
+		function writeData() {
+			var numBytes = Math.min(1000, resLength - sentBytes);
+			res.write(new Buffer(numBytes));
+			sentBytes += numBytes;
+			if (sentBytes === resLength) {
+				res.end();
+				snext();
+			} else {
+				process.nextTick(writeData);
+			}
+		}
+		writeData();
+	});
+
+	servLimited.listen(8127, function () {
+		stream = new mod_httpcat.HttpCatStream({
+			'clients': cache,
+			'log': log.child({ 'component': 'HttpCatStream1' })
+		});
+
+		stream.end({
+			'url': 'http://localhost:8127',
+			'uri': '/file1'
+		});
+
+		/*
+		 * Client pauses the stream to artificially induce a timeout.
+		 */
+		var pausedOnce = false;
+		stream.on('data', function (chunk) {
+			if (!pausedOnce) {
+				stream.pause();
+				pausedOnce = true;
+				setTimeout(function () {
+					stream.resume();
+				}, 500);
+			}
+		});
+
+		stream.on('resume', function () {
+			resumed = true;
+		});
+
+		stream.on('end', function () {
+			servLimited.close();
+			mod_assert.ok(resumed);
+			next();
+		});
+	});
+}
+
+function etagMismatch(_, next)
+{
+	var servLimited = mod_restify.createServer({
+		'name': 'tsst.httpcat.js-timeout'
+	});
+
+	var resLength = 1000000;
+
+	/*
+	 * Server that (1) can handle resumes, (2) doesn't send all the
+	 * data at once, (3) emits different etags each time.
+	 */
+	var etagNumber = 0;
+	servLimited.get('/.*', function (req, res, snext) {
+		var range = req.headers['range'];
+		/*JSSTYLED*/
+		var regex = /bytes=(\d+)-/;
+		var match = range.match(regex);
+		var startAt = match[1];
+		var sentBytes = parseInt(startAt, 10);
+
+		res.writeHead(200, {
+			'content-length': resLength - sentBytes,
+			'etag': etagNumber
+		});
+		++etagNumber;
+
+		res.socket.setTimeout(100);
+
+		function writeData() {
+			var numBytes = Math.min(1000, resLength - sentBytes);
+			res.write(new Buffer(numBytes));
+			sentBytes += numBytes;
+			if (sentBytes === resLength) {
+				res.end();
+				snext();
+			} else {
+				process.nextTick(writeData);
+			}
+		}
+		writeData();
+	});
+
+	servLimited.listen(8127, function () {
+		stream = new mod_httpcat.HttpCatStream({
+			'clients': cache,
+			'log': log.child({ 'component': 'HttpCatStream1' })
+		});
+
+		stream.end({
+			'url': 'http://localhost:8127',
+			'uri': '/file1'
+		});
+
+		/*
+		 * Client pauses the stream to artificially induce a timeout.
+		 */
+		var pausedOnce = false;
+		stream.on('data', function (chunk) {
+			if (!pausedOnce) {
+				stream.pause();
+				pausedOnce = true;
+				setTimeout(function () {
+					stream.resume();
+				}, 500);
+			}
+		});
+
+		stream.on('error', function (err) {
+			servLimited.close();
+			next();
+		});
+
+		stream.on('end', function () {
+			mod_assert.fail('Failed to throw etag mismatch error');
+			servLimited.close();
+			next();
+		});
+	});
+}
+
+function md5Mismatch(_, next)
+{
+	var servLimited = mod_restify.createServer({
+		'name': 'tsst.httpcat.js-timeout'
+	});
+
+	/*
+	 * Server that sends a bad etag.
+	 */
+	servLimited.get('/.*', function (req, res, snext) {
+		res.writeHead(200, {
+			'content-length': 26,
+			'content-md5': 'foobarbaz'
+		});
+		res.end('abcdefghijklmnopqrstuvwxyz');
+		res.end();
+		snext();
+	});
+
+	servLimited.listen(8127, function () {
+		stream = new mod_httpcat.HttpCatStream({
+			'clients': cache,
+			'log': log.child({ 'component': 'HttpCatStream1' })
+		});
+
+		stream.end({
+			'url': 'http://localhost:8127',
+			'uri': '/file1'
+		});
+
+		stream.on('error', function (err) {
+			servLimited.close();
+			next();
+		});
+
+		stream.on('end', function () {
+			mod_assert.fail('Failed to throw error');
+			servLimited.close();
+			next();
+		});
+	});
+}
+
 function teardown(_, next)
 {
 	log.info('tearDown');
@@ -169,6 +371,9 @@ mod_vasync.pipeline({ 'funcs': [
     runSuccess,
     runError,
     pause,
+    resume,
+    etagMismatch,
+    md5Mismatch,
     teardown
 ] }, function (err) {
 	if (err) {
