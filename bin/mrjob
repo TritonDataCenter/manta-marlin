@@ -49,6 +49,7 @@ var msUsage = [
     '       mrjob inputs   jobid',
     '       mrjob log      jobid',
     '       mrjob outputs  jobid',
+    '       mrjob retries  jobid',
     '       mrjob taskdone [-c code] [-e message] [-o noutput] taskid',
     '       mrjob tocommit taskid'
 ].join('\n');
@@ -198,6 +199,7 @@ var msCommands = {
     'failed': cmdFailed,
     'get': cmdGet,
     'log': cmdLog,
+    'retries': cmdRetries,
     'taskdone': cmdTaskdone,
     'tocommit': cmdTocommit
 };
@@ -249,6 +251,16 @@ var msFieldsJobs = {
 	'width': 4,
 	'align': 'right'
     },
+    'ncommitted': {
+	'label': 'NCOMMITTED',
+	'width': 4,
+	'align': 'right'
+    },
+    'ndispatched': {
+	'label': 'NDISPATCHED',
+	'width': 4,
+	'align': 'right'
+    },
     'nerr': {
 	'label': 'NERR',
 	'width': 4,
@@ -269,6 +281,11 @@ var msFieldsJobs = {
 	'width': 3,
 	'align': 'right',
 	'doc': 'number of phases'
+    },
+    'nretries': {
+	'label': 'NRETRIES',
+	'width': 4,
+	'align': 'right'
     },
     'ntasks': {
 	'label': 'NTASKS',
@@ -707,6 +724,33 @@ function cmdErrors()
 	});
 }
 
+function cmdRetries()
+{
+	if (process.argv.length != 4)
+		usage();
+
+	var jobid = process.argv[3];
+
+	clientInit(function (api) {
+		var rv = api.jobFetchRetries(jobid);
+
+		rv.on('error', function (err) {
+			console.error('%s: job "%s": failed to list errors: %s',
+			    msArg0, jobid, err.message);
+			process.exit(1);
+		});
+
+		rv.on('err', function (error) {
+			console.log('%s: %s (retried)', error['what'],
+			    error['message']);
+			if (error['stderr'])
+			    console.log('    (see %s)', error['stderr']);
+		});
+
+		rv.on('end', clientFini);
+	});
+}
+
 function cmdFailed()
 {
 	if (process.argv.length != 4)
@@ -871,8 +915,15 @@ function makeJobRow(job, mtime)
 	    'LOGIN': job['auth']['login'],
 	    'MODIFIED': mtime || '-',
 	    'NASGN': job['stats'] ? job['stats']['nAssigns'] : '-',
+	    'NCOMMITTED': job['stats'] ?
+	        job['stats']['nTasksCommittedOk'] +
+		job['stats']['nTasksCommittedFail'] : '-',
+	    'NDISPATCHED': job['stats'] ?
+	        job['stats']['nTasksDispatched'] : '-',
 	    'NERR': job['stats'] ? job['stats']['nErrors'] : '-',
 	    'NINREAD': job['stats'] ? job['stats']['nInputsRead'] : '-',
+	    'NRETRIES': job['stats'] && job['stats']['nRetries'] !== undefined ?
+	        job['stats']['nRetries'] : 0,
 	    'NOUT': job['stats'] ? job['stats']['nJobOutputs'] : '-',
 	    'NPH': (job['phases'] || []).length,
 	    'NTASKS': job['stats'] ? job['stats']['nTasksDispatched'] : '-',
@@ -1004,11 +1055,15 @@ function printJobDetails(records)
 	    row['MODIFIED']);
 	println('%-7s %-36s "%s"', 'USER', job['auth']['uuid'],
 	    job['auth']['login']);
-	println('%-7s %-36s %d output, %d errors, %d tasks', 'STATE',
-	    job['state'],
+	println('%-7s %-9s %d outputs, %d errors, %d retries, %d tasks, ' +
+	    '%d committed', 'STATE', job['state'],
 	    job['stats'] ? job['stats']['nJobOutputs'] : '-',
 	    job['stats'] ? job['stats']['nErrors'] : '-',
-	    job['stats'] ? job['stats']['nTasksDispatched'] : '-');
+	    job['stats'] && job['stats']['nRetries'] !== undefined ?
+	    job['stats']['nRetries'] : 0,
+	    job['stats'] ? job['stats']['nTasksDispatched'] : '-',
+	    job['stats'] ? job['stats']['nTasksCommittedOk'] +
+	        job['stats']['nTasksCommittedFail'] : '-');
 
 	if (records['task'].length < msRecordLimit)
 		println('%-7s (%d uncommitted done, %d intermediate objects)',

@@ -123,17 +123,13 @@ exports.jobMmpipeNamed = {
 	} ]
     },
     'inputs': [
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj2',
-	'/poseidon/stor/obj3'
+	'/poseidon/stor/obj1'
     ],
     'timeout': 15 * 1000,
     'expected_outputs': [
-	'/poseidon/stor/extra/out1',
-	'/poseidon/stor/extra/out1',
 	'/poseidon/stor/extra/out1'
     ],
-    'expected_output_content': [ 'bar\n', 'bar\n', 'bar\n' ],
+    'expected_output_content': [ 'bar\n' ],
     'errors': []
 };
 
@@ -521,7 +517,7 @@ function initJobs()
 
 initJobs();
 
-function jobTestRun(api, testspec, callback)
+function jobTestRun(api, testspec, options, callback)
 {
 	jobSubmit(api, testspec, function (err, jobid) {
 		if (err) {
@@ -529,7 +525,7 @@ function jobTestRun(api, testspec, callback)
 			return;
 		}
 
-		jobTestVerifyTimeout(api, testspec, jobid, callback);
+		jobTestVerifyTimeout(api, testspec, jobid, options, callback);
 	});
 }
 
@@ -711,13 +707,13 @@ function jobSubmit(api, testspec, callback)
 	});
 }
 
-function jobTestVerifyTimeout(api, testspec, jobid, callback)
+function jobTestVerifyTimeout(api, testspec, jobid, options, callback)
 {
 	var interval = testspec['timeout'];
 
 	mod_testcommon.timedCheck(Math.ceil(interval / 1000), 1000,
 	    function (subcallback) {
-		jobTestVerify(api, testspec, jobid, function (err) {
+		jobTestVerify(api, testspec, jobid, options, function (err) {
 			if (err)
 				err.noRetry = !err.retry;
 			subcallback(err);
@@ -725,10 +721,11 @@ function jobTestVerifyTimeout(api, testspec, jobid, callback)
 	    }, callback);
 }
 
-function jobTestVerify(api, testspec, jobid, callback)
+function jobTestVerify(api, testspec, jobid, options, callback)
 {
 	mod_vasync.pipeline({
 	    'arg': {
+		'strict': options['strict'],
 		'api': api,
 		'testspec': testspec,
 		'jobid': jobid,
@@ -841,6 +838,7 @@ function jobTestVerifyResultSync(verify)
 	var outputs = verify['outputs'];
 	var errors = verify['errors'];
 	var testspec = verify['testspec'];
+	var strict = verify['strict'];
 
 	/* verify jobSubmit, jobFetch, jobFetchInputs */
 	mod_assert.deepEqual(testspec['job']['phases'], job['phases']);
@@ -870,6 +868,11 @@ function jobTestVerifyResultSync(verify)
 	}
 
 	/* Check job execution and jobFetchErrors */
+	if (!strict)
+		/* Allow retried errors in non-strict mode. */
+		errors = errors.filter(
+		    function (error) { return (!error['retried']); });
+
 	mod_assert.equal(errors.length, testspec['errors'].length);
 	testspec['errors'].forEach(function (expected_error, idx) {
 		var okay = false;
@@ -893,15 +896,24 @@ function jobTestVerifyResultSync(verify)
 			    idx, expected_error, errors));
 	});
 
-	/* Check stat counters. */
+	/*
+	 * Check stat counters. They're only valid if the worker didn't crash,
+	 * and the worker is not allowed to crash in strict mode.
+	 */
 	var stats = job['stats'];
-	mod_assert.equal(stats['nAssigns'], 1);
-	mod_assert.equal(stats['nInputsRead'], testspec['inputs'].length);
-	mod_assert.equal(stats['nJobOutputs'], outputs.length);
 
-	if (job['timeCancelled'] === undefined)
-		mod_assert.ok(stats['nTasksDispatched'],
-		    stats['nTasksCommittedOk'] + stats['nTasksCommittedFail']);
+	if (strict)
+		mod_assert.equal(stats['nAssigns'], 1);
+
+	if (stats['nAssigns'] == 1) {
+		mod_assert.equal(stats['nInputsRead'],
+		    testspec['inputs'].length);
+		mod_assert.equal(stats['nJobOutputs'], outputs.length);
+		if (job['timeCancelled'] === undefined)
+			mod_assert.ok(stats['nTasksDispatched'],
+			    stats['nTasksCommittedOk'] +
+			    stats['nTasksCommittedFail']);
+	}
 
 	/* Check output content */
 	if (!testspec['expected_output_content'])
@@ -910,19 +922,17 @@ function jobTestVerifyResultSync(verify)
 	var bodies = verify['content'];
 	var expected = testspec['expected_output_content'].map(
 	    function (o) { return (o.replace(/\$jobid/g, verify['jobid'])); });
-	var j;
-	for (i = 0; i < expected.length; i++) {
-		for (j = 0; j < bodies.length; j++) {
-			if (expected[i] == bodies[j])
-				break;
-		}
+	bodies.sort();
+	expected.sort();
 
-		if (j == bodies.length)
-			log.fatal('expected content not found',
-			    expected[i], bodies);
-		mod_assert.ok(j < bodies.length, 'expected content not found');
-		log.info('output matched', bodies[j]);
-		bodies.splice(j, 1);
+	mod_assert.equal(bodies.length, expected.length,
+	    'wrong number of output files');
+
+	for (i = 0; i < expected.length; i++) {
+		mod_assert.equal(bodies[i], expected[i],
+		    sprintf('output "%d" didn\'t match ' +
+		        '(expected "%s", got "%s")', i, expected[i],
+			bodies[i]));
 	}
 }
 
@@ -1018,7 +1028,11 @@ function populateData(manta, keys, callback)
 
 		    manta.put(key, stream, { 'size': data.length },
 		        function (err) {
-				if (err)
+				/* Work around node-manta#24. */
+				if (err && err.name == 'ConcurrentRequestError')
+					log.warn(
+					    'ignoring ConcurrentRequestError');
+				else if (err)
 					final_err = err;
 
 				subcallback();

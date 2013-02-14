@@ -2,13 +2,40 @@
  * tst.concurrent.js: tests concurrent jobs
  */
 
-var vasync = require('vasync');
+var mod_assert = require('assert');
+var mod_getopt = require('posix-getopt');
+var mod_vasync = require('vasync');
 
 var test = require('../common');
 var jobs = require('./jobs');
 var client;
 
+var strict = true;
 var tests = jobs.jobsAll;
+var concurrency = 5;
+
+var parser, option;
+parser = new mod_getopt.BasicParser('Sc:', process.argv);
+
+while ((option = parser.getopt()) !== undefined) {
+	switch (option.option) {
+	case 'S':
+		strict = false;
+		break;
+
+	case 'c':
+		concurrency = parseInt(option.optarg, 10);
+		mod_assert.ok(!isNaN(concurrency),
+		    '-c argument must be a number');
+		break;
+
+	default:
+	    /* error message already emitted by getopt */
+	    mod_assert.equal('?', option.option);
+	    process.exit(2);
+	    break;
+	}
+}
 
 test.pipeline({ 'funcs': [
     setup,
@@ -36,19 +63,25 @@ function runTests(_, next)
 		testjob['timeout'] = timeout;
 	});
 
-	vasync.forEachParallel({
-	    'inputs': tests,
-	    'func': function (testjob, callback) {
-		jobs.populateData(client.manta, testjob['inputs'],
-		    function (err) {
-			if (err) {
-			    next(err);
-			    return;
-			}
-			jobs.jobTestRun(client, testjob, callback);
-		    });
-	    }
-	}, next);
+	var queue = mod_vasync.queue(runOneTest, concurrency);
+	tests.forEach(function (testcase) {
+		queue.push(testcase, function (err) {
+			if (err)
+				next(err);
+		});
+	});
+	queue.drain = next;
+}
+
+function runOneTest(testjob, callback)
+{
+	jobs.populateData(client.manta, testjob['inputs'], function (err) {
+		if (err)
+			callback(err);
+		else
+			jobs.jobTestRun(client, testjob, { 'strict': strict },
+			    callback);
+	});
 }
 
 function teardown(_, next)

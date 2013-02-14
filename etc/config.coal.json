@@ -49,6 +49,7 @@
 		"maxPendingLocates": 100,
 		"maxPendingPuts": 100,
 		"maxRecordsPerQuery": 1000,
+		"maxTaskRetries": 2,
 		"timeAgentPoll": 60000,
 		"timePoll": 200,
 		"timeJobAbandon": 30000,

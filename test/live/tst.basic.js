@@ -2,14 +2,35 @@
  * tst.basic.js: basic functional testing
  */
 
+var mod_assert = require('assert');
+var mod_getopt = require('posix-getopt');
+
 var test = require('../common');
 var jobs = require('./jobs');
 var client;
 
 var funcs = [ setup ];
+var strict = true;
 
-if (process.argv.length > 2) {
-	process.argv.slice(2).forEach(function (name) {
+var parser, option;
+
+parser = new mod_getopt.BasicParser('S', process.argv);
+
+while ((option = parser.getopt()) !== undefined) {
+	switch (option.option) {
+	case 'S':
+		strict = false;
+		break;
+
+	default:
+	    /* error message already emitted by getopt */
+	    mod_assert.equal('?', option.option);
+	    break;
+	}
+}
+
+if (process.argv.length > parser.optind()) {
+	process.argv.slice(parser.optind()).forEach(function (name) {
 		if (!jobs.hasOwnProperty(name)) {
 			console.error('no such test: %s', name);
 			process.exit(1);
@@ -43,7 +64,7 @@ function runTest(testjob, _, next)
 			return;
 		}
 
-		jobs.jobTestRun(client, testjob, next);
+		jobs.jobTestRun(client, testjob, { 'strict': strict }, next);
 	});
 }
 
