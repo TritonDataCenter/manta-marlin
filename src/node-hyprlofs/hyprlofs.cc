@@ -443,6 +443,8 @@ HyprlofsFilesystem::eioMountRun(uv_work_t *req)
 void
 HyprlofsFilesystem::doIoctl(int cmd, void *arg)
 {
+	int flags;
+
 	if (this->hfs_fd == -1) {
 		if (hyprlofs_debug || this->hfs_debug)
 			(void) fprintf(stderr, "    hyprlofs open (%s)\n",
@@ -458,6 +460,11 @@ HyprlofsFilesystem::doIoctl(int cmd, void *arg)
 				    "failed: %s\n", this->hfs_label,
 				    strerror(errno));
 			return;
+		}
+
+		if ((flags = fcntl(this->hfs_fd, F_GETFD)) != -1) {
+			flags |= FD_CLOEXEC;
+			(void) fcntl(this->hfs_fd, F_SETFD, flags);
 		}
 	}
 
