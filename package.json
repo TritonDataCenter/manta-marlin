@@ -30,7 +30,7 @@
 		"vasync": "1.3.3",
 		"verror": "1.3.3",
 		"wordwrap": "0.0.2",
-		"zsock": "1.3.0"
+		"zsock": "1.3.1"
 	},
 	"optionalDependencies": {
 		"hyprlofs": "0.0.1",
