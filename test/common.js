@@ -109,15 +109,15 @@ function resetBucket(client, bucket, options, callback)
 
 function loginLookup(login, callback)
 {
+	if (mahi_connecting) {
+		mahi_waiters.push(function () {
+			loginLookup(login, callback);
+		});
+
+		return;
+	}
+
 	if (!mahi_client) {
-		if (mahi_connecting) {
-			mahi_waiters.push(function () {
-				loginLookup(login, callback);
-			});
-
-			return;
-		}
-
 		if (!process.env['MAHI_URL']) {
 			process.nextTick(function () {
 				callback(new VError('MAHI_URL must be ' +
@@ -151,6 +151,7 @@ function loginLookup(login, callback)
 
 		mahi_client.once('connect', function () {
 			log.info('mahi connected');
+			mahi_connecting = false;
 			mahi_client.removeAllListeners('error');
 			loginLookup(login, callback);
 
