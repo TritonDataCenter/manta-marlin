@@ -931,24 +931,29 @@ function jobTestVerifyResultSync(verify)
 			    idx, expected_error, errors));
 	});
 
-	/*
-	 * Check stat counters. They're only valid if the worker didn't crash,
-	 * and the worker is not allowed to crash in strict mode.
-	 */
+	/* Check stat counters. */
 	var stats = job['stats'];
 
-	if (strict)
+	if (strict) {
 		mod_assert.equal(stats['nAssigns'], 1);
-
-	if (stats['nAssigns'] == 1) {
-		mod_assert.equal(stats['nInputsRead'],
-		    testspec['inputs'].length);
-		mod_assert.equal(stats['nJobOutputs'], outputs.length);
-		if (job['timeCancelled'] === undefined)
-			mod_assert.ok(stats['nTasksDispatched'],
-			    stats['nTasksCommittedOk'] +
-			    stats['nTasksCommittedFail']);
+		mod_assert.equal(stats['nRetries'], 0);
 	}
+
+	mod_assert.equal(stats['nErrors'], verify['errors'].length);
+	mod_assert.equal(stats['nInputsRead'], verify['inputs'].length);
+	mod_assert.equal(stats['nJobOutputs'], verify['outputs'].length);
+
+	if (job['timeCancelled'] === undefined)
+		mod_assert.ok(stats['nTasksDispatched'],
+		    stats['nTasksCommittedOk'] + stats['nTasksCommittedFail']);
+
+	/*
+	 * For every failed task, there should be either a retry or an error.
+	 * But there may be errors for inputs that were never dispatched as
+	 * tasks (e.g., because the object didn't exist).
+	 */
+	mod_assert.ok(stats['nTasksCommittedFail'] <=
+	    stats['nRetries'] + stats['nErrors']);
 
 	/* Check output content */
 	if (!testspec['expected_output_content'])
