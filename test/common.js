@@ -13,7 +13,7 @@ var mod_path = require('path');
 var mod_url = require('url');
 
 var mod_bunyan = require('bunyan');
-var mod_redis = require('redis');
+var mod_libmanta = require('libmanta');
 var mod_vasync = require('vasync');
 var mod_verror = require('verror');
 
@@ -42,8 +42,9 @@ exports.exnAsync = exnAsync;
 exports.testname = testname;
 exports.log = log;
 
-var login_cache = {};
-var redis_client;
+var mahi_client;
+var mahi_connecting = false;
+var mahi_waiters = [];
 
 function setup(callback)
 {
@@ -88,8 +89,8 @@ function setup(callback)
 
 function teardown(api, callback)
 {
-	if (redis_client)
-		redis_client.quit();
+	if (mahi_client)
+		mahi_client.close();
 	api.close();
 	callback();
 }
@@ -108,15 +109,15 @@ function resetBucket(client, bucket, options, callback)
 
 function loginLookup(login, callback)
 {
-	if (login_cache.hasOwnProperty(login)) {
-		process.nextTick(function () {
-			callback(null, login_cache[login]);
-		});
+	if (!mahi_client) {
+		if (mahi_connecting) {
+			mahi_waiters.push(function () {
+				loginLookup(login, callback);
+			});
 
-		return;
-	}
+			return;
+		}
 
-	if (!redis_client) {
 		if (!process.env['MAHI_URL']) {
 			process.nextTick(function () {
 				callback(new VError('MAHI_URL must be ' +
@@ -127,50 +128,48 @@ function loginLookup(login, callback)
 		}
 
 		var conf = mod_url.parse(process.env['MAHI_URL']);
-		log.info('connecting to redis', conf);
-		redis_client = mod_redis.createClient(
-		    parseInt(conf['port'], 10), conf['hostname'], {});
+		log.info('connecting to mahi', conf);
+		mahi_connecting = true;
+		mahi_client = mod_libmanta.createMahiClient({
+		    'host': conf['hostname'],
+		    'port': parseInt(conf['port'], 10),
+		    'log': log.child({ 'component': 'MahiClient' })
+		});
 
-		redis_client.once('error', function (err) {
+		mahi_client.once('error', function (err) {
 			var verr = new VError(err, 'failed to lookup login ' +
 			    '"%s"', login);
-			redis_client = undefined;
+			mahi_client = undefined;
 			log.warn(verr);
 			callback(verr);
 		});
 
-		redis_client.once('end', function () {
-			log.warn('redis connection closed');
-			redis_client = undefined;
+		mahi_client.once('close', function () {
+			log.warn('mahi connection closed');
+			mahi_client = undefined;
 		});
 
-		redis_client.once('ready', function () {
-			log.info('redis connected');
-			redis_client.removeAllListeners('error');
+		mahi_client.once('connect', function () {
+			log.info('mahi connected');
+			mahi_client.removeAllListeners('error');
+			loginLookup(login, callback);
+
+			var w = mahi_waiters;
+			mahi_waiters = [];
+			w.forEach(function (cb) { cb(); });
 		});
 
-		/*
-		 * We fall-through since the client will queue our requests
-		 * until it's ready.
-		 */
+		return;
 	}
 
-	redis_client.get('/login/' + login, function (err, result) {
+	mahi_client.userFromLogin(login, function (err, user) {
 		if (err) {
 			callback(err);
 			return;
 		}
 
-		var parsed = JSON.parse(result);
-
-		if (!parsed) {
-			callback(new VError('no such login: "%s"', login));
-			return;
-		}
-
-		log.info('user "%s" has uuid', login, parsed['uuid']);
-		login_cache[login] = parsed['uuid'];
-		callback(null, parsed['uuid']);
+		log.info('user "%s" has uuid', login, user['uuid']);
+		callback(null, user['uuid']);
 	});
 }
 

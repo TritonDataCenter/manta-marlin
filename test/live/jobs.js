@@ -369,6 +369,40 @@ exports.jobMcore = {
     } ]
 };
 
+exports.jobMerrors = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'wc'
+	} ]
+    },
+    'inputs': [
+	'/notavalidusername/stor/obj1',
+	'/poseidon/stor/notavalidfilename',
+	'/poseidon/stor/obj1'
+    ],
+    'timeout': 20 * 1000,
+    'expected_outputs': [
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+    ],
+    'expected_output_content': [ ' 0  5 50\n' ],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/notavalidusername/stor/obj1"',
+	'key': '/notavalidusername/stor/obj1',
+	'p0key': '/notavalidusername/stor/obj1',
+	'code': 'EJ_NOENT',
+	'message': 'no such object: "/notavalidusername/stor/obj1"'
+    }, {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/poseidon/stor/notavalidfilename"',
+	'key': '/poseidon/stor/notavalidfilename',
+	'p0key': '/poseidon/stor/notavalidfilename',
+	'code': 'EJ_NOENT',
+	'message': 'no such object: "/poseidon/stor/notavalidfilename"'
+    } ]
+};
+
 exports.jobR0inputs = {
     'job': {
 	'phases': [ {
@@ -492,6 +526,7 @@ exports.jobsAll = [
     exports.jobMcancel,
     exports.jobMasset,
     exports.jobMcore,
+    exports.jobMerrors,
     exports.jobMenv,
     exports.jobRenv
 ];
@@ -1040,7 +1075,11 @@ function populateData(manta, keys, callback)
 	    }
 	});
 
-	keys.forEach(function (key) { queue.push(key); });
+	keys.forEach(function (key) {
+		if (key.indexOf('notavalid') == -1)
+			queue.push(key);
+	});
+
 	queue.drain = function () { callback(final_err); };
 }
 
