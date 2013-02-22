@@ -12,7 +12,7 @@ shopt -s xpg_echo
 cat_arg0=$(basename $0)			# canonical name of "catest"
 cat_outbase="catest.$$"			# output directory name
 cat_tstdir="test"			# top-level test directory
-cat_node="node"				# relative path to "node"
+cat_node="$PWD/build/node/bin/node"	# relative path to "node"
 
 #
 # Options and arguments
@@ -84,12 +84,12 @@ TEST OUTPUT
 
     Per-test output is placed in a new temporary directory inside the directory
     specified by the -o option, or /var/tmp if -o is not specified.
-    
+
     Within the output directory will be a directory for each failed test which
     includes a README describing why the test failed (e.g., exited non-zero), a
     copy of the test file itself, the actual stdout and stderr of the test, and
     the expected stdout of the test (if specified).
-    
+
     If -k is specified, the output directory will also include a directory for
     each test that passed including the stdout and stderr from the test.
 
@@ -205,7 +205,7 @@ function execute_test
 
 	case "$ext" in
 	"sh") 	EXEC=bash ;;
-	"js") 	EXEC=node ;;
+	"js") 	EXEC=$cat_node ;;
 	*) 	faildir=$(cleanup_test "$test_odir" "failure")
 		emit_failure "$test_label" "$faildir" "unknown file extension"
 		return 0

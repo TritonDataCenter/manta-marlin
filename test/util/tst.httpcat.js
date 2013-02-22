@@ -265,7 +265,14 @@ function etagMismatch(_, next)
 
 		function writeData() {
 			var numBytes = Math.min(1000, resLength - sentBytes);
-			res.write(new Buffer(numBytes));
+			try {
+				res.write(new Buffer(numBytes));
+			} catch (e) {
+				// If writing to the result fails, that's
+				// alright.  We expect errors from the client.
+				res.end();
+				snext();
+			}
 			sentBytes += numBytes;
 			if (sentBytes === resLength) {
 				res.end();
