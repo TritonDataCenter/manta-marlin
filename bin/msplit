@@ -8,7 +8,6 @@ var mod_carrier = require('carrier');
 var mod_crypto = require('crypto');
 var mod_fs = require('fs');
 var mod_getopt = require('posix-getopt');
-var mod_json = require('jsontool');
 var mod_manta = require('manta');
 var mod_mautil = require('../lib/util');
 var mod_uuid = require('node-uuid');
@@ -270,8 +269,11 @@ function parseLikeJson(line, opts)
 	var obj = parseJson(line);
 	var key = '';
 	for (var i = 0; i < fields.length; ++i) {
-		var lookup = mod_json.parseLookup(fields[i]);
-		var datum = mod_json.lookupDatum(obj, lookup);
+		var parts = fields[i].split('.');
+		var datum = obj[parts[0]];
+		for (var j = 1; datum && j < parts.length; ++ j) {
+			datum = datum[parts[j]];
+		}
 
 		// Taking a page out of cut's playbook. if the field can't be
 		// found we simply don't use it.

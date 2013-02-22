@@ -47,7 +47,6 @@ JS_FILES	+= \
     bin/mpipe	\
     bin/mrjob 	\
     bin/msplit	\
-    bin/msplit-json	\
     bin/mtee	\
     tools/mrpound
 
