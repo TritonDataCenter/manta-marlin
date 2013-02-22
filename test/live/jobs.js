@@ -19,6 +19,9 @@ var mod_verror = require('verror');
 
 var mod_testcommon = require('../common');
 
+/* jsl:import ../../lib/errors.js */
+require('../../lib/errors');
+
 var sprintf = mod_extsprintf.sprintf;
 var VError = mod_verror.VError;
 var exnAsync = mod_testcommon.exnAsync;
@@ -307,6 +310,29 @@ exports.jobMasset = {
     'errors': []
 };
 
+exports.jobMerrorAssetMissing = {
+    'job': {
+	'phases': [ {
+	    'assets': [ '/poseidon/stor/notavalidasset' ],
+	    'type': 'storage-map',
+	    'exec': 'echo "should not ever get here"'
+	} ]
+    },
+    'inputs': [ '/poseidon/stor/obj1' ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/poseidon/stor/obj1"',
+	'key': '/poseidon/stor/obj1',
+	'p0key': '/poseidon/stor/obj1',
+	'code': EM_TASKINIT,
+	'message': 'failed to dispatch task: first of 1 error: error ' +
+	    'retrieving asset "/poseidon/stor/notavalidasset" ' +
+	    '(status code 404)'
+    } ]
+};
+
 exports.jobM0bi = {
     'job': {
 	'phases': [ { 'type': 'storage-map', 'exec': 'wc' } ]
@@ -364,12 +390,12 @@ exports.jobMcore = {
 	'what': 'phase 0: map input "/poseidon/stor/obj1"',
 	'key': '/poseidon/stor/obj1',
 	'p0key': '/poseidon/stor/obj1',
-	'code': 'EJ_USER',
+	'code': EM_USERTASK,
 	'message': 'user command or child process dumped core'
     } ]
 };
 
-exports.jobMerrors = {
+exports.jobMerrorsDispatch0 = {
     'job': {
 	'phases': [ {
 	    'type': 'storage-map',
@@ -377,8 +403,14 @@ exports.jobMerrors = {
 	} ]
     },
     'inputs': [
+	/*
+	 * XXX We should also have tests for "/", "/poseidon", "/poseidon/stor",
+	 * "/poseidon/jobs", and other special paths, but at the moment these
+	 * don't do the right thing.  See MANTA-401.
+	 */
 	'/notavalidusername/stor/obj1',
 	'/poseidon/stor/notavalidfilename',
+	'/poseidon/stor/mydir',
 	'/poseidon/stor/obj1'
     ],
     'timeout': 20 * 1000,
@@ -391,15 +423,105 @@ exports.jobMerrors = {
 	'what': 'phase 0: map input "/notavalidusername/stor/obj1"',
 	'key': '/notavalidusername/stor/obj1',
 	'p0key': '/notavalidusername/stor/obj1',
-	'code': 'EJ_NOENT',
+	'code': EM_RESOURCENOTFOUND,
 	'message': 'no such object: "/notavalidusername/stor/obj1"'
     }, {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/poseidon/stor/notavalidfilename"',
 	'key': '/poseidon/stor/notavalidfilename',
 	'p0key': '/poseidon/stor/notavalidfilename',
-	'code': 'EJ_NOENT',
+	'code': EM_RESOURCENOTFOUND,
 	'message': 'no such object: "/poseidon/stor/notavalidfilename"'
+    }, {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/poseidon/stor/mydir"',
+	'key': '/poseidon/stor/mydir',
+	'p0key': '/poseidon/stor/mydir',
+	'code': EM_INVALIDARGUMENT,
+	'message': 'objects of type "directory" are not supported: ' +
+	    '"/poseidon/stor/mydir"'
+    } ]
+};
+
+/*
+ * This job behaves just like jobMerrorsDispatch0, but makes sure that this also
+ * works when these same errors occur in phases > 0, which goes through a
+ * slightly different code path.
+ *
+ * The job inputs themselves aren't used by the job, but those same inputs are
+ * referenced by the "mcat" phase, so the test suite has to make sure they're
+ * present.
+ *
+ * The job will include errors that match the ones in jobMerrorsDispatch0, for
+ * the same reason as in that test case, but here we're mostly interested in
+ * checking the other errors.
+ */
+exports.jobMerrorsDispatch1 = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'mcat ' + exports.jobMerrorsDispatch0['inputs'].join(' ')
+	}, {
+	    'type': 'storage-map',
+	    'exec': 'wc'
+	} ]
+    },
+    'inputs': exports.jobMerrorsDispatch0['inputs'],
+    'timeout': 30 * 1000,
+    'expected_outputs': [
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.1\./
+    ],
+    'expected_output_content': [ ' 0  5 50\n' ],
+    'errors': exports.jobMerrorsDispatch0['errors'].concat([ {
+	'phaseNum': '1',
+	'what': 'phase 1: map input "/notavalidusername/stor/obj1" ' +
+	    '(from job input "/poseidon/stor/obj1")',
+	'key': '/notavalidusername/stor/obj1',
+	'p0key': '/poseidon/stor/obj1',
+	'code': EM_RESOURCENOTFOUND,
+	'message': 'no such object: "/notavalidusername/stor/obj1"'
+    }, {
+	'phaseNum': '1',
+	'what': 'phase 1: map input "/poseidon/stor/notavalidfilename" ' +
+	    '(from job input "/poseidon/stor/obj1")',
+	'key': '/poseidon/stor/notavalidfilename',
+	'p0key': '/poseidon/stor/obj1',
+	'code': EM_RESOURCENOTFOUND,
+	'message': 'no such object: "/poseidon/stor/notavalidfilename"'
+    }, {
+	'phaseNum': '1',
+	'what': 'phase 1: map input "/poseidon/stor/mydir" ' +
+	    '(from job input "/poseidon/stor/obj1")',
+	'key': '/poseidon/stor/mydir',
+	'p0key': '/poseidon/stor/obj1',
+	'code': EM_INVALIDARGUMENT,
+	'message': 'objects of type "directory" are not supported: ' +
+	    '"/poseidon/stor/mydir"'
+    } ])
+};
+
+exports.jobMerrorBadReducer = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'mpipe -r1'
+	}, {
+	    'type': 'reduce',
+	    'exec': 'wc'
+	} ]
+    },
+    'inputs': [ '/poseidon/stor/obj1' ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [ /\/poseidon\/jobs\/.*\/reduce.1./ ],
+    'errors': [ {
+	'phaseNum': '1',
+	'what': new RegExp('phase 1: map input ' +
+	    '"/poseidon/jobs/.*/stor/poseidon/stor/obj1.0..*" ' +
+	    '\\(from job input "/poseidon/stor/obj1"\\)'),
+	'key': new RegExp('/poseidon/jobs/.*/stor/poseidon/stor/obj1.0..*'),
+	'p0key': '/poseidon/stor/obj1',
+	'code': EM_INVALIDARGUMENT,
+	'message': 'reducer "1" specified, but only 1 reducers exist'
     } ]
 };
 
@@ -526,7 +648,10 @@ exports.jobsAll = [
     exports.jobMcancel,
     exports.jobMasset,
     exports.jobMcore,
-    exports.jobMerrors,
+    exports.jobMerrorsDispatch0,
+    exports.jobMerrorsDispatch1,
+    exports.jobMerrorAssetMissing,
+    exports.jobMerrorBadReducer,
     exports.jobMenv,
     exports.jobRenv
 ];
@@ -871,7 +996,7 @@ function jobTestVerifyResultSync(verify)
 	var job = verify['job'];
 	var inputs = verify['inputs'];
 	var outputs = verify['outputs'];
-	var errors = verify['errors'];
+	var joberrors = verify['errors'];
 	var testspec = verify['testspec'];
 	var strict = verify['strict'];
 
@@ -905,18 +1030,25 @@ function jobTestVerifyResultSync(verify)
 	/* Check job execution and jobFetchErrors */
 	if (!strict)
 		/* Allow retried errors in non-strict mode. */
-		errors = errors.filter(
+		joberrors = joberrors.filter(
 		    function (error) { return (!error['retried']); });
 
-	mod_assert.equal(errors.length, testspec['errors'].length);
+	mod_assert.equal(joberrors.length, testspec['errors'].length);
 	testspec['errors'].forEach(function (expected_error, idx) {
 		var okay = false;
 
-		errors.forEach(function (actual_error) {
+		joberrors.forEach(function (actual_error) {
 			var match = true;
 
 			for (var k in expected_error) {
-				if (actual_error[k] !== expected_error[k]) {
+				if (typeof (expected_error[k]) == 'string' &&
+				    actual_error[k] !== expected_error[k]) {
+					match = false;
+					break;
+				}
+
+				if (typeof (expected_error[k]) != 'string' &&
+				    !expected_error[k].test(actual_error[k])) {
 					match = false;
 					break;
 				}
@@ -928,7 +1060,7 @@ function jobTestVerifyResultSync(verify)
 
 		if (!okay)
 			throw (new VError('no match for error %d: %j %j',
-			    idx, expected_error, errors));
+			    idx, expected_error, joberrors));
 	});
 
 	/* Check stat counters. */
@@ -1054,6 +1186,20 @@ function populateData(manta, keys, callback)
 		    if (final_err) {
 			    subcallback();
 			    return;
+		    }
+
+		    if (mod_jsprim.endsWith(key, 'dir')) {
+			manta.mkdir(key, function (err) {
+				/* Work around node-manta#24. */
+				if (err && err.name == 'ConcurrentRequestError')
+					log.warn(
+					    'ignoring ConcurrentRequestError');
+				else if (err)
+					final_err = err;
+
+				subcallback();
+			});
+			return;
 		    }
 
 		    var data;
