@@ -205,7 +205,8 @@ var msCommands = {
 };
 
 /* default set of columns for list-of-jobs */
-var msColsJobs = [ 'JobId', 'login', 'NPh', 'S', 'NOut', 'NErr' ];
+var msColsJobs = [ 'JobId', 'login', 'S', 'NOut', 'NErr', 'NRet',
+    'NDisp', 'NComm' ];
 
 /* node-tab configuration for list-of-jobs table */
 var msFieldsJobs = {
@@ -239,7 +240,7 @@ var msFieldsJobs = {
     },
     'login': {
 	'label': 'LOGIN',
-	'width': 24
+	'width': 12
     },
     'modified': {
 	'label': 'MODIFIED',
@@ -251,14 +252,14 @@ var msFieldsJobs = {
 	'width': 4,
 	'align': 'right'
     },
-    'ncommitted': {
-	'label': 'NCOMMITTED',
-	'width': 4,
+    'ncomm': {
+	'label': 'NCOMM',
+	'width': 5,
 	'align': 'right'
     },
-    'ndispatched': {
-	'label': 'NDISPATCHED',
-	'width': 4,
+    'ndisp': {
+	'label': 'NDISP',
+	'width': 5,
 	'align': 'right'
     },
     'nerr': {
@@ -282,8 +283,8 @@ var msFieldsJobs = {
 	'align': 'right',
 	'doc': 'number of phases'
     },
-    'nretries': {
-	'label': 'NRETRIES',
+    'nret': {
+	'label': 'NRET',
 	'width': 4,
 	'align': 'right'
     },
@@ -915,14 +916,14 @@ function makeJobRow(job, mtime)
 	    'LOGIN': job['auth']['login'],
 	    'MODIFIED': mtime || '-',
 	    'NASGN': job['stats'] ? job['stats']['nAssigns'] : '-',
-	    'NCOMMITTED': job['stats'] ?
+	    'NCOMM': job['stats'] ?
 	        job['stats']['nTasksCommittedOk'] +
 		job['stats']['nTasksCommittedFail'] : '-',
-	    'NDISPATCHED': job['stats'] ?
+	    'NDISP': job['stats'] ?
 	        job['stats']['nTasksDispatched'] : '-',
 	    'NERR': job['stats'] ? job['stats']['nErrors'] : '-',
 	    'NINREAD': job['stats'] ? job['stats']['nInputsRead'] : '-',
-	    'NRETRIES': job['stats'] && job['stats']['nRetries'] !== undefined ?
+	    'NRET': job['stats'] && job['stats']['nRetries'] !== undefined ?
 	        job['stats']['nRetries'] : 0,
 	    'NOUT': job['stats'] ? job['stats']['nJobOutputs'] : '-',
 	    'NPH': (job['phases'] || []).length,
