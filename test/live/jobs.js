@@ -38,11 +38,13 @@ exports.jobM = {
     },
     'inputs': [
 	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj1',
 	'/poseidon/stor/obj2',
 	'/poseidon/stor/obj3'
     ],
     'timeout': 15 * 1000,
     'expected_outputs': [
+	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
 	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
 	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
 	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
