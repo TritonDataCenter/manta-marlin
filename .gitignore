@@ -9,3 +9,4 @@ cscope.out
 smf/manifests/marlin-agent.xml
 smf/manifests/marlin-lackey.xml
 smf/manifests/marlin-mock-manta.xml
+src/mallocbomb/mallocbomb

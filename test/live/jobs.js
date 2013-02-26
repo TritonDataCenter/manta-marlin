@@ -527,6 +527,61 @@ exports.jobMerrorBadReducer = {
     } ]
 };
 
+exports.jobMerrorOom = {
+    'job': {
+	'assets': {
+	    '/poseidon/stor/mallocbomb':
+	        mod_fs.readFileSync(mod_path.join(
+		    __dirname, '../../src/mallocbomb/mallocbomb'))
+	},
+	'phases': [ {
+	    'assets': [ '/poseidon/stor/mallocbomb' ],
+	    'type': 'reduce',
+	    'exec': '/assets/poseidon/stor/mallocbomb; false'
+	} ]
+    },
+    'inputs': [],
+    'timeout': 30 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: reduce',
+	'code': 'UserTaskError',
+	'message': 'user command exited with code 1 (WARNING: ran out of ' +
+	    'memory during execution)'
+    } ]
+};
+
+/*
+ * It would be better if we could actually run the lackey out of memory, but
+ * this seems difficult to do in practice.  But when it happens, the lackey
+ * tends to dump core, resulting in a timeout.
+ */
+exports.jobMerrorLackeyOom = {
+    'job': {
+	'assets': {
+	    '/poseidon/stor/mallocbomb':
+	        mod_fs.readFileSync(mod_path.join(
+		    __dirname, '../../src/mallocbomb/mallocbomb'))
+	},
+	'phases': [ {
+	    'assets': [ '/poseidon/stor/mallocbomb' ],
+	    'type': 'reduce',
+	    'exec': '/assets/poseidon/stor/mallocbomb & ' +
+	        'pstop $(pgrep -c $(svcs -Hoctid lackey))'
+	} ]
+    },
+    'inputs': [],
+    'timeout': 45 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: reduce',
+	'code': 'UserTaskError',
+	'message': 'user task ran out of memory'
+    } ]
+};
+
 exports.jobR0inputs = {
     'job': {
 	'phases': [ {
@@ -654,6 +709,8 @@ exports.jobsAll = [
     exports.jobMerrorsDispatch1,
     exports.jobMerrorAssetMissing,
     exports.jobMerrorBadReducer,
+    exports.jobMerrorOom,
+    exports.jobMerrorLackeyOom,
     exports.jobMenv,
     exports.jobRenv
 ];

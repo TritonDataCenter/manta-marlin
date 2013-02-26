@@ -25,6 +25,7 @@ USE_LOCAL_NODE=false
 #
 BASHSTYLE	 = $(NODE) tools/bashstyle
 CATEST		 = tools/catest
+CC      	 = gcc
 
 #
 # Files
@@ -81,8 +82,12 @@ endif
 #
 # Repo-specific targets
 #
+CFLAGS		+= -Wall -Werror
+EXECS   	 = src/mallocbomb/mallocbomb
+CLEANFILES	+= $(EXECS)
+
 .PHONY: all
-all: $(SMF_MANIFESTS) deps
+all: $(SMF_MANIFESTS) deps $(EXECS)
 
 .PHONY: deps
 deps: | $(REPO_DEPS) $(NPM_EXEC)
@@ -91,6 +96,8 @@ deps: | $(REPO_DEPS) $(NPM_EXEC)
 .PHONY: test
 test: all
 	tools/catest -a
+
+src/mallocbomb/mallocbomb: src/mallocbomb/mallocbomb.c
 
 DISTCLEAN_FILES += node_modules
 
