@@ -12,7 +12,7 @@
 		"extsprintf": "1.0.1",
 		"jsprim": "0.4.0",
 		"kang": "0.0.3",
-		"kstat": "0.2.0",
+		"kstat": "0.3.0",
 		"libmanta": "git+ssh://git@git.joyent.com:node-libmanta.git#master",
 		"manta": "git+ssh://git@github.com:joyent/node-manta.git#master",
 		"memorystream": "0.2.0",
