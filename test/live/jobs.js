@@ -766,7 +766,7 @@ function jobSubmit(api, testspec, callback)
 	jobdef = {
 	    'auth': {
 		'login': login,
-		'groups': [ 'operator' ] /* XXX */
+		'groups': [ 'operators' ] /* XXX */
 	    },
 	    'phases': testspec['job']['phases']
 	};

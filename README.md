@@ -23,7 +23,7 @@ in your path.
 
 The suggested Marlin development environment is a compute zone as set up by
 ca-headnode-setup, available in the global zone at
-/opt/smartdc/agents/lib/node\_modules/cabase/tools/ca-headnode-setup.  This is
+`/opt/smartdc/agents/lib/node_modules/cabase/tools/devsetup -t manta`.  This is
 basically a smartos zone with a few particular packages, including
 gcc-compiler, cscope, gmake, scmgit, and python26.
 
@@ -89,13 +89,13 @@ misconfiguration.**
 The test environment assumes several environment variables are set.  Here are
 example settings for COAL:
 
-    $ export MAHI_URL=tcp://auth.joyent.us:6379/
-    $ export MORAY_URL=tcp://1.moray.joyent.us:2020/
-    $ export MANTA_URL=https://manta.joyent.us
+    $ export MAHI_URL=tcp://auth.bh1.joyent.us:6379/
+    $ export MORAY_URL=tcp://1.moray.bh1.joyent.us:2020/
+    $ export MANTA_URL=https://manta.bh1.joyent.us
     $ export MANTA_USER=poseidon
     $ export MANTA_KEY_ID=ff:4a:ad:ac:92:86:ec:d2:5a:9d:88:c8:e8:12:8d:15
 
-Change "coal.joyent.us" as appropriate for your setup.  MANTA\_KEY\_ID is also
+Change bh1.joyent.us" as appropriate for your setup.  MANTA\_KEY\_ID is also
 specific to each installation.  To find it, run this in headnode global zone:
 
     # sdc-ldap search -b "$(sdc-ldap search login=poseidon | \
@@ -109,6 +109,10 @@ If your dev zone is on the same box as the ops zone, you can do this with:
 
     # cp /zones/$(vmadm lookup alias=~ops)/root/root/.ssh/id_rsa* \
          /zones/$YOUR_DEV_ZONE_UUID/root/$YOUR_LOGIN_NAME/.ssh
+
+Additionally, your user must have contract priviledges, so as root:
+
+    $ usermod -K defaultpriv=basic,dtrace_user,dtrace_proc,contract_event,sys_mount,hyprlofs_control 'user'
 
 Finally, to actually run the tests:
 
