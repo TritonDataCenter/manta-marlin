@@ -40,7 +40,7 @@ function setup(_, next)
 		    'retry': {
 			'retries': 2,
 			'minTimeout': 500,
-			'maxTimeout': 500
+			'maxTimeout': 501
 		    },
 		    'log': log.child({
 			'component': 'cache-client-' + url,
