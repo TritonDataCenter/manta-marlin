@@ -1,5 +1,6 @@
 {
 	"instanceUuid": "testing_agent",
+	"mantaComputeId": "testing_agent",
 	"port": 9080,
 
 	"manta": {
