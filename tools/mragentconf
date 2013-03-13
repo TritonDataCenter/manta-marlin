@@ -38,7 +38,7 @@ mac_code="$mac_code; dns.nameservers = []"
 
 mkdir -p "$mac_confdir" || fail "failed to mkdir $mac_confdir"
 
-shift 2
+shift 3
 for ns in "$@"; do
 	mac_code="$mac_code; dns.nameservers.push('$ns')"
 done
