@@ -35,12 +35,13 @@ function setup(_, next)
 
 	cache = new mod_httpcat.ObjectCache(function (url) {
 		return (mod_restify.createClient({
+		    'agent': false,
 		    'url': url,
 		    'connectTimeout': 500,
 		    'retry': {
 			'retries': 2,
 			'minTimeout': 500,
-			'maxTimeout': 500
+			'maxTimeout': 501
 		    },
 		    'log': log.child({
 			'component': 'cache-client-' + url,
