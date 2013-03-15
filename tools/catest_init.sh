@@ -37,4 +37,6 @@ function catest_init
 	echo "MANTA_URL    = $MANTA_URL"
 	echo "MANTA_USER   = $MANTA_USER"
 	echo "MORAY_URL    = $MORAY_URL"
+
+	export PATH="$PWD/build/node/bin:$PATH"
 }
