@@ -37,17 +37,17 @@ exports.jobM = {
 	'phases': [ { 'type': 'storage-map', 'exec': 'wc' } ]
     },
     'inputs': [
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj2',
-	'/poseidon/stor/obj3'
+	'/%user%/stor/obj1',
+	'/%user%/stor/obj1',
+	'/%user%/stor/obj2',
+	'/%user%/stor/obj3'
     ],
     'timeout': 15 * 1000,
     'expected_outputs': [
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj2\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj3\.0\./
     ],
     'errors': []
 };
@@ -64,36 +64,36 @@ exports.jobMX = {
 	} ]
     },
     'inputs': [
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj2',
-	'/poseidon/stor/obj3'
+	'/%user%/stor/obj1',
+	'/%user%/stor/obj2',
+	'/%user%/stor/obj3'
     ],
     'timeout': 60 * 1000,
     'expected_outputs': [
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj2\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj2\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj2\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj2\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj2\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj2\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj2\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj2\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj3\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj3\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj3\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj3\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj3\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj3\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj3\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj3\.0\./
     ],
     'errors': []
 };
@@ -106,15 +106,15 @@ exports.jobMmpipeAnon = {
 	} ]
     },
     'inputs': [
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj2',
-	'/poseidon/stor/obj3'
+	'/%user%/stor/obj1',
+	'/%user%/stor/obj2',
+	'/%user%/stor/obj3'
     ],
     'timeout': 15 * 1000,
     'expected_outputs': [
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.0\./
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj2\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj3\.0\./
     ],
     'expected_output_content': [ 'bar\n', 'bar\n', 'bar\n' ],
     'errors': []
@@ -124,15 +124,15 @@ exports.jobMmpipeNamed = {
     'job': {
 	'phases': [ {
 	    'type': 'storage-map',
-	    'exec': 'echo foo; echo bar | mpipe -p /poseidon/stor/extra/out1'
+	    'exec': 'echo foo; echo bar | mpipe -p /%user%/stor/extra/out1'
 	} ]
     },
     'inputs': [
-	'/poseidon/stor/obj1'
+	'/%user%/stor/obj1'
     ],
     'timeout': 15 * 1000,
     'expected_outputs': [
-	'/poseidon/stor/extra/out1'
+	'/%user%/stor/extra/out1'
     ],
     'expected_output_content': [ 'bar\n' ],
     'errors': []
@@ -142,24 +142,24 @@ exports.jobMmcat = {
     'job': {
 	'phases': [ {
 	    'type': 'storage-map',
-	    'exec': 'echo foo; mcat /poseidon/stor/obj1'
+	    'exec': 'echo foo; mcat /%user%/stor/obj1'
 	} ]
     },
     'inputs': [
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj2',
-	'/poseidon/stor/obj3'
+	'/%user%/stor/obj1',
+	'/%user%/stor/obj2',
+	'/%user%/stor/obj3'
     ],
     'timeout': 15 * 1000,
     'expected_outputs': [
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj1'
+	'/%user%/stor/obj1',
+	'/%user%/stor/obj1',
+	'/%user%/stor/obj1'
     ],
     'expected_output_content': [
-	'auto-generated content for key /poseidon/stor/obj1',
-	'auto-generated content for key /poseidon/stor/obj1',
-	'auto-generated content for key /poseidon/stor/obj1'
+	'auto-generated content for key /someuser/stor/obj1',
+	'auto-generated content for key /someuser/stor/obj1',
+	'auto-generated content for key /someuser/stor/obj1'
     ],
     'errors': []
 };
@@ -172,15 +172,15 @@ exports.jobMM = {
 	]
     },
     'inputs': [
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj2',
-	'/poseidon/stor/obj3'
+	'/%user%/stor/obj1',
+	'/%user%/stor/obj2',
+	'/%user%/stor/obj3'
     ],
     'timeout': 60 * 1000,
     'expected_outputs': [
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.1\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj2\.1\./,
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj3\.1\./
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.1\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj2\.1\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj3\.1\./
     ],
     'errors': []
 };
@@ -190,13 +190,13 @@ exports.jobR = {
 	'phases': [ { 'type': 'reduce', 'exec': 'wc' } ]
     },
     'inputs': [
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj2',
-	'/poseidon/stor/obj3'
+	'/%user%/stor/obj1',
+	'/%user%/stor/obj2',
+	'/%user%/stor/obj3'
     ],
     'timeout': 30 * 1000,
     'expected_outputs': [
-	/\/poseidon\/jobs\/.*\/stor\/reduce\.0\./
+	/\/%user%\/jobs\/.*\/stor\/reduce\.0\./
     ],
     'errors': []
 };
@@ -209,13 +209,13 @@ exports.jobMR = {
 	]
     },
     'inputs': [
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj2',
-	'/poseidon/stor/obj3'
+	'/%user%/stor/obj1',
+	'/%user%/stor/obj2',
+	'/%user%/stor/obj3'
     ],
     'timeout': 60 * 1000,
     'expected_outputs': [
-	/\/poseidon\/jobs\/.*\/stor\/reduce\.1\./
+	/\/%user%\/jobs\/.*\/stor\/reduce\.1\./
     ],
     'errors': []
 };
@@ -230,13 +230,13 @@ exports.jobMMRR = {
 	]
     },
     'inputs': [
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj2',
-	'/poseidon/stor/obj3'
+	'/%user%/stor/obj1',
+	'/%user%/stor/obj2',
+	'/%user%/stor/obj3'
     ],
     'timeout': 90 * 1000,
     'expected_outputs': [
-	/\/poseidon\/jobs\/.*\/stor\/reduce\.3\./
+	/\/%user%\/jobs\/.*\/stor\/reduce\.3\./
     ],
     'errors': []
 };
@@ -260,7 +260,7 @@ exports.jobMR1000 = {
     },
     'inputs': [],
     'timeout': 180 * 1000,
-    'expected_outputs': [ /poseidon\/jobs\/.*\/stor\/reduce\.1\./ ],
+    'expected_outputs': [ /%user%\/jobs\/.*\/stor\/reduce\.1\./ ],
     'expected_output_content': [ '   1000    3000    9000\n' ],
     'errors': []
 };
@@ -279,9 +279,9 @@ exports.jobMRRoutput = {
 	    'exec': 'awk \'{sum+=$1} END {print sum}\''
 	} ]
     },
-    'inputs': [ '/poseidon/stor/obj1' ],
+    'inputs': [ '/%user%/stor/obj1' ],
     'timeout': 90 * 1000,
-    'expected_outputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.2\./ ],
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/stor\/reduce\.2\./ ],
     'expected_output_content': [ '55\n' ],
     'errors': []
 };
@@ -295,18 +295,18 @@ var asset_body = [
 exports.jobMasset = {
     'job': {
 	'assets': {
-	    '/poseidon/stor/test_asset.sh': asset_body
+	    '/%user%/stor/test_asset.sh': asset_body
 	},
 	'phases': [ {
-	    'assets': [ '/poseidon/stor/test_asset.sh' ],
+	    'assets': [ '/%user%/stor/test_asset.sh' ],
 	    'type': 'storage-map',
-	    'exec': '/assets/poseidon/stor/test_asset.sh 17'
+	    'exec': '/assets/%user%/stor/test_asset.sh 17'
 	} ]
     },
-    'inputs': [ '/poseidon/stor/obj1' ],
+    'inputs': [ '/%user%/stor/obj1' ],
     'timeout': 15 * 1000,
     'expected_outputs': [
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
     ],
     'expected_output_content': [ 'sarabi 17\n' ],
     'errors': []
@@ -315,22 +315,22 @@ exports.jobMasset = {
 exports.jobMerrorAssetMissing = {
     'job': {
 	'phases': [ {
-	    'assets': [ '/poseidon/stor/notavalidasset' ],
+	    'assets': [ '/%user%/stor/notavalidasset' ],
 	    'type': 'storage-map',
 	    'exec': 'echo "should not ever get here"'
 	} ]
     },
-    'inputs': [ '/poseidon/stor/obj1' ],
+    'inputs': [ '/%user%/stor/obj1' ],
     'timeout': 15 * 1000,
     'expected_outputs': [],
     'errors': [ {
 	'phaseNum': '0',
-	'what': 'phase 0: map input "/poseidon/stor/obj1"',
-	'key': '/poseidon/stor/obj1',
-	'p0key': '/poseidon/stor/obj1',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'key': '/%user%/stor/obj1',
+	'p0key': '/%user%/stor/obj1',
 	'code': EM_TASKINIT,
 	'message': 'failed to dispatch task: first of 1 error: error ' +
-	    'retrieving asset "/poseidon/stor/notavalidasset" ' +
+	    'retrieving asset "/%user%/stor/notavalidasset" ' +
 	    '(status code 404)'
     } ]
 };
@@ -339,10 +339,10 @@ exports.jobM0bi = {
     'job': {
 	'phases': [ { 'type': 'storage-map', 'exec': 'wc' } ]
     },
-    'inputs': [ '/poseidon/stor/0bytes' ],
+    'inputs': [ '/%user%/stor/0bytes' ],
     'timeout': 15 * 1000,
     'expected_outputs': [
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/0bytes\.0\./
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/0bytes\.0\./
     ],
     'expected_output_content': [ '0 0 0\n' ],
     'errors': []
@@ -357,9 +357,9 @@ exports.jobR0bi = {
     'job': {
 	'phases': [ { 'type': 'reduce', 'exec': 'wc' } ]
     },
-    'inputs': [ '/poseidon/stor/0bytes' ],
+    'inputs': [ '/%user%/stor/0bytes' ],
     'timeout': 15 * 1000,
-    'expected_outputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.0\./ ],
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/stor\/reduce\.0\./ ],
     'expected_output_content': [ '      0       0       0\n' ],
     'errors': []
 };
@@ -368,10 +368,10 @@ exports.jobM0bo = {
     'job': {
 	'phases': [ { 'type': 'storage-map', 'exec': 'true' } ]
     },
-    'inputs': [ '/poseidon/stor/obj1' ],
+    'inputs': [ '/%user%/stor/obj1' ],
     'timeout': 15 * 1000,
     'expected_outputs': [
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
     ],
     'expected_output_content': [ '' ],
     'errors': []
@@ -384,14 +384,14 @@ exports.jobMcore = {
 	    'exec': 'node -e "process.abort();"'
 	} ]
     },
-    'inputs': [ '/poseidon/stor/obj1' ],
+    'inputs': [ '/%user%/stor/obj1' ],
     'timeout': 20 * 1000,
     'expected_outputs': [],
     'errors': [ {
 	'phaseNum': '0',
-	'what': 'phase 0: map input "/poseidon/stor/obj1"',
-	'key': '/poseidon/stor/obj1',
-	'p0key': '/poseidon/stor/obj1',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'key': '/%user%/stor/obj1',
+	'p0key': '/%user%/stor/obj1',
 	'code': EM_USERTASK,
 	'message': 'user command or child process dumped core'
     } ]
@@ -406,18 +406,18 @@ exports.jobMerrorsDispatch0 = {
     },
     'inputs': [
 	/*
-	 * XXX We should also have tests for "/", "/poseidon", "/poseidon/stor",
-	 * "/poseidon/jobs", and other special paths, but at the moment these
+	 * XXX We should also have tests for "/", "/%user%", "/%user%/stor",
+	 * "/%user%/jobs", and other special paths, but at the moment these
 	 * don't do the right thing.  See MANTA-401.
 	 */
 	'/notavalidusername/stor/obj1',
-	'/poseidon/stor/notavalidfilename',
-	'/poseidon/stor/mydir',
-	'/poseidon/stor/obj1'
+	'/%user%/stor/notavalidfilename',
+	'/%user%/stor/mydir',
+	'/%user%/stor/obj1'
     ],
     'timeout': 20 * 1000,
     'expected_outputs': [
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
     ],
     'expected_output_content': [ ' 0  5 50\n' ],
     'errors': [ {
@@ -429,19 +429,19 @@ exports.jobMerrorsDispatch0 = {
 	'message': 'no such object: "/notavalidusername/stor/obj1"'
     }, {
 	'phaseNum': '0',
-	'what': 'phase 0: map input "/poseidon/stor/notavalidfilename"',
-	'key': '/poseidon/stor/notavalidfilename',
-	'p0key': '/poseidon/stor/notavalidfilename',
+	'what': 'phase 0: map input "/%user%/stor/notavalidfilename"',
+	'key': '/%user%/stor/notavalidfilename',
+	'p0key': '/%user%/stor/notavalidfilename',
 	'code': EM_RESOURCENOTFOUND,
-	'message': 'no such object: "/poseidon/stor/notavalidfilename"'
+	'message': 'no such object: "/%user%/stor/notavalidfilename"'
     }, {
 	'phaseNum': '0',
-	'what': 'phase 0: map input "/poseidon/stor/mydir"',
-	'key': '/poseidon/stor/mydir',
-	'p0key': '/poseidon/stor/mydir',
+	'what': 'phase 0: map input "/%user%/stor/mydir"',
+	'key': '/%user%/stor/mydir',
+	'p0key': '/%user%/stor/mydir',
 	'code': EM_INVALIDARGUMENT,
 	'message': 'objects of type "directory" are not supported: ' +
-	    '"/poseidon/stor/mydir"'
+	    '"/%user%/stor/mydir"'
     } ]
 };
 
@@ -471,34 +471,34 @@ exports.jobMerrorsDispatch1 = {
     'inputs': exports.jobMerrorsDispatch0['inputs'],
     'timeout': 30 * 1000,
     'expected_outputs': [
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.1\./
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.1\./
     ],
     'expected_output_content': [ ' 0  5 50\n' ],
     'errors': exports.jobMerrorsDispatch0['errors'].concat([ {
 	'phaseNum': '1',
 	'what': 'phase 1: map input "/notavalidusername/stor/obj1" ' +
-	    '(from job input "/poseidon/stor/obj1")',
+	    '(from job input "/%user%/stor/obj1")',
 	'key': '/notavalidusername/stor/obj1',
-	'p0key': '/poseidon/stor/obj1',
+	'p0key': '/%user%/stor/obj1',
 	'code': EM_RESOURCENOTFOUND,
 	'message': 'no such object: "/notavalidusername/stor/obj1"'
     }, {
 	'phaseNum': '1',
-	'what': 'phase 1: map input "/poseidon/stor/notavalidfilename" ' +
-	    '(from job input "/poseidon/stor/obj1")',
-	'key': '/poseidon/stor/notavalidfilename',
-	'p0key': '/poseidon/stor/obj1',
+	'what': 'phase 1: map input "/%user%/stor/notavalidfilename" ' +
+	    '(from job input "/%user%/stor/obj1")',
+	'key': '/%user%/stor/notavalidfilename',
+	'p0key': '/%user%/stor/obj1',
 	'code': EM_RESOURCENOTFOUND,
-	'message': 'no such object: "/poseidon/stor/notavalidfilename"'
+	'message': 'no such object: "/%user%/stor/notavalidfilename"'
     }, {
 	'phaseNum': '1',
-	'what': 'phase 1: map input "/poseidon/stor/mydir" ' +
-	    '(from job input "/poseidon/stor/obj1")',
-	'key': '/poseidon/stor/mydir',
-	'p0key': '/poseidon/stor/obj1',
+	'what': 'phase 1: map input "/%user%/stor/mydir" ' +
+	    '(from job input "/%user%/stor/obj1")',
+	'key': '/%user%/stor/mydir',
+	'p0key': '/%user%/stor/obj1',
 	'code': EM_INVALIDARGUMENT,
 	'message': 'objects of type "directory" are not supported: ' +
-	    '"/poseidon/stor/mydir"'
+	    '"/%user%/stor/mydir"'
     } ])
 };
 
@@ -512,16 +512,16 @@ exports.jobMerrorBadReducer = {
 	    'exec': 'wc'
 	} ]
     },
-    'inputs': [ '/poseidon/stor/obj1' ],
+    'inputs': [ '/%user%/stor/obj1' ],
     'timeout': 15 * 1000,
-    'expected_outputs': [ /\/poseidon\/jobs\/.*\/reduce.1./ ],
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/reduce.1./ ],
     'errors': [ {
 	'phaseNum': '1',
 	'what': new RegExp('phase 1: map input ' +
-	    '"/poseidon/jobs/.*/stor/poseidon/stor/obj1.0..*" ' +
-	    '\\(from job input "/poseidon/stor/obj1"\\)'),
-	'key': new RegExp('/poseidon/jobs/.*/stor/poseidon/stor/obj1.0..*'),
-	'p0key': '/poseidon/stor/obj1',
+	    '"/%user%/jobs/.*/stor/%user%/stor/obj1.0..*" ' +
+	    '\\(from job input "/%user%/stor/obj1"\\)'),
+	'key': new RegExp('/%user%/jobs/.*/stor/%user%/stor/obj1.0..*'),
+	'p0key': '/%user%/stor/obj1',
 	'code': EM_INVALIDARGUMENT,
 	'message': 'reducer "1" specified, but only 1 reducers exist'
     } ]
@@ -530,14 +530,14 @@ exports.jobMerrorBadReducer = {
 exports.jobMerrorOom = {
     'job': {
 	'assets': {
-	    '/poseidon/stor/mallocbomb':
+	    '/%user%/stor/mallocbomb':
 	        mod_fs.readFileSync(mod_path.join(
 		    __dirname, '../../src/mallocbomb/mallocbomb'))
 	},
 	'phases': [ {
-	    'assets': [ '/poseidon/stor/mallocbomb' ],
+	    'assets': [ '/%user%/stor/mallocbomb' ],
 	    'type': 'reduce',
-	    'exec': '/assets/poseidon/stor/mallocbomb; false'
+	    'exec': '/assets/%user%/stor/mallocbomb; false'
 	} ]
     },
     'inputs': [],
@@ -560,14 +560,14 @@ exports.jobMerrorOom = {
 exports.jobMerrorLackeyOom = {
     'job': {
 	'assets': {
-	    '/poseidon/stor/mallocbomb':
+	    '/%user%/stor/mallocbomb':
 	        mod_fs.readFileSync(mod_path.join(
 		    __dirname, '../../src/mallocbomb/mallocbomb'))
 	},
 	'phases': [ {
-	    'assets': [ '/poseidon/stor/mallocbomb' ],
+	    'assets': [ '/%user%/stor/mallocbomb' ],
 	    'type': 'reduce',
-	    'exec': '/assets/poseidon/stor/mallocbomb & ' +
+	    'exec': '/assets/%user%/stor/mallocbomb & ' +
 	        'pstop $(pgrep -c $(svcs -Hoctid lackey))'
 	} ]
     },
@@ -589,14 +589,14 @@ exports.jobMerrorCmd = {
 	    'exec': 'grep professor_frink'
 	} ]
     },
-    'inputs': [ '/poseidon/stor/obj1' ],
+    'inputs': [ '/%user%/stor/obj1' ],
     'timeout': 20 * 1000,
     'expected_outputs': [],
     'errors': [ {
 	'phaseNum': '0',
-	'what': 'phase 0: map input "/poseidon/stor/obj1"',
-	'key': '/poseidon/stor/obj1',
-	'p0key': '/poseidon/stor/obj1',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'key': '/%user%/stor/obj1',
+	'p0key': '/%user%/stor/obj1',
 	'code': EM_USERTASK,
 	'message': 'user command exited with code 1'
     } ]
@@ -609,14 +609,14 @@ exports.jobMerrorMuskie = {
 	    'exec': 'curl -i -X POST localhost/my/jobs/task/perturb?p=1'
 	} ]
     },
-    'inputs': [ '/poseidon/stor/obj1' ],
+    'inputs': [ '/%user%/stor/obj1' ],
     'timeout': 20 * 1000,
     'expected_outputs': [],
     'errors': [ {
 	'phaseNum': '0',
-	'what': 'phase 0: map input "/poseidon/stor/obj1"',
-	'key': '/poseidon/stor/obj1',
-	'p0key': '/poseidon/stor/obj1',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'key': '/%user%/stor/obj1',
+	'p0key': '/%user%/stor/obj1',
 	'code': EM_INTERNAL,
 	'message': 'internal error'
     } ]
@@ -638,9 +638,9 @@ exports.jobMerrorMuskieMpipe = {
     'expected_outputs': exports.jobMerrorMuskie['expected_outputs'],
     'errors': [ {
 	'phaseNum': '0',
-	'what': 'phase 0: map input "/poseidon/stor/obj1"',
-	'key': '/poseidon/stor/obj1',
-	'p0key': '/poseidon/stor/obj1',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'key': '/%user%/stor/obj1',
+	'p0key': '/%user%/stor/obj1',
 	'code': EM_USERTASK,
 	'message': 'user command exited with code 1'
     } ]
@@ -699,17 +699,17 @@ exports.jobMerrorMpipeMkdirp = {
     'job': {
 	'phases': [ {
 	    'type': 'storage-map',
-	    'exec': 'echo hello | mpipe /poseidon/stor/marlin_tests/1/2/3/4'
+	    'exec': 'echo hello | mpipe /%user%/stor/marlin_tests/1/2/3/4'
 	} ]
     },
-    'inputs': [ '/poseidon/stor/obj1' ],
+    'inputs': [ '/%user%/stor/obj1' ],
     'timeout': 20 * 1000,
     'expected_outputs': [],
     'errors': [ {
 	'phaseNum': '0',
-	'what': 'phase 0: map input "/poseidon/stor/obj1"',
-	'key': '/poseidon/stor/obj1',
-	'p0key': '/poseidon/stor/obj1',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'key': '/%user%/stor/obj1',
+	'p0key': '/%user%/stor/obj1',
 	'code': EM_USERTASK,
 	'message': 'user command exited with code 1'
     } ]
@@ -724,7 +724,7 @@ exports.jobR0inputs = {
     },
     'inputs': [],
     'timeout': 15 * 1000,
-    'expected_outputs': [ /\/poseidon\/jobs\/.*\/stor\/reduce\.0\./ ],
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/stor\/reduce\.0\./ ],
     'errors': [],
     'expected_output_content': [ '      0       0       0\n' ]
 };
@@ -736,19 +736,19 @@ exports.jobMenv = {
 	    'exec': 'env | egrep ^MANTA_ | sort'
 	} ]
     },
-    'inputs': [ '/poseidon/stor/obj1' ],
+    'inputs': [ '/%user%/stor/obj1' ],
     'timeout': 10 * 1000,
     'expected_outputs': [
-	/\/poseidon\/jobs\/.*\/stor\/poseidon\/stor\/obj1\.0\./
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
     ],
     'errors': [],
     'expected_output_content': [
-	'MANTA_INPUT_FILE=/manta/poseidon/stor/obj1\n' +
-	'MANTA_INPUT_OBJECT=/poseidon/stor/obj1\n' +
+	'MANTA_INPUT_FILE=/manta/%user%/stor/obj1\n' +
+	'MANTA_INPUT_OBJECT=/%user%/stor/obj1\n' +
 	'MANTA_JOB_ID=$jobid\n' +
 	'MANTA_NO_AUTH=true\n' +
-	'MANTA_OUTPUT_BASE=/poseidon/jobs/$jobid/stor/' +
-	    'poseidon/stor/obj1.0.\n' +
+	'MANTA_OUTPUT_BASE=/%user%/jobs/$jobid/stor/' +
+	    '%user%/stor/obj1.0.\n' +
 	'MANTA_URL=http://localhost:80/\n'
     ]
 };
@@ -765,27 +765,27 @@ exports.jobRenv = {
     'inputs': [],
     'timeout': 30 * 1000,
     'expected_outputs': [
-	/\/poseidon\/jobs\/.*\/stor\/reduce\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/reduce\.0\./,
-	/\/poseidon\/jobs\/.*\/stor\/reduce\.0\./
+	/\/%user%\/jobs\/.*\/stor\/reduce\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/reduce\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/reduce\.0\./
     ],
     'errors': [],
     'expected_output_content': [
 	'MANTA_JOB_ID=$jobid\n' +
 	'MANTA_NO_AUTH=true\n' +
-	'MANTA_OUTPUT_BASE=/poseidon/jobs/$jobid/stor/reduce.0.\n' +
+	'MANTA_OUTPUT_BASE=/%user%/jobs/$jobid/stor/reduce.0.\n' +
 	'MANTA_REDUCER=0\n' +
 	'MANTA_URL=http://localhost:80/\n',
 
 	'MANTA_JOB_ID=$jobid\n' +
 	'MANTA_NO_AUTH=true\n' +
-	'MANTA_OUTPUT_BASE=/poseidon/jobs/$jobid/stor/reduce.0.\n' +
+	'MANTA_OUTPUT_BASE=/%user%/jobs/$jobid/stor/reduce.0.\n' +
 	'MANTA_REDUCER=1\n' +
 	'MANTA_URL=http://localhost:80/\n',
 
 	'MANTA_JOB_ID=$jobid\n' +
 	'MANTA_NO_AUTH=true\n' +
-	'MANTA_OUTPUT_BASE=/poseidon/jobs/$jobid/stor/reduce.0.\n' +
+	'MANTA_OUTPUT_BASE=/%user%/jobs/$jobid/stor/reduce.0.\n' +
 	'MANTA_REDUCER=2\n' +
 	'MANTA_URL=http://localhost:80/\n'
     ]
@@ -798,9 +798,9 @@ exports.jobMcancel = {
 	]
     },
     'inputs': [
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj2',
-	'/poseidon/stor/obj3'
+	'/%user%/stor/obj1',
+	'/%user%/stor/obj2',
+	'/%user%/stor/obj3'
     ],
     'timeout': 30 * 1000,
     'expected_outputs': [],
@@ -859,8 +859,8 @@ function initJobs()
 	var job = exports.jobM500;
 
 	for (var i = 0; i < 500; i++) {
-		var key = '/poseidon/stor/obj' + i;
-		var okey = '/poseidon/jobs/.*/stor' + key;
+		var key = '/%user%/stor/obj' + i;
+		var okey = '/%user%/jobs/.*/stor' + key;
 
 		job['inputs'].push(key);
 		job['expected_outputs'].push(new RegExp(okey));
@@ -868,18 +868,29 @@ function initJobs()
 
 	job = exports.jobMR1000;
 	for (i = 0; i < 1000; i++) {
-		key = '/poseidon/stor/obj' + i;
+		key = '/%user%/stor/obj' + i;
 		job['inputs'].push(key);
 	}
 
 	job = exports.jobMerrorMuskieRetry;
 	for (i = 0; i < 100; i++) {
-		key = '/poseidon/stor/obj' + i;
+		key = '/%user%/stor/obj' + i;
 		job['inputs'].push(key);
 	}
 
 	exports.jobMerrorMuskieRetryMpipe['inputs'] =
 	    exports.jobMerrorMuskieRetry['inputs'];
+}
+
+function replaceParams(str)
+{
+	var user = process.env['MANTA_USER'];
+
+	if (typeof (str) == 'string')
+		return (str.replace(/%user%/g, user));
+
+	mod_assert.equal(str.constructor.name, 'RegExp');
+	return (new RegExp(str.source.replace(/%user%/g, user)));
 }
 
 initJobs();
@@ -920,8 +931,11 @@ function jobSubmit(api, testspec, callback)
 	    'jobName': 'marlin test suite job'
 	};
 
-	if (testspec['input'])
-		jobdef['input'] = testspec['input'];
+	jobdef['phases'].forEach(function (p) {
+		p['exec'] = replaceParams(p['exec']);
+		if (p['assets'])
+			p['assets'] = p['assets'].map(replaceParams);
+	});
 
 	funcs = [
 	    function (_, stepcb) {
@@ -1015,6 +1029,7 @@ function jobSubmit(api, testspec, callback)
 	if (testspec['job']['assets']) {
 		mod_jsprim.forEachKey(testspec['job']['assets'],
 		    function (key, content) {
+			key = replaceParams(key);
 			funcs.push(function (_, stepcb) {
 				log.info('submitting asset "%s"', key);
 				var stream = new mod_memorystream(content,
@@ -1053,7 +1068,7 @@ function jobSubmit(api, testspec, callback)
 		});
 
 		testspec['inputs'].forEach(function (key) {
-			queue.push(key);
+			queue.push(replaceParams(key));
 		});
 
 		queue.drain = function () { stepcb(final_err); };
@@ -1207,10 +1222,12 @@ function jobTestVerifyResultSync(verify)
 	var joberrors = verify['errors'];
 	var testspec = verify['testspec'];
 	var strict = verify['strict'];
+	var expected_inputs;
 
 	/* verify jobSubmit, jobFetch, jobFetchInputs */
 	mod_assert.deepEqual(testspec['job']['phases'], job['phases']);
-	mod_assert.deepEqual(testspec['inputs'].slice(0).sort(), inputs.sort());
+	expected_inputs = testspec['inputs'].map(replaceParams);
+	mod_assert.deepEqual(expected_inputs.sort(), inputs.sort());
 
 	/* Wait for the job to be completed. */
 	mod_assert.equal(job['state'], 'done');
@@ -1225,8 +1242,8 @@ function jobTestVerifyResultSync(verify)
 	 * don't set expected_outputs.
 	 */
 	if (testspec['expected_outputs']) {
-		var expected_outputs = testspec['expected_outputs'].slice(0);
-		expected_outputs.sort();
+		var expected_outputs = testspec['expected_outputs'].map(
+		    replaceParams).sort();
 		outputs.sort();
 		mod_assert.equal(outputs.length, expected_outputs.length);
 
@@ -1262,18 +1279,20 @@ function jobTestVerifyResultSync(verify)
 
 		joberrors.forEach(function (actual_error) {
 			var match = true;
+			var exp;
 
 			for (var k in expected_error) {
-				if (typeof (expected_error[k]) == 'string' &&
-				    actual_error[k] !== expected_error[k]) {
-					match = false;
-					break;
-				}
-
-				if (typeof (expected_error[k]) != 'string' &&
-				    !expected_error[k].test(actual_error[k])) {
-					match = false;
-					break;
+				exp = replaceParams(expected_error[k]);
+				if (typeof (expected_error[k]) == 'string') {
+					if (actual_error[k] !== exp) {
+						match = false;
+						break;
+					}
+				} else {
+					if (!exp.test(actual_error[k])) {
+						match = false;
+						break;
+					}
 				}
 			}
 
@@ -1315,8 +1334,10 @@ function jobTestVerifyResultSync(verify)
 		return;
 
 	var bodies = verify['content'];
-	var expected = testspec['expected_output_content'].map(
-	    function (o) { return (o.replace(/\$jobid/g, verify['jobid'])); });
+	var expected = testspec['expected_output_content'].map(function (o) {
+	        return (replaceParams(
+		    o.replace(/\$jobid/g, verify['jobid'])));
+	});
 	bodies.sort();
 	expected.sort();
 
@@ -1370,7 +1391,8 @@ function jobTestVerifyOutputs(api, testspec, outputs, callback)
 		}
 
 		var bodies = results.successes;
-		var expected = testspec['expected_output_content'];
+		var expected = testspec['expected_output_content'].map(
+		    replaceParams);
 		var i, j;
 
 		for (i = 0; i < expected.length; i++) {
@@ -1411,6 +1433,8 @@ function populateData(manta, keys, callback)
 			    return;
 		    }
 
+		    key = replaceParams(key);
+
 		    if (mod_jsprim.endsWith(key, 'dir')) {
 			manta.mkdir(key, function (err) {
 				/* Work around node-manta#24. */
@@ -1429,7 +1453,8 @@ function populateData(manta, keys, callback)
 		    if (mod_jsprim.endsWith(key, '0bytes'))
 			data = '';
 		    else
-			data = 'auto-generated content for key ' + key;
+			data = 'auto-generated content for key /someuser' +
+			    key.substr(key.indexOf('/', 1));
 
 		    var stream = new StringInputStream(data);
 
