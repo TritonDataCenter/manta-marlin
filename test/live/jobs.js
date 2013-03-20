@@ -546,7 +546,7 @@ exports.jobMerrorOom = {
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: reduce',
-	'code': 'UserTaskError',
+	'code': EM_USERTASK,
 	'message': 'user command exited with code 1 (WARNING: ran out of ' +
 	    'memory during execution)'
     } ]
@@ -577,8 +577,141 @@ exports.jobMerrorLackeyOom = {
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: reduce',
-	'code': 'UserTaskError',
+	'code': EM_USERTASK,
 	'message': 'user task ran out of memory'
+    } ]
+};
+
+exports.jobMerrorCmd = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'grep professor_frink'
+	} ]
+    },
+    'inputs': [ '/poseidon/stor/obj1' ],
+    'timeout': 20 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/poseidon/stor/obj1"',
+	'key': '/poseidon/stor/obj1',
+	'p0key': '/poseidon/stor/obj1',
+	'code': EM_USERTASK,
+	'message': 'user command exited with code 1'
+    } ]
+};
+
+exports.jobMerrorMuskie = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'curl -i -X POST localhost/my/jobs/task/perturb?p=1'
+	} ]
+    },
+    'inputs': [ '/poseidon/stor/obj1' ],
+    'timeout': 20 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/poseidon/stor/obj1"',
+	'key': '/poseidon/stor/obj1',
+	'p0key': '/poseidon/stor/obj1',
+	'code': EM_INTERNAL,
+	'message': 'internal error'
+    } ]
+};
+
+/*
+ * Like jobMerrorMuskie, but with mpipe.  Such errors get translated as
+ * UserTaskErrors in this case.
+ */
+exports.jobMerrorMuskieMpipe = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'curl -i -X POST localhost/my/jobs/task/perturb?p=1 | mpipe'
+	} ]
+    },
+    'inputs': exports.jobMerrorMuskie['inputs'],
+    'timeout': exports.jobMerrorMuskie['timeout'],
+    'expected_outputs': exports.jobMerrorMuskie['expected_outputs'],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/poseidon/stor/obj1"',
+	'key': '/poseidon/stor/obj1',
+	'p0key': '/poseidon/stor/obj1',
+	'code': EM_USERTASK,
+	'message': 'user command exited with code 1'
+    } ]
+};
+
+/*
+ * This test validates that we get the expected number of errors.  It's
+ * probabilistic, though: we set the probability of an upstream muskie failure
+ * to 0.5, and we know Marlin retries 3 times, so there should be close to 12
+ * failures per 100 keys.
+ */
+exports.jobMerrorMuskieRetry = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'curl -i -X POST localhost/my/jobs/task/perturb?p=0.5'
+	} ]
+    },
+    'inputs': [],
+    'timeout': 60 * 1000,
+    'error_count': [ 1, 25 ],
+    'errors': [ {
+	'phaseNum': '0',
+	'code': EM_INTERNAL,
+	'message': 'internal error'
+    } ]
+};
+
+/*
+ * Like jobMerrorMuskieRetry, but with mpipe.
+ */
+exports.jobMerrorMuskieRetryMpipe = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'curl -i -X POST localhost/my/jobs/task/perturb?p=0.5 |' +
+	        'mpipe'
+	} ]
+    },
+    'inputs': exports.jobMerrorMuskieRetry['inputs'],
+    'timeout': exports.jobMerrorMuskieRetry['timeout'],
+    'error_count': exports.jobMerrorMuskieRetry['error_count'],
+    'errors': [ {
+	'phaseNum': '0',
+	'code': EM_USERTASK,
+	'message': 'user command exited with code 1'
+    } ]
+};
+
+/*
+ * mpipe should not auto-create directories by default, and it should fail if
+ * the directory does not exist.  The case where it creates directories is
+ * tested by jobMpipeNamed.
+ */
+exports.jobMerrorMpipeMkdirp = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'echo hello | mpipe /poseidon/stor/marlin_tests/1/2/3/4'
+	} ]
+    },
+    'inputs': [ '/poseidon/stor/obj1' ],
+    'timeout': 20 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/poseidon/stor/obj1"',
+	'key': '/poseidon/stor/obj1',
+	'p0key': '/poseidon/stor/obj1',
+	'code': EM_USERTASK,
+	'message': 'user command exited with code 1'
     } ]
 };
 
@@ -711,6 +844,12 @@ exports.jobsAll = [
     exports.jobMerrorBadReducer,
     exports.jobMerrorOom,
     exports.jobMerrorLackeyOom,
+    exports.jobMerrorCmd,
+    exports.jobMerrorMuskie,
+    exports.jobMerrorMuskieMpipe,
+    exports.jobMerrorMuskieRetry,
+    exports.jobMerrorMuskieRetryMpipe,
+    exports.jobMerrorMpipeMkdirp,
     exports.jobMenv,
     exports.jobRenv
 ];
@@ -732,6 +871,15 @@ function initJobs()
 		key = '/poseidon/stor/obj' + i;
 		job['inputs'].push(key);
 	}
+
+	job = exports.jobMerrorMuskieRetry;
+	for (i = 0; i < 100; i++) {
+		key = '/poseidon/stor/obj' + i;
+		job['inputs'].push(key);
+	}
+
+	exports.jobMerrorMuskieRetryMpipe['inputs'] =
+	    exports.jobMerrorMuskieRetry['inputs'];
 }
 
 initJobs();
@@ -768,7 +916,8 @@ function jobSubmit(api, testspec, callback)
 		'login': login,
 		'groups': [ 'operators' ] /* XXX */
 	    },
-	    'phases': testspec['job']['phases']
+	    'phases': testspec['job']['phases'],
+	    'jobName': 'marlin test suite job'
 	};
 
 	if (testspec['input'])
@@ -1071,19 +1220,28 @@ function jobTestVerifyResultSync(verify)
 	mod_assert.ok(job['timeInputDone'] >= job['timeCreated']);
 	mod_assert.ok(job['timeDone'] >= job['timeCreated']);
 
-	/* Check job execution and jobFetchOutputs */
-	var expected_outputs = testspec['expected_outputs'].slice(0);
-	expected_outputs.sort();
-	outputs.sort();
-	mod_assert.equal(outputs.length, expected_outputs.length);
+	/*
+	 * Check job execution and jobFetchOutputs.  Only probabilistic tests
+	 * don't set expected_outputs.
+	 */
+	if (testspec['expected_outputs']) {
+		var expected_outputs = testspec['expected_outputs'].slice(0);
+		expected_outputs.sort();
+		outputs.sort();
+		mod_assert.equal(outputs.length, expected_outputs.length);
 
-	for (var i = 0; i < outputs.length; i++) {
-		if (typeof (expected_outputs[i]) == 'string')
-			mod_assert.equal(expected_outputs[i], outputs[i],
-			    'output ' + i + ' doesn\'t match');
-		else
-			mod_assert.ok(expected_outputs[i].test(outputs[i]),
-			    'output ' + i + ' doesn\'t match');
+		for (var i = 0; i < outputs.length; i++) {
+			if (typeof (expected_outputs[i]) == 'string')
+				mod_assert.equal(expected_outputs[i],
+				    outputs[i],
+				    'output ' + i + ' doesn\'t match');
+			else
+				mod_assert.ok(
+				    expected_outputs[i].test(outputs[i]),
+				    'output ' + i + ' doesn\'t match');
+		}
+	} else {
+		mod_assert.ok(testspec['error_count']);
 	}
 
 	/* Check job execution and jobFetchErrors */
@@ -1092,7 +1250,13 @@ function jobTestVerifyResultSync(verify)
 		joberrors = joberrors.filter(
 		    function (error) { return (!error['retried']); });
 
-	mod_assert.equal(joberrors.length, testspec['errors'].length);
+	if (!testspec['error_count']) {
+		mod_assert.equal(joberrors.length, testspec['errors'].length);
+	} else {
+		mod_assert.ok(joberrors.length >= testspec['error_count'][0]);
+		mod_assert.ok(joberrors.length <= testspec['error_count'][1]);
+	}
+
 	testspec['errors'].forEach(function (expected_error, idx) {
 		var okay = false;
 
