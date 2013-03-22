@@ -15,21 +15,25 @@ function usage
 	exit 2
 }
 
-function fail
-{
-	echo "$*" >&2
-	exit 1
-}
-
 [[ $# -gt 3 ]] || usage
 
 mac_manta_compute_id=$1
 mac_serverid=$(sysinfo | json UUID)
 mac_manta_host=$2
 mac_moray_host=$3
-mac_root=$(dirname $0)/..
 mac_confdir=/opt/smartdc/marlin/etc
 
+. $(dirname $0)/common.sh
+
+#
+# Update amon probe configuration.  We can't do this during postinstall because
+# amon may not be around at that point, so we do it here, during deployment.
+#
+amon_config | $m_root/tools/amon_add.sh || fail "failed to update amon"
+
+#
+# Update configuration
+#
 mac_code="instanceUuid='$mac_serverid'"
 mac_code="$mac_code; mantaComputeId='$mac_manta_compute_id'"
 mac_code="$mac_code; moray.url='tcp://$mac_moray_host:2020'"
@@ -43,7 +47,7 @@ for ns in "$@"; do
 	mac_code="$mac_code; dns.nameservers.push('$ns')"
 done
 
-json -e "$mac_code" < $mac_root/etc/agentconfig.coal.json > \
+json -e "$mac_code" < $m_root/etc/agentconfig.coal.json > \
     $mac_confdir/agentconfig.json || fail "failed to rewrite config"
 svcadm disable -st marlin-agent || fail "failed to disable marlin-agent"
 svcadm enable -s marlin-agent || fail "failed to enable marlin-agent"

@@ -1,0 +1,56 @@
+{
+	"probegroup": {
+		"name": "marlin agent on {{SERVER_UUID}}",
+		"contacts": [ "email" ]
+	},
+	"probes": [ {
+		"name": "marlin-agent logscan-errors",
+		"type": "bunyan-log-scan",
+		"agent": "{{SERVER_UUID}}",
+		"config": {
+			"smfServiceName": "marlin-agent",
+			"fields": {
+				"level": "ERROR"
+			},
+			"threshold": 1,
+			"period": 60
+		}
+	}, {
+		"name": "marlin-agent logscan-fatal",
+		"type": "bunyan-log-scan",
+		"agent": "{{SERVER_UUID}}",
+		"config": {
+			"smfServiceName": "marlin-agent",
+			"fields": {
+				"level": "FATAL"
+			},
+			"threshold": 1,
+			"period": 60
+		}
+	}, {
+		"name": "marlin-agent logscan-core",
+		"type": "log-scan",
+		"agent": "{{SERVER_UUID}}",
+		"config": {
+			"smfServiceName": "marlin-agent",
+			"match": {
+				"pattern": "dumped core"
+			},
+			"threshold": 1,
+			"period": 60
+		}
+	}, {
+		"name": "marlin-agent svcs-x",
+		"type": "cmd",
+		"agent": "{{SERVER_UUID}}",
+		"config": {
+			"cmd": "/usr/bin/svcs -x marlin-agent",
+			"stdoutMatch": {
+				"pattern": "maintenance",
+				"matchWord": true
+			},
+			"threshold": 1,
+			"period": 60
+		}
+	} ]
+}
