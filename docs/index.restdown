@@ -9,12 +9,10 @@ apisections: Task Control API
 Marlin is a facility for running compute jobs on Manta storage nodes.  This
 document describes the desired end state for version 1.
 
-
-# Overview and Public API
-
-For an overview of what Marlin is and how users interact with it, see the Manta
-documentation in muskie.git.  Really, go read that first.  This document assumes
-familiarity with that, including how the rest of the Manta object store works.
+**For an overview of what Marlin is and how users interact with it, see the
+Manta documentation in muskie.git.  Really, go read that first.  This document
+assumes familiarity with that, including how the rest of the Manta object store
+works.**
 
 
 # First principles
@@ -39,7 +37,7 @@ Example use cases include:
 
 Since the primitive abstraction is the Unix shell, lots of these operations can
 be done with built-in tools like `awk`, `grep`, `sort`, `json`, `bunyan`, and so
-on.  We'll also provide a rich suite of software like ImageMagic, ffmpeg, and so
+on.  We also provide a rich suite of software like ImageMagic, ffmpeg, and so
 on, as well as runtime environments like Perl, Python, Java, R, and so on so
 that users can run their own software, too.
 
@@ -49,272 +47,22 @@ software locally and then run it in Marlin with little to no changes required.
 With rich access controls in Manta, it will be possible to run compute on other
 users' data that's been made available to you.  This may be especially useful
 for government organizations with lots of public data (e.g.,
-http://community.topcoder.com/pds-challenge/).
+http://community.topcoder.com/pds-challenge/).  In version 1, the only access
+controls available in Manta are "private to my account" and "public to the
+internet".
 
-Marlin must be easy to use, monitor, and debug.  "Word frequency count", the MR
-equivalent of "hello world", should be trivial to run from the command line.
+Marlin must be easy to use, monitor, and debug.  As a benchmark, "Word frequency
+count", the MR equivalent of "hello world", should be trivial to run from the
+command line.
 
 
 # Examples
 
-## Total word count
+There are lots more examples in the public (muskie) documentation.
 
-Input: a list of plain text objects (e.g., plaintext mailbox files, source code)
+## XXX: Finding active customers (with a join)
 
-Output: a single object with one line containing the total number of characters,
-words, and lines in all files (e.g., "wc" output)
-
-    "phases": [ {
-        "exec": "wc"
-    }, {
-        "type": "reduce",
-        "exec": "awk '{ l += $1; w += $2; c += $3 } END { print l, w, c }'"
-    } ]
-
-Example output (exactly the same format as "wc"):
-
-      122919  380672 3416475
-
-
-## Word frequency count
-
-Input: a list of plain text objects.
-
-Output: a single object with one line *per whitespace-delimited* word in the
-input objects identifying how many times that word occurred in all of the input
-files.  The result should be sorted by count.
-
-    "phases": [ {
-        "exec": "awk '
-            {
-                for (i = 1; i < NF; i++) {
-                    counts[$i]++
-                }
-            }
-            END {
-                for (i in counts) {
-                    print i, counts[i]
-                }
-            }'
-        "
-    }, {
-        "type": "reduce",
-        "exec": "awk '
-            {
-                byword[$1] += $2
-            }
-            END {
-                for (i in byword) {
-                    print i, byword[i]
-                }
-            }' | sort -k2,2 -n"
-    } ]
-
-Example output:
-
-    aardvark: 37
-    broomstick: 318
-    métier: 1
-
-## Line count by file extension
-
-Input: a list of text files (e.g., source code)
-
-Output: a total count of lines by file extension
-
-    {
-        "phases": [ {
-            "exec": "wc -l $mc_input_key |
-                (read count file; echo $count ${file##*.}",
-        }, {
-            "type": "reduce",
-            "exec": "awk '
-                {
-                    byword[$2] += $1
-                }
-                END {
-                    for (word in byword) {
-                        print byword[word], word
-                    }
-                }'
-            "
-        } ]
-    }
-
-Note: we use $mc\_input\_key rather than reading from stdin so that "wc" prints
-out the filename after the word count.
-
-Example output:
-
-    12992 py
-    15773 md
-    32782 h
-    122919 js
-    186279 c
-
-## Word index
-
-Input: a list of text files (e.g., plaintext emails)
-
-Output: a file with one word per line indicating which files and lines the word
-appears in the input files.
-
-    "phases": [ {
-        "exec": "awk '
-            {
-                for (i = 1; i <= NF; i++) {
-                    if ($i in indx) {
-                        indx[$i] = indx[$i] "," NR
-                    } else {
-                        indx[$i] = FILENAME ":" NR
-                    }
-                }
-            }
-            END {
-                for (word in indx) {
-                    print word, indx[word]
-                }
-            }'
-        "
-    }, {
-        "type": "reduce",
-        "exec": "awk '
-            {
-                for (i = 2; i <= NF; i++) {
-                    indx[$1] = indx[$1] " " $i
-                }
-            }
-            END {
-                for (word in indx) {
-                    print word, indx[word]
-                }
-            }'
-        "
-    } ]
-
-Example output:
-
-    And  macbeth.txt:6,10 hamlet.txt:4,25,28,30,32
-    Is  hamlet.txt:29
-    Ophelia!  hamlet.txt:33
-    Signifying  macbeth.txt:12
-    by  macbeth.txt:11 hamlet.txt:4,5
-    for  macbeth.txt:2
-    regard  hamlet.txt:31
-    shadow,  macbeth.txt:8
-    such  macbeth.txt:2
-    there's  hamlet.txt:9
-
-## Image conversion
-
-Input: list of arbitrary image files
-
-Output: list of same images converted to PNGs
-
-This example uses the ImageMagick package that's installed in all compute zones.
-
-    "phases": [ {
-        "exec": "convert $mr_input_file ${mr_input_file##*.}.png &&
-            mpipe < ${mr_input_file##*.}.png"
-    } ]
-
-The output here is a list of objects corresponding to converted images, as in:
-
-    img001.png
-    img002.png
-
-## Video transcoding
-
-Input: list of arbitrary video files
-
-Output: list of same videos encoded with webm using default ffmpeg presets
-
-This example uses the ffmpeg package that's installed in all compute zones.
-
-    "phases": [ {
-        "exec": "ffmpeg -i $mr_input_file ${mr_input_file##*.}.webm &&
-            mpipe < ${mr_input_file##*.}.webm"
-    } ]
-
-The output here is a list of objects corresponding to transcoded videos, as in:
-
-    video001.webm
-    video002.webm
-
-## Ad-hoc Apache log query
-
-Input: list of logs in Apache common log format
-
-Output: count of all queries decomposed by URI
-
-Assumes: apache2json tool, which converts each Apache common log record into a
-JSON object with named fields
-
-    "phases": [ {
-        "exec": "apache2json | json -a url"
-    }, {
-        "type": "reduce",
-        "exec": "sort | uniq -c | sort -n"
-    } ]
-
-Example output:
-
-       3 /apache_pb.gif
-       4 /kart.htm
-      13 /index.htm
-
-## Data warehousing with an intermediate database
-
-Input: list of logs in Apache common log format
-
-Output: SQL database describing all of the HTTP requests
-
-    "phases": [ {
-        "exec": "awk '{
-            print \"INSERT INTO Requests (SourceIP, User, URI, Status, Size)
-              VALUES (\" $1 \",\" $3 \",\" $7 \",\" $9 \",\" $10 \");\" }'"
-    }, {
-        "type": "reduce",
-        "exec": "echo 'CREATE TABLE Requests (
-            SourceIP VARCHAR(20),
-            User VARCHAR(20),
-            URI VARCHAR(256),
-            Status VARCHAR(4),
-            Size INT(7)
-        );'; cat"
-    } ]
-
-Note: this assumes URIs have no spaces in them.  A more robust solution would
-use an actual Apache log parser in place of awk here, but the idea would be the
-same.
-
-Example output:
-
-    CREATE TABLE Requests (
-       SourceIP VARCHAR(20),
-       User VARCHAR(20),
-       URI VARCHAR(256),
-       Status VARCHAR(4),
-       Size INT(7)
-    );
-
-    INSERT INTO Requests (SourceIP, User, URI, Status, Size) VALUES
-        ("127.0.0.1", "frank", "index.htm", 200, 136);
-    INSERT INTO Requests (SourceIP, User, URI, Status, Size) VALUES
-        ("192.168.0.1",  "bob", "index.htm", 200, 136);
-    INSERT INTO Requests (SourceIP, User, URI, Status, Size) VALUES
-        ("127.0.0.1", "frank", "kart.htm", 200, 15378);
-
-The resulting file could be imported into a SQL database.
-
-
-## Finding active customers (with a join)
-
-XXX
-
-## Hadoop
-
-XXX
+## XXX: Hadoop
 
 ## Build system
 
@@ -342,198 +90,240 @@ repos needed to be built with different datasets, those would have to be
 separate jobs.
 
 
-# Advanced topics for users
+# Marlin implementation
 
-## Task output
-
-Each task may emit one or more output objects.  If the job has a subsequent
-phase, these output objects become input for the subsequent phase.  If not,
-these become output objects for the overall job.  Intermediate objects are not
-directly exposed to users, and may never even be stored in Manta, but final
-outputs are always Manta objects.
-
-By default, the stdout for the user's process is captured and is emitted as a
-single output object.  This happens even if no bytes are emitted to stdout.
-
-If a task fails, the stderr for the user's process is captured and made
-available as a Manta object.
+The following sections are somewhat out-of-date and subject to change.  When in
+doubt, check the source.
 
 
-### mpipe
+## APIs
 
-Several facilities are available for more advanced types of output, most of
-which make use of a primitive command called `mpipe`, which emits a single
-object from the current task.  With no arguments, `mpipe` emits everything it
-reads on stdin.  For example:
+End users manage compute jobs through the "jobs" entry points under the main
+Manta API.  See the Manta API documentation for details.
 
-    wc | mpipe
+Internally, Marlin worker processes (which are responsible for managing the
+distributed execution of jobs) communicate with agents (which actually execute
+user commands) through small JSON records stored in Moray, the Manta metadata
+tier.  This mechanism is documented in the worker source code.
 
-is exactly equivalent to just:
+On each physical server where jobs are executed, the Marlin agent communicates
+with a lackey running inside each compute zone using a private HTTP API which is
+documented in the agent source code.  This API is a superset of the public Manta
+API, allowing allowing users to securely perform the usual Manta operations from
+within jobs.  The non-public entry points in this API are private implementation
+details, though future versions may stabilize these for consumption by
+higher-level frameworks.
 
-    wc
-
-since both capture the stdout of wc and emit it as a single output object.
-
-`mpipe` is used for several reasons:
-
-* **Naming**: Objects created through automatic stdout capture or through mpipe
-  with no arguments are automatically given unique names.  You can control the
-  name yourself by specifying an argument to `mpipe`:
-
-        wc | mpipe /dap/stor/count
-
-  You may want to use environment variables like `$mc_input_key` (see "Task
-  environment" below) to keep these names unique.
-
-* **Multiple outputs**: you can invoke `mpipe` as many times as you want from a
-  single task to emit more than one object for the next phase (or as a final job
-  output).
-* **Special headers**: You can specify headers to be set on output objects using
-  the "-H" option to `mpipe`, which behaves exactly like the same option on the
-  Manta CLI tool `mput`.
-* **Reducer routing**: Finally, in jobs with multiple reducers, you can specify
-  which reducer a given output object should be routed to using the "-r" option
-  to `mpipe`.  See "Multiple reducers" below.
-
-### mcat: emit an object by reference
-
-`mcat` emits the contents of a Manta object, but without actually fetching the
-data.  For example:
-
-    mcat /dap/stor/scores.csv
-
-emits the object `/dap/stor/scores.csv` as an input to the next phase (or as a
-final job output), but *without* actually downloading it as part of the current
-phase.
+All DateTimes in all APIs use W3C DTF in UTC ("YYYY-MM-DDThh:mm:ss.sZ").
 
 
-### msplit: demux a stream for reducers
+## Network architecture
 
-Reads content from stdin and outputs to the number of `mpipe` processes for the
-number of reducers that are specified.  The field list is an optional list of
-fields that are used as input to the partitioning function.  The field list
-defaults to 1.  The delimiter is used to split the line to extract the key
-fields.  The delimiter defaults to (tab).  For example, this will split stdin by
-comma and use the 5th and 3rd fields for the partioning key, going to 4
-reducers:
+Marlin makes use of two generic Manta components:
 
-    $ msplit -d ',' -f 5,3 -n 4
+* muskie, the Manta web tier, which handles the Jobs API (requests to POST new
+  jobs and GET job state).
+* moray, where all Marlin state is stored.
 
+On top of these, Marlin adds two components:
 
-### mtee: save stdout to a manta object in a stream of commands
+* Job worker tier, which locates new and abandoned jobs in Moray, assigns task
+  groups to individual storage and compute nodes, and monitors job progress.
+* Compute node agents, which execute and monitor tasks and report progress and
+  completion.
 
-`mtee` is like `mput`, but takes input on stdin instead of a file, and emits its
-input on stdout as well, much like tee(1).
+There's a cluster of web tier workers and job workers in each datacenter, but
+there's no real DC-awareness among these components.
 
-`mtee` is also similar to `mpipe`, except that the newly created object does
-*not* become an output object for the current task.
+**Job state**
 
-For example, this will capture the output of cmd to manta object
-`/$MANTA_USER/stor/tee.out` and still pipe what was coming from cmd to cmd2:
+To keep the service resilient to partitions and individual node failures, **all
+job state is stored in Moray** (i.e., all components are essentially
+stateless), and **all communication happens via Moray**.  Rather than talking
+to each other directly, each component drops state changes into Moray and polls
+for whatever other state changes it needs to know about.  This model makes it
+relatively easy to deal with individual component failure and to scale
+horizontally.  See "Invariants and failure modes" below for details.
 
-    $ cmd | mtee /$MANTA_USER/stor/tee.out | cmd2
+Recall that Moray spans datacenters, is eventually consistent, and remains
+available in the case of minority DC partitions.  Using Moray in this way also
+implies that Moray becoming unavailable makes Marlin unavailable, and that
+Moray must be able to keep up with the Marlin workload.  See "Scalability"
+below.
 
-
-### maggr: aggregate rows of numbers
-
-maggr &lt;sum|avg|pctile99...&gt;
-
-Reads a set of "key: value" pairs on stdin, aggregates them key-wise according
-to the given function, and emits the result.
-
-Example input:
-
-    $ cat data.txt
-    manta: 15
-    marlin: 12.8
-    manta: 38
-    moray: 3
-
-Example output:
-
-    $ maggr sum < data.txt
-    manta: 53
-    marlin: 12.8
-    moray: 3
-
-The "key:" bit may also be omitted.
+Job state is stored across seeral Moray buckets with indexed fields that allow
+the web tier, job workers, and agents to poll on the subset of jobs and job
+state that they care about.  For details on these buckets and the records
+contained therein, see the documentation in lib/schema.js.  A design constraint
+is that the size of every JSON record in the system must be bounded (and should
+be fairly small).  This applies to records received from and sent back to users
+as well as records used internally.
 
 
-### Future work: apache2json (parse Apache log records and emit JSON objects)
+**Web tier**
 
-## Task environment
-
-Tasks are executed as privileged user in an isolated container similar to a
-standard SmartMachine.  Tasks cannot see processes or data belonging to any
-other users.  Tasks have a variety of software available to them, currently
-based on the SmartOS 1.8.4 image.
-
-In the normal case, Marlin executes a shell process for each task.  The task
-ends when that process exits, and the result is successful if that process exits
-successfully (i.e., with status 0).
-
-This first process may fork children, which may fork again.  In that case, the
-task does not end until all children have exited.  The status is still
-determined by the exit status of the first process.  For this reason, it's
-strongly recommended that the first process wait for all children to exit and
-propagate any errors from child processes (whatever that means for the user's
-application).
-
-If any user process dumps core, the task ends as a failure, regardless of what
-other processes are still running and regardless of the exit status of the main
-process.
-
-For convenience, several environment variables are set:
-
-* `PATH`: includes paths to system software, installed packages, standard Manta
-  CLI tools, and Marlin-specific tools like `mpipe`.  The specific paths to
-  these tools are subject to change, and it's not recommended to remove
-  directories from the PATH.
-* `MANTA_URL`: set to a URL valid for use by Manta API consumers.  The current
-  implementation uses HTTP (not HTTPS), but the traffic flows over a secure
-  network.
-* `mc_input_key` (name subject to change, available in map tasks only): the name
-  of the Manta object being processed.
-* `mc_input_file` (name subject to change, available in map tasks only): the
-  full path to the local file corresponding to the Manta object being processed.
-* `MANTA_OUTPUT_BASE`: suggested base name for output objects, automatically
-  generated based on the type of task and input object(s).
+muskie retrieves current job state by querying "marlinJobs" for the job with the
+given jobId.  When a new job is submitted, muskie drops the job definition into
+the jobs bucket.
 
 
-## Multiple reducers
+**Job workers**
 
-Sometimes it's necessary to pipeline the reduce phase so that instead of
-processing all input objects in one pass, the input objects are processed in
-chunks across multiple passes.  For example, you may want to process half of the
-inputs in each of two parallel tasks, and then process the output of that, to
-avoid having to load the entire data set in memory at once.
+To synchronize changes to job state, each job is assigned to one worker at a
+time.  This assignment is stored in the job object in Moray.  An assignment is
+valid as long as the job's modification time (mtime) is within the last
+WORKER\_TIMEOUT seconds.  Workers save their jobs periodically to indicate
+liveness.  They also poll periodically for unassigned jobs (to pick them up) and
+jobs that have not been updated within the timeout period (to handle worker
+failure).
 
-To support multiple reducers in parallel (i.e., in the same job phase), use the
-"count" property:
+Managing the streaming, distributed execution of jobs is a complex process.  The
+basic idea is that workers query Moray for state changes needing attention (new
+jobs, new job inputs, and completed tasks) and process them by issuing new
+tasks, updating job state, and so on.  Each input is processed by locating the
+corresponding object and writing out either a task assignment (for map tasks) or
+a taskinput record (for reduce tasks).  For details, see the worker source.
 
-    "phases": [
-        ... /* any number of map phases */
-        , {
-            "type": "reduce",
-            "exec": ...,
-            "count": 2
-        }, {
-            "type": "reduce",
-            "exec": ...
-        }
-    ]
+**Compute node agents**
 
-In this example, some number of map phases are followed by a phase with two
-reducers running in parallel, followed by a final reduce stage.  The two
-parallel reducers are identical except for their input and output objects.  By
-default, inputs are randomly assigned to one of the reducers.  If a more
-sophisticated assignment is necessary, the previous map phase may specify to
-which reducer a given output object will be assigned using the "-r" flag to
-`mpipe`, which must be an integer between 0 and N - 1, where N is the total
-number of reducers in the next phase.
+Like workers, the per-storage-node agents periodically poll Moray for state
+changes needing attention (newly assigned tasks, cancelled tasks, and so on) and
+process them by scheduling execution.  Agents are responsible for assigning
+tasks to zones, managing the lifecycle of those zones, keeping track of output,
+and proxying front-door requests between zones and Manta.  As tasks complete
+(successfully or otherwise), the agent writes new updates to Moray that will be
+processed by the worker.
 
 
-## Future work: Node, Python, Ruby, etc. framework
+**Analysis of distributed system failure modes**
+
+Invariants:
+
+* All state is stored in Moray, so all components are stateless.
+* At most one worker can ever "own" a job.  Only the owner of a job can write
+  task assignments or update the job record in "marlinJobs".
+* To a first approximation, a component is partitioned iff it cannot reach
+  Moray.  This is an oversimplification because Moray itself is sharded, so it's
+  theoretically possible to be partitioned from one shard but not another.
+  This case is very unlikely, since each shard has a presence in each DC, but
+  the system will handle this.  Most importantly, the only partitioning that
+  matters is that between a component and a given Moray shard.
+
+If a user's code fails within a task (e.g., dumps core), and the on-node retry
+policy has been exhausted, the lackey reports the task as failed, and that will
+become visible in the final job state.  It's the user's problem at that point.
+
+If a compute node agent fails transiently (e.g., dumps core and restarts), fails
+for an extended period of time, or becomes partitioned from its Moray shard, any
+running tasks are aborted by the worker.  The worker will retry aborted tasks up
+to once.  This retry should be invisible to the user's code and the rest of the
+system, modulo increased task completion time.  Agents ignore tasks dispatched
+before they began running, which covers the case where the agent actually
+crashes.  To cover the case where the agent simply becomes partitioned, the
+worker explicitly cancels tasks that it has retried elsewhere.
+
+If a job worker fails transiently, it can pick up exactly where it left off,
+since all state is stored in Moray.  This should be invisible to the rest of the
+system, modulo slightly increased job completion time.  If a job worker fails
+for an extended period, another job worker will pick up its jobs.  This becomes
+exactly like the case where a worker fails transiently: the state in Moray is
+sufficient for the new worker to pick up where the old one left off.
+
+If a job worker becomes partitioned from one or more Moray shards, it will stop
+processing updates (since it won't see them).  After the job timeout elapses,
+the worker will stop trying to save the record and another worker will pick up
+the job.  This looks just like a worker failure.
+
+Web tier nodes are completely stateless.  Any failure results in failing any
+in-flight requests.  Persistent failures have no additional impact as long as
+enough nodes are in service to handle load.  Partitions between the web node and
+the Moray shard storing job records would result in failed requests.
+
+If an entire datacenter becomes partitioned from the rest, then its web tier
+nodes certainly won't be able to service any requests.  All of its job workers
+become partitioned (see above -- the work should eventually be picked up by
+workers in other datacenters).  All of its compute node agents effectively also
+become partitioned, and their work *may* be duplicated in other datacenters.
+Importantly, jobs submitted to the majority partition should always be able to
+complete successfully in this state, since there's always enough copies of the
+data to process the job.
+
+**Scalability analysis**
+
+Being stateless, web tier nodes can be scaled arbitrarily horizontally.  If load
+exceeds capacity, requests will queue up and potentially eventually fail, but
+alarms should ring long before that happens.
+
+Similarly, job workers can be scaled arbitrarily horizontally, and capacity
+monitoring should allow administrators to ensure that sufficient capacity is
+always available.  The failure mode for excess load is increased job completion
+time.  Task updates may accumulate in Moray faster than the worker can process
+them, but the total space used in Moray is the same regardless of how fast the
+job workers process them, so there's no cascading failure.  If job workers
+cannot update their locks in Moray, the system may thrash as workers try to take
+each others' jobs, but this would be very extreme.
+
+Compute nodes rely on the OS to properly balance the workload within that box.
+They may queue tasks after some very large number of concurrent tasks, but it's
+not anticipated that we would ever reach that point in practice.  If this
+becomes a problem, job workers could conceivably redispatch the task to another
+node with the same data available.  If this truly became a serious problem, we
+could support compute agents that download data, rather than operating locally
+(just as reducers already do).
+
+Given that there's enough capacity in each of the Marlin tiers, the remaining
+question is Moray.  Moray will be sharded, and we will say that each compute
+node reports its tasks to exactly one (uniformly distributed) shard.  All job
+state will be stored on a single shard, since the number of updates is
+relatively minimal.  We should be able to reshard to scale this out.
+
+***Future ideas***
+
+Each compute node can batch its Moray updates from all tasks for up to N
+seconds, sharply reducing the number of requests required.  Similarly, job
+workers can batch job state updates for many jobs up to N seconds.  Batching of
+"location" GET requests is discussed above, under "job workers".  Thus, the
+total number of Moray-wide requests should be boundable to something like (# of
+workers \* # of compute zone lackeys) / (N seconds), where N is how frequently
+each agent updates Moray.  These requests should mostly be distributed across
+all shards.
+
+Batching requests for the same record over multiple seconds reduces both network
+throughput and database operations, as multiple state changes can be combined at
+the source.
+
+Batching requests over multiple records helps network throughput, but not the
+total number of database operations, since each record must be operated on
+separately.  The total number of database operations could still be around (# of
+active tasks \* # of agents \* # of active jobs \* # of job workers).  Again,
+these are distributed across many Moray shards, which can be scaled
+horizontally.
+
+
+## Cancellation
+
+To cancel a job, the web tier writes an update to the job record.
+Asynchronously, the job worker will need to be polling on the job state
+occasionally to notice the cancelled flag.  It propagates this to individual
+task assignments, where the compute node agents will notice that the job has
+been cancelled and abort them.  Eventually, all work on the job will complete,
+though this may take some time to propagate through the system.
+
+
+# Future work
+
+* flesh out maggr
+* apache2json?
+* Crazy idea #1: eliminate the worker by writing a library to lookup input
+  objects and dispatch them to the next phase.  Have muskie do this for phase 0,
+  and agents do this for subsequent phases.  (Should this be a service instead
+  of a library?)
+* Crazy idea #2: make things pushed based for the common case, resorting to
+  polling only as a catch-all.  Once polling is cheap, eliminate "state" for
+  jobs entirely -- there's just (have all inputs submitted so far been
+  processed?)
+
+## Node, Python, Ruby, etc. framework
 
 The Jobs API is built in terms of Unix shell commands for generality.  This
 makes it easy to run simple jobs like "grep" and "wc".  For slightly more
@@ -575,1074 +365,3 @@ Users would only need to reference a third party asset:
         ],
         "exec": "/assets/third-party/public/framework/start.sh /assets/dap/stor/script"
     } ]
-
-
-# Cookbook
-
-These are some patterns we expect to see a lot.
-
-## Iterating on jobs
-
-When iterating with the CLI, it's convenient to keep the jobid in a variable.
-Instead of this:
-
-    $ mmkjob -m "grep password"
-    83790e24-4b01-11e2-ae6a-9b835d9b76f9
-
-    $ mfind /dap/public | maddkeys 83790e24-4b01-11e2-ae6a-9b835d9b76f9
-
-    $ mjob 83790e24-4b01-11e2-ae6a-9b835d9b76f9
-
-and repeating that several times as you tweak your "grep" pattern, do this:
-
-    $ jobid=$(mmkjob -m "grep password"); echo $jobid
-    83790e24-4b01-11e2-ae6a-9b835d9b76f9
-
-    $ mfind /dap/public | maddkeys $jobid
-
-    $ mjob $jobid
-
-Then you can run commands from your history unmodified, except for the one that
-creates the job.
-
-## Quoting madness
-
-Quoting jobs on the command line can be a nightmare, particularly when writing
-`awk` one-liners (which tend to use variables like `$1` that must not be
-interpreted by either the local shell or the shell in Marlin).  You can store
-the script in an asset and just invoke that, or you can store the script in a
-local file and use bash shell expansion.  So instead of this:
-
-    $ mmkjob -m "awk '{ print \$1 }'"
-
-You can throw the unescaped script in a local file called "myscript.awk", and
-do:
-
-    $ mmkjob -m "$(cat myscript.awk)"
-
-
-## Uploading a directory tree to Manta
-
-First, upload a tarball to Manta, then run "muntar" in a Marlin job to expand
-it.  For example, to copy /etc to /dap/stor/backup/etc:
-
-    $ cd /
-    $ tar czf /var/tmp/backup.tar.gz etc
-    $ mput -f /var/tmp/backup.tar.gz /dap/stor/backup.tar.gz
-    $ jobid=$(mmkjob -m gzcat -m "muntar -f $mc_input_file /dap/stor)
-    $ echo /dap/stor/backup.tar.gz | maddkeys -e $jobid
-
-The resulting output file will be a list of all of the objects created while
-extracting the tarball.
-
-
-## Take the list of input objects from a Manta object
-
-If you tend to run lots of jobs on the same set of objects, you may find it
-easier to store the set of objects in a separate "manifest" object and have the
-first phase of your job process that.  This is especially useful when you have
-a lot of input objects, since it can take a while simply to upload the list of
-them.
-
-So instead of this:
-
-    $ jobid=$(mmkjob -m wc)
-    $ mfind /dap/public | maddkeys -e $jobid
-
-which may take a long time if `mfind` returns a lot of objects, you could do
-this once:
-
-    $ mfind /dap/public > /var/tmp/inputs
-    $ mput -f /var/tmp/inputs /dap/public/inputs
-
-And then for subsequent jobs, just do this:
-
-    $ jobid=$(mmkjob -m "xargs -n1 mcat" -m wc)
-    $ echo /dap/public/inputs | maddkeys -e $jobid
-
-This is much quicker, since you're just uploading one object name.  Note that we
-had to add a first phase to the job which goes through the file line-by-line
-(using "xargs -n1") and calls "mcat" on each one (which emits an output object
-by reference).  So if your input object contains a sequence of lines like:
-
-    /dap/public/game1.csv
-    /dap/public/game2.csv
-    ...
-
-then the first phase emits each of these objects to the second phase, but
-without copying it inside the job.
-
-
-## Concatenating output
-
-Single-phase map jobs that run a single Unix command (e.g., `grep`) produce one
-output object for each input object.  Sometimes it's desirable to combine these,
-which you can do with just "cat" as a reduce phase:
-
-    $ mmkjob -m "grep pattern" -r cat
-
-This runs "grep pattern" on all the input objects and produces one output object
-with the concatenated results.
-
-Note that this just combines all the individual grep outputs, which won't
-include labels saying which input object it came from.  This may be fine, but
-if you want to know which file each match came from, see "Grepping files".
-
-
-## Grepping files
-
-You can grep files for "pattern" with just:
-
-    $ mmkjob -m "grep pattern"
-
-but you'll get one output for each input object.  As described above, if you
-want to combine them, you can add a "cat" reduce phase:
-
-    $ mmkjob -m "grep pattern" -r cat
-
-The problem with this is that the matching lines from all files will be combined
-in one file with no labels, so you won't know what came from where.  GNU grep
-provides an option for labeling the stdin stream, and combined with "-H" (which
-tells it to print the name of the file in the first place), you can get more
-useful output:
-
-    $ mmkjob -m 'grep -H --label=$mc_input_key pattern' -r cat
-
-
-## Producing a list of output objects as a single file
-
-If your job produces lots of output objects, you can create a single object
-listing them all by appending a map phase that echoes the object name followed
-by a "cat" reduce phase.  For example, this may create tons of output objects:
-
-    $ mmkjob -m wc
-
-You can have the job emit a single object that *lists* all the results of the
-previous phases using:
-
-    $ mmkjob -m wc -m 'echo $mc_input_key' -r cat
-
-
-## Using awk
-
-See [http://www.pement.org/awk/awk1line.txt](http://www.pement.org/awk/awk1line.txt).
-
-
-
-# Marlin implementation
-
-The following sections are somewhat out-of-date and subject to change.  When in
-doubt, check the source.
-
-
-## APIs
-
-End users manage compute jobs through the "jobs" entry points under the main
-Manta API.  See the Manta API documentation for details.
-
-Internally, Marlin worker processes (which are responsible for managing the
-distributed execution of jobs) communicate with agents (which actually execute
-user commands) through small JSON records stored in Moray, the Manta metadata
-tier.  This mechanism is documented in the worker source code.
-
-On each physical server where jobs are executed, the Marlin agent communicates
-with an agent running inside each compute zone using a private HTTP API which is
-documented in the agent source code.  This API is a superset of the public Manta
-API, allowing allowing users to securely perform the usual Manta operations from
-within jobs.  The non-public entry points in this API are private implementation
-details, though future versions may stabilize these for consumption by
-higher-level frameworks.
-
-All DateTimes in all APIs use W3C DTF in UTC ("YYYY-MM-DDThh:mm:ss.sZ").
-
-## Network architecture
-
-Marlin makes use of two generic Manta components:
-
-* muskie, the Manta web tier, which handles the Jobs API (requests to POST new
-  jobs and GET job state).
-* moray, where all Marlin state is stored.
-
-On top of these, Marlin adds two components:
-
-* Job worker tier, which locates new and abandoned jobs in Moray, assigns task
-  groups to individual storage and compute nodes, and monitors job progress.
-* Compute node agents, which execute and monitor tasks and report progress and
-  completion.
-
-There's a cluster of web tier workers and job workers in each datacenter, but
-there's no real DC-awareness among these components.
-
-**Job state**
-
-To keep the service resilient to partitions and individual node failures, **all
-job state is stored in Moray** (i.e., all components are essentially
-stateless), and **all communication happens via Moray**.  Rather than talking
-to each other directly, each component drops state changes into Moray and polls
-for whatever other state changes it needs to know about.  This model makes it
-relatively easy to deal with individual component failure and to scale
-horizontally.  See "Invariants and failure modes" below for details.
-
-Recall that Moray spans datacenters, is eventually consistent, and remains
-available in the case of minority DC partitions.  Using Moray in this way also
-implies that Moray becoming unavailable makes Marlin unavailable, and that
-Moray must be able to keep up with the Marlin workload.  See "Scalability"
-below.
-
-Jobs are stored inside a single Moray bucket called "marlinJobs", with indexed
-fields that allow the web tier, job workers, and agents to poll on the subset of
-jobs that they care about.
-
-
-**Web tier**
-
-muskie retrieves current job state by querying "marlinJobs" for the job with the
-given jobId.
-
-When a new job is submitted, muskie allocates a new jobId and drops the job
-definition into "marlinJobs".
-
-
-**Job workers**
-
-To synchronize changes to job state, each job is assigned to one worker at a
-time.  This assignment is stored in the job object in Moray.  An assignment is
-valid as long as the job's modification time (mtime) is within the last
-WORKER\_TIMEOUT seconds.
-
-This works as follows: each job worker periodically queries Moray for jobs
-whose state is not "done" and either (a) the "worker" field is undefined or (b)
-the modification time is more than WORKER\_TIMEOUT seconds ago.  (This is a
-relatively simple query on indexed fields.)  For each job the worker finds, it
-uses a test-and-set operation to assign the job to itself.  In this way,
-workers pick up both new jobs and jobs whose assigned workers appear to have
-failed.  A worker must update each job every WORKER\_TIMEOUT seconds, even if
-there's no meaningful progress to report, to indicate that the worker is still
-handling that job.  If the worker sees that WORKER\_TIMEOUT seconds has elapsed
-since it last updated the job, it must discard any job state it has and stop
-working on the job to avoid conflicting with another worker who picks up the
-job.  (In practice, the best way to implement this may simply be to have all
-state updates use a test-and-set that checks whether worker == me.)
-
-When a worker picks up a newly submitted job, the first thing it has to do is
-query Moray to find out where all the input keys are.  Moray itself has many
-independent partitions and uses a consistent hash ring to map a given key to
-the Moray partition that holds the metadata for that key.  The worker takes all
-the input keys, executes the consistent hash function to group them by Moray
-partition, and performs a batch request to each partition to determine which
-storage nodes each key is actually stored on.
-
-The worker than divides the first phase of the job into **task groups**, each of
-which will run on one storage node and process whichever input keys are stored
-on that node.  These task assignments are written out to a Moray bucket called
-"marlinTaskGroups" with a field identifying the hostname of the node on which
-the task will run.  The agents running on each node poll Moray for tasks
-assigned to them, process each one, and update the task object.  The job worker
-polls on these task updates, updates the global job state with job progress (so
-the web tier can see it) and advances the job when each phase completes.
-
-When a phase completes (as determined by the worker when all of its tasks have
-completed), the worker begins processing the next phase in the same way it did
-the first one: by locating the objects within Manta and then assigning tasks to
-individual nodes.  When all phases complete, the job is marked done.
-
-**Compute node agents**
-
-As described above, compute node agents monitor tasks assigned to them in
-"marlinTaskGroups".  As their tasks make progress, they update the task record,
-which is also monitored by a job worker.
-
-**Invariants and failure modes**
-
-Invariants:
-
-* All state is stored in Moray, so all components are stateless.
-* At most one worker can ever "own" a job.  Only the owner of a job can write
-  task assignments or update the job record in "marlinJobs".
-* To a first approximation, a component is partitioned iff it cannot reach
-  Moray.  This is an oversimplification because Moray itself is sharded, so it's
-  theoretically possible to be partitioned from one shard but not another.
-  This case is very unlikely, since each shard has a presence in each DC, but
-  the system will handle this.  Most importantly, the only partitioning that
-  matters is that between a component and a given Moray shard.
-
-If a user's code fails within a task (e.g., dumps core), and the on-node retry
-policy has been exhausted, the compute agent reports the task as failed, and
-that will become visible in the final job state.  It's the user's problem at
-that point.
-
-If a compute node agent fails transiently (e.g., dumps core and restarts), it
-should be able to pick up where it left off.  This should be invisible to the
-user's code and the rest of the system, modulo slightly increased task
-completion time.  (The agent must synchronously write state to local disk to
-facilitate this.  If this storage fails, that's equivalent to the compute node
-agent failing persistently.)
-
-If a compute node agent either fails for an extended period *or* becomes
-partitioned from its Moray shard (which are indistinguishable to the outside
-world), the job worker redispatches any uncompleted work to other nodes that
-have the same data.  It does not cancel the task on the failed node.  If both
-tasks eventually complete successfully, the worker will necessarily see one's
-results first and discard the other's.  (That's why the state in
-"marlinTaskGroups" is not authoritative job state, and why the worker must
-"commit" this state to the job record in "marlinJobs" for the web tier to see
-it, rather than having the web tier scan "marlinTaskGroups" for itself.)
-
-If a job worker fails transiently, it should be able to pick up where it left
-off, since all state is stored in Moray.  This should be invisible to the rest
-of the system, modulo slightly increased job completion time.
-
-If a job worker fails for an extended period, another job worker will pick up
-its jobs.  This becomes exactly like the case where a worker fails transiently:
-the state in Moray is sufficient for the new worker to pick up where the old one
-left off.
-
-If a job worker becomes partitioned from one or more Moray shards, then it will
-be unable to process task updates from compute nodes reporting to those shards.
-It may end up trying to redispatch tasks assigned to those nodes to other nodes.
-If it can talk to enough shards to complete the phase, the phase will complete;
-otherwise, it will stall until connectivity is restored, at which point the
-worker will see the completed task state and finish the phase.
-
-If a job worker becomes partitioned from the Moray shard storing the job state
-for WORKER\_TIMEOUT seconds, this will be treated as an extended worker failure.
-Another worker will pick up the job where the first one left off.  The first
-worker won't clobber the job state after someone else has picked up the job
-because it also knows that WORKER\_TIMEOUT has elapsed.
-
-Web tier nodes are completely stateless.  Any failure results in failing any
-in-flight requests.  Persistent failures have no additional impact as long as
-enough nodes are in service to handle load.  Partitions between the web node and
-the Moray shard storing job records would result in failed requests.
-
-If an entire datacenter becomes partitioned from the rest, then its web tier
-nodes certainly won't be able to service any requests.  All of its job workers
-become partitioned (see above -- the work should eventually be picked up by
-workers in other datacenters).  All of its compute node agents effectively also
-become partitioned, and their work *may* be duplicated in other datacenters.
-Importantly, jobs submitted to the majority partition should always be able to
-complete successfully in this state, since there's always enough copies of the
-data to process the job.
-
-**Scalability**
-
-Being stateless, web tier nodes can be scaled arbitrarily horizontally.  If load
-exceeds capacity, requests will queue up and potentially eventually fail, but
-alarms should ring long before that happens.
-
-Similarly, job workers can be scaled arbitrarily horizontally, and capacity
-monitoring should allow administrators to ensure that sufficient capacity is
-always available.  The failure mode for excess load is simply increased job
-completion time.  Task updates may accumulate in Moray faster than the worker
-can process them, but the total space used in Moray is the same regardless of
-how fast the job workers process them, so there's no cascading failure.  If job
-workers cannot update their locks in Moray, the system may thrash as workers try
-to take each others' jobs, but this would be very extreme.
-
-Compute nodes rely on the OS to properly balance the workload within that box.
-They may queue tasks after some very large number of concurrent tasks, but it's
-not anticipated that we would ever reach that point in practice.  If this
-became a problem, job workers could conceivably redispatch the task to another
-node with the same data available.  If this truly became a serious problem, we
-could support compute agents that download data, rather than operating locally
-(just as reducers already do).
-
-Given that there's enough capacity in each of the Marlin tiers, the remaining
-question is Moray.  Moray will be sharded, and we will say that each compute
-node reports its tasks to exactly one (uniformly distributed) shard.  All job
-state will be stored on a single shard, since the number of updates is
-relatively minimal.  We should be able to reshard to scale this out.
-
-Additionally, each compute node can batch its Moray updates from all tasks for
-up to N seconds, sharply reducing the number of requests required.  Similarly,
-job workers can batch job state updates for many jobs up to N seconds.  Batching
-of "location" GET requests is discussed above, under "job workers".  Thus, the
-total number of Moray-wide requests should be boundable to something like (# of
-workers \* # of compute zone lackeys) / (N seconds), where N is how frequently
-each agent updates Moray.  These requests should mostly be distributed across
-all shards.
-
-Batching requests for the same record over multiple seconds reduces both network
-throughput and database operations, as multiple state changes can be combined at
-the source.
-
-Batching requests over multiple records helps network throughput, but not the
-total number of database operations, since each record must be operated on
-separately.  The total number of database operations could still be around (# of
-active tasks \* # of agents \* # of active jobs \* # of job workers).  Again,
-these are distributed across many Moray shards, which can be scaled
-horizontally.
-
-## Objects
-
-There are two types of objects stored in Moray: jobs and task group
-assignments.  For the details, see the schema in lib/schema.js in marlin.git.
-
-Web tier:
-
-* POST /jobs (create new job)
-* GET /jobs/jobId (get job status)
-* PUT /jobs/jobId (rare case: use T&amp;S to set cancelled = true)
-
-Workers:
-
-* GET /jobs where worker == null or mtime &lt; ... (pick up new jobs)
-* PUT /jobs/jobId (update job state)
-* PUT /taskgroups/taskGroupId (create/update assignment)
-* GET /taskgroups/taskGroupId (check task group state)
-
-Agents:
-
-* GET /taskgroups where host == me (pick up new task groups)
-* GET /taskgroups/taskGroupId (check task group state)
-* PUT /taskgroups/taskGroupId (post task group results)
-
-
-## Cancellation
-
-To cancel a job, the web tier writes "cancelled: true" to the job record.  At
-this point, we could say that the job state is immutable and all future state
-requests only show whatever state has been completed up to this point.
-
-Asynchronously, the job worker will need to be polling on the job state
-occasionally to notice the cancelled flag.  It propagates this to individual
-task assignments, where the compute node agents will notice that the job has
-been cancelled and abort them.  Eventually, all work on the job will complete,
-though this may take some time to propagate through the system.
-
-
-## CN agent
-
-As described above, compute node agents receive task assignments via Moray and
-report progress back to Moray.  Such progress includes keys processed and state
-changes, including that a task is queued, loaded, running, timed out, failed, or
-done.)
-
-The agent maintains a pool of compute zones that are either "uninitialized",
-"ready", or "busy".  Uninitialized zones are those currently in an arbitrary
-state.  Those are asynchronously transitioned to "ready" by the following steps:
-
-1. Halt the zone, if it's not already halted.
-2. "zfs rollback" to the zone's origin snapshot
-3. Boot the zone.
-4. Sets up an agent inside the zone that listens for local HTTP requests to the
-   Task Control API and forwards them via a zsock server to the CN agent.
-
-When a new task is dispatched, if there are no "ready" zones available, tasks
-are enqueued for later.  Otherwise, the agent picks a "ready" zone and does the
-following:
-
-1. Downloads the job's bundle's assets into the zone.
-2. Creates a hyprlofs mount for the files.
-3. Finally, invokes the bundle's exec script.
-
-When the job completes, successfully or otherwise, the CN agent reclaims the
-zone by marking it "uninitialized" again and asynchronously transitioning it to
-"ready" again to be used for another task.
-
-To implement the Task Control API:
-
-`/info` is simple: it just retrieves data from the agent's persistent state,
-which already has to exist to manage the job.
-
-`/objects/:key` makes a note in the task state that this object is being
-written, and then (first approach) proxies the request directly to manta. But
-see "open questions" below.
-
-`/commit` updates the persistent state for the task to indicate that all
-objects written since the last checkpoing have been committed.
-
-`/fail` also updates the persistent state, but indicates that new objects should
-be discarded.  They won't actually be deleted, but marked as discarded in the
-job state so users can look at them later.  After that, this request terminates
-the zone.
-
-`/abort` is like `/fail`, except that before terminating it gcores all processes
-in the user's contract and does an incremental "zfs send" of the zone to a new
-manta file.  (We'll want some automated mechanism to reconstruct the user's zone
-based on this, presumably by "zfs receive" the dataset and then "zfs receive -i"
-the stream associated with this task.)
-
-In order to survive transient failure, the agent must store state on disk.  The
-current plan is to use sqlite for this because it already has usable Node
-bindings.
-
-## Management API?
-
-cancel tasks, take compute zones and servers in and out of service
-initial setup: creating compute zones
-tuning # of compute zones
-
-## Reducers
-
-Reducers are mainly different from mappers in three ways:
-
-1. Reduce tasks operate on multiple keys at once, not just one.
-2. Reduce nodes operate on data stored elsewhere in Manta, which means it must
-   be downloaded first.  (We'd actually like to be able to do this for mappers
-   too.)
-3. Reduce tasks can run in any compute zone, which means we need a mechanism for
-   discovering and choosing compute zones to run reduce tasks.
-
-Here's the current plan:
-
-* For testing purposes: have the worker assign reduce tasks to any host that it
-  knows about, and by writing the same taskgroup record it would use for "map",
-  except that there's a type field indicating "reduce".  Doing this first lets
-  us use the rest of Marlin to iterate on the agent, where the bulk of the
-  changes will be made.
-* Modify the agent to support "reduce" tasks by processing them just as it would
-  "generic" tasks except that all keys are processed in one invocation.
-* Modify the agent to support downloading input files rather than mapping them
-  in.  This should be supported for regular map tasks, too.  (This comes after
-  adding "reduce" tasks because the implementation for map tasks alone may not
-  be generalizable for reduce tasks.)
-* Once this works, modify the agent to not specify input keys on the command
-  line for reduce tasks.  (See below.)
-* Implement a real zone scheduling algorithm.
-* Rework agent/worker communication to use something other than the existing
-  task group interface for assigning work, then stress test with large numbers
-  of keys.
-
-
-### Multiple keys at once
-
-In order to process multiple keys at once, several pieces of both the global
-zone agent and lackey must be generalized because they assume only one
-input key at a time, and that a sequence of input keys (tasks) make up a
-complete task group.  These changes are straightforward.
-
-There are some more serious scalability issues in processing up to millions of
-keys at once:
-
-1. Interface: It will be difficult to support a file-based (as opposed to
-   stdin-based) interface for actually invoking the reducer, since command lines
-   cannot support millions of arguments.  If we want to support a file-based
-   interface, we may have to specify the keys on stdin or some other file that's
-   passed as a command line argument.  There are other problems with this,
-   though; see below.
-2. Architecture: Today, the task group is the main unit of work inside the
-   agent, and there's no way to share state across task groups.  But task groups
-   are passed between worker and agent via Moray as JSON objects that must be
-   parsed and stringified on both ends, stored in memory, and updated in
-   entirety.  That's not going to scale well with millions of keys.
-
-
-### File access
-
-In order to deal with very large numbers of very large files, we'll need to
-stream data when possible.  In the worst case, reducers may not be able to
-physically store all of the data they will need to process.  But even in less
-severe cases it may be a grossly inefficient use of both memory (valuable ARC
-space) and disk to store all of the data at once when it could just as well be
-streamed.
-
-Streaming is relatively straightforward: the agent downloads input files and
-pipes them over stdin to the reducer, which is invoked with no actual command
-line arguments.  The agent may as well download the files sequentially, only
-parallelizing to start the next file when the current one is near completion.
-
-People may want access to files by name.  Lots of custom programs take
-filenames and don't work on stdin/stdout.  And it's not hard to imagine reduce
-tasks that by nature require random access to all of the input files.  This is
-hard, since we must wait to start the reducer until all of the input file(s)
-have been completely downloaded.  We can probably punt on this in the short
-term.  We can always add new types of tasks in the future (e.g.,
-"reduce-byfile") with different semantics, since such an abstraction is clearly
-pretty different from streaming reduce.
-
-
-### Scheduling compute zones
-
-For now, we're going to take the simple (simplistic?) approach of selecting a
-server at random among all known servers and sending the reduce task to that
-agent, which will run it just like a map jobs.
-
-
-### Scaling records
-
-Instead of using taskgroups, we may need to switch to more fine-grained records.
-See below.
-
-# Project: Fine-grained records
-
-Like the implementation section above, this is out-of-date and subject to
-change.  See the source.
-
-Following is a proposal for splitting up the existing job and taskgroup records
-into more fine-grained records.  This is necessary because processing large
-records blocks Node programs (including muskie, moray, the marlin worker, and
-the marlin agent) and other pieces in the middle.
-
-The new design constraint is that the size of every JSON record in the system
-must be bounded (and should be fairly small).  This applies to records received
-from and sent back to users as well as records used internally.
-
-## Streaming job input/output
-
-A job's input and output are represented as streams.  The input stream is a list
-of object keys in plain text, one per line.  The output stream looks just like a
-Manta directory listing.  The public API endpoints will thus look like this:
-
-* `POST /:userid/jobs`: submit a new job (JSON)
-* `GET /:userid/jobs`: list jobs (JSON)
-* `GET /:userid/jobs/:jobid`: retrieve current job state (JSON)
-* `PUT /:userid/jobs/:jobid/input`: submit input keys for a job (text/plain)
-* `GET /:userid/jobs/:jobid/output`: retrieve list of output keys for a job
-  (JSON or text/plain)
-* `GET /:userid/jobs/:jobid/phases/:i/results`: retrieves list of results for a
-  given phase. (JSON object describing each *task*, including the input key, the
-  result (success or failure), timing details, etc.)
-
-Below are example implementations of several use cases.  In all of these
-examples, it's assumed that the input is streamed in and the output is streamed
-out.  The sequence for each of these examples is:
-
-    $ curl -i -X POST -d @input.json '-Hcontent-type: application/json' \
-        manta.joyent.us/:userid/jobs
-
-    # extract new job URL from Location header
-
-    $ curl -X PUT -d @input_keys.txt manta.joyent.us/:userid/jobs/:jobid/input
-
-    $ curl manta.joyent.us/:userid/jobs/:jobid
-
-    # repeat above until state == "done"
-
-    $ curl -o output_keys.txt manta.joyent.us/:userid/jobs/:jobid/output
-
-Alternatively, jobs may be pipelined, so that the input keys from one job come
-from the output keys of a previous job.  To do this, use the "inputStream"
-property on the job itself, as in:
-
-    {
-        "jobName": "part two"
-        "phases": [ ... ],
-        "inputStream": "/:userid/jobs/:jobid/output"
-    }
-
-"inputStream" may refer to any other job's output stream, or any Manta object.
-The object must have type text/plain.  There's no corresponding "outputStream"
-property, since every job has its own output stream at
-`/:userid/jobs/:jobid/output` that can be used anywhere an input stream or Manta
-file is required.
-
-
-## Moray records
-
-The Moray records exchanged among Marlin components must also be broken up so
-that each one is bounded in size.  Primarily, this means replacing large task
-group records with individual task records, and moving output key records from
-being stored with each task to being stored separately.
-
-As described above, the general constraint is that no single record be unbounded
-in size.  Anything that contains an unbounded N of something must be split into
-a set of smaller records.
-
-
-### Jobs
-
-Each **job record** has these properties:
-
-|| **Field**       || **Type**          || **Description** ||
-|| jobId           || string            || unique identifier, assigned at job submission time ||
-|| jobName         || string            || non-unique user label for the job ||
-|| owner           || string            || user's uuid who submitted the job ||
-|| phases          || object&nbsp;array || description of what the job does ||
-|| phases.i.type   || string            || "storage-map", "generic", or "reduce" ||
-|| phases.i.exec   || string            || bash script to execute via "bash -c" ||
-|| phases.i.uarg   || object            || arbitrary user object ||
-|| phases.i.assets || string&nbsp;array || Manta objects to download into zone ||
-|| worker          || string            || worker's uuid currently processing the job  ||
-|| state           || string            || "queued", "running", or "done" ||
-|| timeCreated     || datetime          || job creation (submission) time ||
-|| timeAssigned    || datetime          || time when the job was first picked up by a worker ||
-|| timeInputDone   || datetime          || time when the user finished writing input ||
-|| timeCancelled   || datetime          || time when the user cancelled the job ||
-|| timeDone        || datetime          || job completion time ||
-
-The rules about job records are:
-
-* The job record is initially written out by muskie when the user submits a job.
-* Subsequently, muskie updates the record when the user finishes submitting
-  input or when the user cancels the job.  This is always a test-and-set
-  read-modify-write.
-* The record is also updated by a job worker, but only the one which "owns" the
-  job or one which is trying to take it over.  All writes are test-and-set based
-  on the etag.  If the write fails, muskie has updated it, and the worker
-  fetches the record, modifies it as needed, and writes it again.
-
-Writes to this record are relatively uncommon, as they happen only in response
-to one of two user actions and a small number of significant events in the
-life of the job, plus periodic "heartbeat" writes by the worker.
-
-As the user submits input, muskie also writes out immutable **job input
-records** with the following properties to describe each input key for the job's
-first phase:
-
-|| **Field**  || **Type** || **Description** ||
-|| jobId      || string   || see above ||
-|| key        || string   || Manta key for the object emitted ||
-
-These records are read by the worker to process the first phase.
-
-### Task input
-
-To process each job, workers write out **task records**.  Tasks represent atomic
-chunks of work.  For map phases, tasks correspond 1:1 with input keys (though
-not necessarily with output keys).  For reduce phases, one task covers all keys
-in the phase.  By definition, a single task cannot be parallelized, but all
-tasks within a job can in principle be executed in parallel.
-
-All task records have the following fields:
-
-|| **Field**      || **Type**          || **Description** ||
-|| jobId          || string            || see above ||
-|| taskId         || string            || unique identifier for this task ||
-|| phaseNum       || integer           || which phase of the job this task goes with ||
-|| server         || string            || server assigned to process this task ||
-|| state          || string            || dispatched, cancelled, queued, running, aborted ||
-|| machine        || string            || uuid of zonename where this task ran ||
-|| result         || string            || "ok" or "fail" ||
-|| error          || object            || describes any failure that occurred ||
-|| error.code     || string            || programmatic error code ||
-|| error.message  || string            || human-readable error message ||
-|| timeDispatched || datetime          || when this task was created ||
-|| timeQueued     || datetime          || when the task was picked up by an agent ||
-|| timeStarted    || datetime          || when the task started running ||
-|| timeDone       || datetime          || when the task completed ||
-|| timeCommitted  || datetime          || when the worker committed this result to the job's output stream ||
-|| nOutput        || integer           || total number of output keys, including those contained in firstOutput ||
-|| firstOutputs   || object&nbsp;array || first N output keys (bounded N), in the same format as a task output record (see below) ||
-
-Map tasks have the following extra fields:
-
-|| **Field** || **Type** || **Description** ||
-|| key       || string   || Manta key to be processed.  This is the user-visible key name, which means it contains the user's login name rather than the account uuid ||
-|| account   || string   || Account uuid for the user owning the key.  This is used at the agent to actually locate the key. ||
-|| objectid  || string   || Unique Manta objectid for the key to be processed ||
-|| zonename  || string   || Mako zonename on remote server with a copy of this object ||
-
-Reduce tasks have the following extra field:
-
-|| **Field**     || **Type** || **Description** ||
-|| timeInputDone || datetime || time when all input for this task was available ||
-|| nInputs       || number   || total number of input keys ||
-
-In the success case, a task assignment goes through these states:
-
-* The worker writes out the assignment in the **dispatched** state.
-* The agent quickly picks it up and puts it into the **queued** state.
-* When a zone becomes available to process the task, the agent puts it into the
-  **running** state.
-* When the task has completed, the agent puts it into the **done** state.  For
-  reduce tasks, this can't be done until all input keys have been processed,
-  which can't be known until timeInputDone has also been set.
-* When the worker sees that the task has completed, it **commits** the task,
-  meaning that its output keys are propagated to the next phase (or the job's
-  output keys, if this is the last phase).
-
-Other things can happen:
-
-* If the agent knows it will never be able to complete the task successfully, it
-  will move it to the **aborted** state.  In this case, the worker can try to
-  assign the same key again, possibly to a different server, to retry it.
-* If the job is cancelled, or the worker decides for some other reason that it
-  doesn't need the output of this task, the worker can move the task to the
-  **cancelled** state, which tells the agent to forget about it.
-
-In the case of retries, there may be more than one task for the same key (or
-phase, in the case of reduce tasks), but at most one will end up committed.  In
-the future, we could support speculative execution, in which we write out
-multiple task assignments for the same keys concurrently (e.g., to see which one
-finishes first, or in response to uncertainty about whether one of them is being
-processed).
-
-The input for map tasks is contained in the task record itself, since it's
-always one key.  Input for reduce phases is written out as a series of **reduce
-input key records**, each with the following fields:
-
-|| **Field**     || **Type**          || **Description** ||
-|| jobId         || string            || see above ||
-|| taskId        || string            || see above ||
-|| key           || string            || input object's user-facing key ||
-|| account       || string            || account uuid for key ||
-|| objectid      || string            || input object's unique Manta identifier ||
-|| servers       || object&nbsp;array || list of locations for this key ||
-
-The current implementation will fetch the input key from muskie, but we may well
-want to fetch it directly from remote servers, for efficiency and to make sure
-we're getting the correct objectid.
-
-While processing each task, agents update the task record with status and the
-first few output keys.  If necessary, they also write out **task output
-records**, each of which describes a single key emitted from a given task:
-
-|| **Field**  || **Type** || **Description** ||
-|| jobId      || string   || see above ||
-|| taskId     || string   || see above ||
-|| error      || object   || see above ||
-|| key        || string   || Manta key for the object emitted (with login name, not account uuid) ||
-|| created    || string   || time when the object was created ||
-
-These records are immutable, written only once by the agent and subsequently
-read by the worker.  Only "key" or "error" should be present: if "key", then
-that key was emitted.  If "error", then this is an error emitted.  This is only
-possible for reduce tasks, since map tasks may only have one error and can just
-include it directly in the "task" record.
-
-## Muskie
-
-When the user **submits a job**, muskie validates it and writes out a new job
-record.
-
-When the user **submits input** for a job, muskie writes out new job key records
-for each of the new keys.  When the input is complete or the user **cancels a
-job**, muskie updates the job record using a read-modify-write-with-test-and-set
-operation.
-
-When the user **lists jobs** or **fetches a job's status**, muskie reads the job
-record, filters and sanitizes fields, and then emits the results back to the
-user.  The result includes the information initially submitted with the job, the
-current state, timing information, whether the job has been cancelled, whether
-it's waiting for input, and so on.
-
-When the user **fetches detailed job status for a given phase**, muskie first
-fetches the job record, and then fetches all task assignment records for the
-given phase.  For each task, the user can see the state of this task, the
-result, error information (if any), and timing information.  For map tasks, the
-input key is also included.  This is for reference and debugging, since
-intermediate keys are not directly available from Manta.
-
-When the user **fetches job output**, muskie first fetches the job record in
-order to see how many phases it has, then searches moray for all tasks with
-jobId = this job, phaseNum = last phase, timeCommitted not NULL (indicating this
-result has been committed).  The output keys contained within these records are
-emitted to the client.  If there are additional output keys in separate records,
-these will be fetched separately and emitted back to the client.
-
-
-## Worker
-
-Job workers will poll on Moray for new and abandoned jobs, just like they do
-today, and attempt to take them over using a test-and-set write.  This is a
-periodic query for (worker == null or mtime &lt; now - timeout).
-
-Upon picking up a job for the first time, the worker fetches all of the job
-input keys, tasks, reduce input keys, and task output keys.  It can't do
-anything else until it has all of these.  From these, it figures out what needs
-to be done.
-
-While there are first phase input keys not covered by already-saved tasks, these
-keys are first located within Manta and then assigned.  For map phases, new task
-records are saved.  For reduce phases, a reduce task is written if there isn't
-one already, and then reduce input keys are written out.
-
-While there are tasks which have completed successfully but not committed,
-commit them by simply updating the task record.
-
-While there are committed tasks for a non-final phase that have output keys
-(either in the task itself or separate output key records) that haven't been
-propagated to the next phase, do so.  This is exactly like propagating job input
-keys at the beginning of the task.
-
-While there are task records that haven't been updated within a specified
-timeout, mark them "cancelled".  (When we add retry support later, we should
-simply re-issue them without cancelling the other one until the job is done.)
-
-If the job's input stream has seen EOF, and all of the above has been completed,
-and all tasks have either aborted, cancelled, or finished, then the job is done.
-
-If the job becomes cancelled, cancel all outstanding tasks.
-
-Things we'll add later:
-
-* Chained jobs (inputStream == another job): works the same way, but instead of
-  fetching job input key records, they poll on the output of a previous job.
-  XXX should we try to assign such jobs to the same worker?
-* Retries.  Don't cancel tasks that seem abandoned, but assign new tasks for
-  them.  Do the same for tasks that have explicitly failed.  This requires more
-  bookkeeping for each key, which may now be in multiple tasks.
-* Deleting intermediate objects.  Intermediate objects can be queued for
-  deletion when a task where they're used as an input key becomes committed, or
-  when the job fails.
-
-
-## Agent
-
-Agents find work by polling for tasks with server == their uuid.  For map tasks,
-incoming tasks with the same jobId and phaseNum are grouped together, since they
-can be executed in series in the same compute zone without resetting the zone.
-For reduce tasks, the agent looks for (and polls on) reduce input key records
-with a matching taskid.  As with map tasks, these keys are combined into a
-single task group.  Thus, for both types of phases, the agent maintains a task
-group with a queue of keys to be processed in order within the same compute
-zone.
-
-The agent can start processing both map and reduce task groups as soon as any
-input keys are available.  It allocates a zone, downloads any required assets,
-and starts processing tasks.
-
-For map phases, we process the keys serially by mapping each key into the zone,
-signalling the lackey to invoke the user's command, unmapping the key,
-updating the task record with the result, and moving on to the next key.  As new
-tasks arrive for the same group, we just add them to the back of the queue.  If
-the queue runs out, we can reset the zone for use by another job, or hold onto
-it for a few seconds in case more keys arrive.  (If we reset the zone and more
-keys arrive, we just start processing the new keys as a new group.)
-
-For reduce phases, there's only ever one invocation of the user's code.  We
-start downloading the first input key from Manta and stream it via the in-zone
-agent to the user's code.  As each key completes, we start downloading the next
-one and feeding its contents in.  As new keys come in, we add it to the queue to
-be downloaded and fed to the user.  Unlike with the map phase, the agent cannot
-stop executing the task until it knows all input keys have been processed and
-the user's code has received EOF.  Once the "timeInputDone" field of the reduce
-task is set (by the worker, only after writing out all reduce input keys), the
-agent makes one last query for new input keys, processes all remaining keys, and
-finishes the task.
-
-For both map and reduce tasks, as the user's code emits new objects, the task
-itself is updated and (if necessary) new task output keys are saved.
-
-To cancel tasks, the worker marks them as "cancelled".  For tasks that are
-queued, the agent simply removes them.  For tasks currently running, we reset
-the zone and then remove them.  XXX This could be a pretty expensive operation
-since the worker will have to update O(n) records -- one for each outstanding
-key to be processed.  The alternative is to have the agent watching some other
-job-wide record to notice failure.
-
-
-## mrstat (status tool)
-
-Important operations include:
-
-* list jobs with basic job status: query for job records and maybe job input
-  keys (just to count them).
-* for a job, show summary status information: query for job record, job input
-  keys, tasks, reduce input keys, and task output keys.  For each of these
-  groups, show only the first N and last N, and summary information for all of
-  them.
-* for a job, show complete information: same as above, but make available all
-  records, not just the first N and last N.  The current tool punts on this by
-  providing a command-line invocation that queries Moray for the full data.  We
-  can probably do the same.
-
-
-## Related changes
-
-As part of these changes, we should also modify the worker to have only one
-connection to Moray rather than one per job, which should simplify a bunch of
-things, and makes it possible to throttle on a per-node basis rather than
-per-job.
-
-
-# Project: stateless polling
-
-## Crash course: the way things work today
-
-There are five types of records:
-
-* **job**: represents the overall job configuration and fixed-size state
-* **jobinput**: represents each job input object
-* **task**: represents each "map" or "reduce" operation -- one per key for map,
-  or a small fixed number (usually 1) per phase for reduce
-* **taskinput**: represents one input object, used for reduce tasks only (map
-  tasks store the key directly in the task record)
-* **taskoutput**: represents one output object from a task, used for any task
-  that emits more than 5 output records
-
-In the simple case of a 1-phase map job where each map task emits exactly one
-output object, the basic flow looks like this:
-
-1. Muskie writes **job** record.
-2. Marlin worker picks up the job and scans for **jobinput** records.
-3. Muskie writes jobinput records for submitted input objects.
-4. For each input object, the worker writes out a new **task**.
-5. An agent picks up the task, executes it, and updates it to indicate that the
-   task is completed.
-6. Marlin worker sees the completed task and updates it to indicate that the
-   task has been committed.
-7. At some point, Muskie updates job record to indicate that input is done.
-
-If the map task emits more than 5 output objects, the first 5 are listed in the
-task record itself, and subsequent ones are denoted with separate **taskoutput**
-records.  (This was done in attempt to avoid having to use separate records in
-the common case of just a few output objects.)
-
-For reduce tasks, only one **task** record is written for each reducer, and each
-input to the reducer is specified with a **taskinput** record.  Otherwise,
-things work exactly the same.
-
-## Problems with the way things work today
-
-There are several issues with the way things work today:
-
-1. The way the worker and agent keep track of which records they've already seen
-   and which require additional processing is not scalable.  In particular, they
-   assume records have monotonically increasing generation counters.  Each
-   request for new records selects those with a newer generation count than the
-   last record seen.  This works, but requires that Moray (Postgres, really) use
-   "global lock" to serialize operations, causing both writes and reads to back
-   up.  In production, we've seen query timeouts resulting from requests backed
-   up on this global lock.
-2. Restarting jobs correctly is very difficult.  It's hard to know where a
-   worker or agent actually left off, because there's in-memory state not
-   recorded in Moray itself.
-3. Paginating job output records for the frontend is basically impossible due to
-   the non-uniformity of outputs across records (i.e. 0-5 in some records, 1 in
-   others).
-
-## Solution
-
-The suggested solution is to replace in-memory state and polling based on
-monotonically increasing generation numbers with polling based on actual Moray
-state.  This requires writing out additional state changes in Moray that were
-previously just stored in memory.
-
-The full set of queries is described here:
-https://docs.google.com/a/joyent.com/document/d/1oAZJyfW4bPUAhr7gOSpZ0WZgBvL0Nr3aMa8sr7wVxBo/edit
-
-Before, in our 1-phase 1:1 map job, each input key resulted in the following
-operations:
-
-1. muskie writes jobinput record
-2. worker writes task record
-3. agent updates task record (after completing the task)
-4. worker updates task record (to commit the output)
-
-Under these changes, it looks like this:
-
-1. muskie writes jobinput record
-2. in a transaction, worker updates jobinput record (to indicate that it's been
-   processed) and writes a new task record
-3. agent immediately updates the task record (to indicate that it's been read)
-4. agent writes a taskoutput record (while processing the task)
-5. agent updates the task record (after completing the task)
-6. worker commits the task record
-
-There are a few new writes:
-
-* In (2), the worker has to update the job record, but this is cheap since it's
-  part of a transaction that already had to happen.
-* In (3), the agent has to update a task record.  This is a cost of storing this
-  "read" state in Moray instead of implicitly in-memory.
-* In (4), we're paying the cost of separating outputs into separate records.
-
-So that's a net 2 additional writes per key.  In the common case, we could also
-batch writes (4) and (5) so that there's only one additional write.
-
-The other issue with this is that there's no good way to stream the output out
-of a job, which means piped jobs can no longer stream.
-
-## Open questions
-
-1. Is that write cost acceptable?
-2. Is it okay to remove support for streaming piped jobs?
-3. How exactly does restarting work?
-
-## Future ideas
-
-1. Removing the extra worker round-trips by having agents be smart enough to
-   dispatch next-phase records.
-2. Remove the phase 0 round trip by having muskie do this too.
