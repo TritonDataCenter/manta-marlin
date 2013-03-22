@@ -40,6 +40,7 @@ BASH_FILES	 = \
     tools/mrzoneremove		\
     tools/mrzonestag
 DOC_FILES	 = index.restdown
+JSON_FILES	:= $(shell find src etc -name '*.json')
 JS_FILES	:= $(shell find src lib test -name '*.js')
 JS_FILES	+= \
     bin/maggr	\
