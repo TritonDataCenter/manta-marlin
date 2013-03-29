@@ -3,6 +3,7 @@
  */
 
 var mod_assert = require('assert');
+var mod_child = require('child_process');
 var mod_fs = require('fs');
 var mod_http = require('http');
 var mod_path = require('path');
@@ -1113,6 +1114,7 @@ function jobTestVerify(api, testspec, jobid, options, callback)
 		'testspec': testspec,
 		'jobid': jobid,
 		'job': undefined,
+		'objects_found': [],
 		'inputs': [],
 		'outputs': [],
 		'errors': [],
@@ -1124,6 +1126,7 @@ function jobTestVerify(api, testspec, jobid, options, callback)
 		jobTestVerifyFetchErrors,
 		jobTestVerifyFetchOutputs,
 		jobTestVerifyFetchOutputContent,
+		jobTestVerifyFetchObjectsFound,
 		jobTestVerifyResult
 	    ]
 	}, callback);
@@ -1198,6 +1201,39 @@ function jobTestVerifyFetchOutputContent(verify, callback)
 	}, callback);
 }
 
+/*
+ * Fetch the full list of objects under /%user/jobs/%jobid/stor to make sure
+ * we've cleaned up intermediate objects.
+ */
+function jobTestVerifyFetchObjectsFound(verify, callback)
+{
+	/*
+	 * It would be good if this were in node-manta as a library function,
+	 * but until then, we use the command-line version to avoid reinventing
+	 * the wheel.
+	 */
+	var cmd = mod_path.join(__dirname,
+	    '../../node_modules/manta/bin/mfind');
+
+	mod_child.execFile(cmd, ['-t', 'o',
+	    replaceParams('/%user%/jobs/' + verify['jobid'] + '/stor') ],
+	    function (err, stdout, stderr) {
+		if (err) {
+			callback(new VError(err, 'failed to list job ' +
+			    'objects: stderr = %s', JSON.stringify(stderr)));
+			return;
+		}
+
+		var lines = stdout.split('\n');
+		mod_assert.equal(lines[lines.length - 1], '');
+		lines = lines.slice(0, lines.length - 1);
+
+		verify['objects_found'] = verify['objects_found'].concat(lines);
+		verify['objects_found'].sort();
+		callback();
+	    });
+}
+
 function jobTestVerifyResult(verify, callback)
 {
 	try {
@@ -1222,6 +1258,7 @@ function jobTestVerifyResultSync(verify)
 	var joberrors = verify['errors'];
 	var testspec = verify['testspec'];
 	var strict = verify['strict'];
+	var foundobj = verify['objects_found'];
 	var expected_inputs;
 
 	/* verify jobSubmit, jobFetch, jobFetchInputs */
@@ -1328,6 +1365,70 @@ function jobTestVerifyResultSync(verify)
 	 */
 	mod_assert.ok(stats['nTasksCommittedFail'] <=
 	    stats['nRetries'] + stats['nErrors']);
+
+	/*
+	 * Check for intermediate objects.
+	 */
+	if (job['timeCancelled'] === undefined) {
+		/*
+		 * "foundobj" may not contain all output objects, since some of
+		 * those may have been given names somewhere else.  But it must
+		 * not contain any objects that aren't final outputs or stderr
+		 * objects.
+		 */
+		var dedup = {};
+		outputs.forEach(function (o) { dedup[o] = true; });
+		joberrors.forEach(function (e) {
+			if (e['stderr'])
+				dedup[e['stderr']] = true;
+		});
+		foundobj = foundobj.filter(function (o) {
+			if (dedup[o])
+				return (false);
+
+			/*
+			 * It's possible to see last-phase output objects that
+			 * are not final outputs because the corresponding task
+			 * actually failed.  These are legit: no sense removing
+			 * them.
+			 */
+			var match = /.*\.(\d+)\.[0-9a-z-]{36}$/.exec(o);
+			if (!match)
+				return (true);
+
+			if (parseInt(match[1], 10) ==
+			    testspec['job']['phases'].length - 1)
+				return (false);
+
+			/*
+			 * There's one other corner case, which is when we
+			 * successfully emit an intermediate object, but fail to
+			 * actually forward it onto the next phase.  The only
+			 * way this can happen today is when the object is
+			 * designated for a non-existent reducer.  We ignore
+			 * this case, effectively saying that the semantics of
+			 * this are that the intermediate object is made
+			 * available to the user in this error case.
+			 */
+			var j, e;
+			for (j = 0; j < joberrors.length; j++) {
+				e = joberrors[j];
+				if (e['key'] == o &&
+				    e['code'] == EM_INVALIDARGUMENT &&
+				    /* JSSTYLED */
+				    /reducer "\d+" specified, but only/.test(
+				    e['message']))
+					return (false);
+			}
+
+			return (true);
+		});
+
+		if (foundobj.length !== 0) {
+			log.error('extra objects found', foundobj);
+			throw (new Error('extra objects found'));
+		}
+	}
 
 	/* Check output content */
 	if (!testspec['expected_output_content'])
