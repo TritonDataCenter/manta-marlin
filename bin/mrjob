@@ -37,8 +37,9 @@ var msUsage = [
     '',
     '       mrjob list     [-H] [-o field1[,field2...]] [-c] [-s state]',
     '                      [-t sec] [-u user] [-w worker]',
-    '       mrjob submit   [-a key] [-c count] [-i id] [-n name] [-d size]',
-    '                      [-p jobid] [-t authToken] [-m exec] [-r exec] ...',
+    '       mrjob submit   [-a asset] [-c count] [-d size] [-i id] [-n name]',
+    '                      [-t authToken] [-x option=value ...]',
+    '                      [-m exec] [-r exec] ...',
     '       mrjob addkeys  jobid [key ...]',
     '       mrjob cancel   jobid',
     '       mrjob endinput jobid',
@@ -60,22 +61,27 @@ var msHelp = [
     '',
     'SUBCOMMANDS',
     '',
-    '   submit [-a key] [-c count] [-i id] [-n name] [-t token]',
-    '          [-m exec] [-r exec]',
+    '   submit [-a asset] [-c count] [-d size] [-i id] [-n name] [-t token]',
+    '          [-x option=value] [-m exec] [-r exec] ...',
     '',
-    '      Submit a new job without ending input.',
+    '      Submit a new job without ending input.  These options are available',
     '',
-    '          -a key         Append the named asset to the following task',
-    '          -c count       Use "count" concurrent reducers for the next ' +
+    '          -a asset        Append the named asset to the following task',
+    '          -c count        Use "count" concurrent reducers for the next ' +
 	'task',
-    '          -d size        Maximum DRAM for each task (megabytes)',
-    '          -i id          Use "id" for the job\'s id',
+    '          -d size         Maximum DRAM for each task (megabytes)',
+    '          -i id           Use "id" for the job\'s id',
+    '          -n name         Use "name" for the job\'s name',
+    '          -t token        Auth token',
+    '          -x option=value Specifies a supported option, one of:',
+    '',
+    '                 keepIntermediate=true     do not remove intermediate',
+    '                                           objects after processing',
+    '',
+    '      along with any number of -m and -r options:',
+    '',
     '          -m exec        Append a map phase with body "exec"',
-    '          -n name        Use "name" for the job\'s name',
-    '          -p jobid       Indicate that output should be streamed from ',
-    '                         the output of job "jobid"',
     '          -r exec        Append a reduce phase with body "exec"',
-    '          -t token       Auth token',
     '',
     '      With no -m or -r options, the job gets one map phase.',
     '',
@@ -172,10 +178,10 @@ var msHelp = [
 ].join('\n');
 
 var msPhases = [];
+var msOptions = {};			/* special named options */
 var msAssets = [];			/* assets (for next phase) */
 var msCount = 1;			/* reducer count (for next phase) */
 var msDram;				/* DRAM cap (for next phase) */
-var msPipeSource;			/* source of job's input */
 var msJobName = 'mrsubmit job';
 var msJobId = mod_uuid.v4();
 var msAuthToken;
@@ -420,7 +426,7 @@ function cmdSubmit()
 {
 	var parser, option;
 
-	parser = new mod_getopt.BasicParser('a:c:d:i:m:n:p:r:t:',
+	parser = new mod_getopt.BasicParser('a:c:d:i:m:n:r:t:x:',
 	    process.argv.slice(1));
 
 	while ((option = parser.getopt()) !== undefined) {
@@ -453,12 +459,20 @@ function cmdSubmit()
 			msJobName = option.optarg;
 			break;
 
-		case 'p':
-			msPipeSource = option.optarg;
-			break;
-
 		case 't':
 			msAuthToken = option.optarg;
+			break;
+
+		case 'x':
+			var p = option.optarg.indexOf('=');
+			if (p === -1)
+				console.error('%s: invalid value for -x: %s',
+				    msArg0, option.optarg);
+			var key = option.optarg.substr(0, p);
+			var val = option.optarg.substr(p + 1);
+			if (key == 'keepIntermediate')
+				val = JSON.parse(val);
+			msOptions[key] = val;
 			break;
 
 		case 'm':
@@ -519,18 +533,16 @@ function cmdSubmit()
 	    'jobId': msJobId,
 	    'jobName': msJobName,
 	    'phases': msPhases,
+	    'options': msOptions,
 	    'owner': process.env['MANTA_USER_UUID'],
 	    'authToken': msAuthToken,
 	    'auth': {
 	        'login': process.env['MANTA_USER'],
 		'uuid': process.env['MANTA_USER_UUID'],
-		'groups': [ 'operator' ],
+		'groups': [ 'operators' ],
 		'token': msAuthToken
 	    }
 	};
-
-	if (msPipeSource)
-		job['input'] = msPipeSource;
 
 	clientInit(function (api) {
 		api.jobCreate(job, function (err, jobid) {
