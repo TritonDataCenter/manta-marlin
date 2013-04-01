@@ -51,6 +51,7 @@ var msUsage = [
     '       mrjob log      jobid',
     '       mrjob outputs  jobid',
     '       mrjob retries  jobid',
+    '       mrjob delete   jobid',
     '       mrjob taskdone [-c code] [-e message] [-o noutput] taskid',
     '       mrjob tocommit taskid'
 ].join('\n');
@@ -206,6 +207,7 @@ var msCommands = {
     'get': cmdGet,
     'log': cmdLog,
     'retries': cmdRetries,
+    'delete': cmdDelete,
     'taskdone': cmdTaskdone,
     'tocommit': cmdTocommit
 };
@@ -865,6 +867,26 @@ function cmdList()
 		req.on('record', function (record) {
 			table.writeRow(makeJobRow(record['value'],
 			    mod_jsprim.iso8601(new Date(record['_mtime']))));
+		});
+	});
+}
+
+function cmdDelete()
+{
+	if (process.argv.length != 4)
+		usage();
+
+	var jobid = process.argv[3];
+
+	clientInit(function (api) {
+		api.jobDelete(jobid, function (err) {
+			if (err) {
+				console.error('%s: job "%s": ' +
+					      'failed to delete: %s',
+					      msArg0, jobid, err.message);
+				process.exit(1);
+			}
+			clientFini();
 		});
 	});
 }
