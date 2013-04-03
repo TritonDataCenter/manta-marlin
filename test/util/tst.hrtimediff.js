@@ -1,6 +1,6 @@
 var mod_assert = require('assert');
 var mod_util = require('util');
-var hrtimediff = require('../../lib/agent/meter').hrtimediff;
+var hrtimediff = require('../../lib/meter').hrtimediff;
 
 var test_cases = [
     /*       A         -        B    must equal     C    */

@@ -8,7 +8,7 @@ var mod_util = require('util');
 var mod_kstat = require('kstat');
 var mod_zoneid = require('zoneid');
 
-var mod_meter = require('../../lib/agent/meter');
+var mod_meter = require('../../lib/meter');
 var StatAccumulator = mod_meter.StatAccumulator;
 
 var MILLISEC = 1e3;

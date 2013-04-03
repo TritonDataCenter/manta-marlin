@@ -2,20 +2,22 @@
 
 /*
  * mrmeter: Summarize Marlin metering logs.  See usage below for details.
+ * This program is basically a command-line wrapper around the Marlin client
+ * library function for summarizing metering records.
  */
 
 var mod_assert = require('assert');
-var mod_carrier = require('carrier');
 var mod_events = require('events');
 var mod_fs = require('fs');
 var mod_path = require('path');
-var mod_util = require('util');
 
 var mod_extsprintf = require('extsprintf');
 var mod_getopt = require('posix-getopt');
 var mod_jsprim = require('jsprim');
 var mod_tab = require('tab');
 var mod_verror = require('verror');
+
+var mod_marlin = require('../lib/marlin');
 
 var EventEmitter = mod_events.EventEmitter;
 var sprintf = mod_extsprintf.sprintf;
@@ -49,11 +51,13 @@ var mmUsageExtended = [
     '                    TaskCheckpoint and TaskDone records.  With -C, the ',
     '                    checkpoint records are ignored, and only the ',
     '                    cumulative data in the TaskDone records is reported.',
+    '                    The tradeoffs are subtle but important; see the ',
+    '                    Marlin client library documentation for details.',
     '',
-    '    -d              Report additional auditing statistics.',
+    '    -d              Report additional debug statistics.',
     '',
     '    -j              Emit output as a full JSON summary.  The default is ',
-    '                    tabular output.',
+    '                    tabular, human-readable output.',
     '',
     '    -k fields       Break out resources used by the given key, which may ',
     '                    be a comma-separated list of:',
@@ -126,7 +130,6 @@ function main()
 	    'startTime': null,
 	    'endTime': null,
 	    'resources': null,
-	    'streamName': 'input',
 	    'output': 'table'
 	};
 
@@ -195,13 +198,11 @@ function main()
 
 	if (parser.optind() >= process.argv.length) {
 		stream = process.stdin;
-		options['streamName'] = '<stdin>';
 		mrmeter(options, stream);
 		return;
 	}
 
 	filename = process.argv[parser.optind()];
-	options['streamName'] = filename;
 	stream = mod_fs.createReadStream(filename);
 	var onOpenErr = function (err) {
 		fatal(new VError(err, 'open "%s"', filename));
@@ -214,90 +215,34 @@ function main()
 	});
 }
 
-function mergeFields(fields, str, allowed)
-{
-	var rv, args, i;
-
-	rv = fields === null ? [] : fields;
-	/* JSSTYLED */
-	args = str.split(/[,\s+]/);
-	for (i = 0; i < args.length; i++) {
-		if (args[i].length === 0)
-			continue;
-
-		if (allowed && !allowed[args[i]])
-			return (null);
-
-		rv.push(args[i]);
-	}
-
-	return (rv);
-}
-
 function mrmeter(options, stream)
 {
-	/* XXX should use library call for everything */
-	var reader = new BunyanReader(stream);
-	var aggr = new MeterAggregator(options);
-	reader.on('entry', function (entry) {
-		if (!entry['computeAudit'])
-			return;
-
-		if (options['startTime'] !== null &&
-		    entry['time'] < options['startTime'])
-			return;
-
-		if (options['endTime'] !== null &&
-		    entry['time'] > options['endTime'])
-			return;
-
-		aggr.aggregate(entry);
-	});
-
-	aggr.on('warn', warn);
+	options['stream'] = stream;
+	var reader = new mod_marlin.MarlinMeterReader(options);
 	reader.on('warn', warn);
-	stream.on('error', fatal);
-
-	reader.on('end', function () {
-		var stats = reader.stats();
-		var mstats = aggr.stats();
-		for (var k in mstats)
-			stats[k] = mstats[k];
-
-		mrmeterReport(options, stats, aggr.data());
-	});
+	reader.on('fatal', fatal);
+	reader.on('end', function () { mrmeterReport(options, reader); });
 }
 
-function printTable(stream, kvpairs)
-{
-	var maxlen = 0;
-	var k, fmt;
-
-	for (k in kvpairs)
-		maxlen = Math.max(maxlen, k.length + 1);
-
-	fmt = '%-' + maxlen + 's %s\n';
-
-	for (k in kvpairs)
-		stream.write(sprintf(fmt, k + ':', kvpairs[k]));
-}
-
-function mrmeterReport(options, stats, data)
+function mrmeterReport(options, reader)
 {
 	if (options['debug'])
-		printTable(process.stderr, stats);
-
-	if (mod_jsprim.isEmpty(data))
-		return;
+		printTable(process.stderr, reader.stats());
 
 	if (options['output'] == 'json') {
-		process.stdout.write(JSON.stringify(data) + '\n');
+		process.stdout.write(JSON.stringify(
+		    reader.reportHierarchical()) + '\n');
 		return;
 	}
 
-	var columns, rows;
+	/*
+	 * Build up the list of columns: the first N are the aggrKey columns,
+	 * and the rest are data columns described in the report.
+	 */
+	var data, columns, rows;
 	var i, j;
 
+	data = reader.reportFlattenedFully();
 	columns = [];
 	options['aggrKey'].forEach(function (k) {
 		columns.push({
@@ -306,7 +251,6 @@ function mrmeterReport(options, stats, data)
 		});
 	});
 
-	data = mrmeterFlatten(options, data);
 	data['datacolumns'].forEach(function (c) {
 		columns.push({
 		    'label': c.toUpperCase(),
@@ -315,6 +259,10 @@ function mrmeterReport(options, stats, data)
 		});
 	});
 
+	/*
+	 * Convert two-tuple numbers to actual numbers for display, sort the
+	 * rows, and write out the table.
+	 */
 	rows = data['flattened'];
 	for (i = 0; i < rows.length; i++) {
 		for (j = 0; j < rows[i].length; j++) {
@@ -348,288 +296,19 @@ function mrmeterReport(options, stats, data)
 	});
 }
 
-function mrmeterFlatten(options, data)
+function printTable(stream, kvpairs)
 {
-	/* First, flatten the aggregation keys. */
-	var flattened = mod_jsprim.flattenObject(
-	    data, options['aggrKey'].length);
+	var maxlen = 0;
+	var k, fmt;
 
-	/*
-	 * Now, each object in "rv" is an array corresponding to one desired
-	 * output row.  The first N entries (for N = number of aggregation
-	 * fields) correspond to the values of the aggregation key, so they
-	 * together make up a single composite key.  There's exactly one more
-	 * entry, which corresponds to the value of this key, which itself may
-	 * be a complex object.  Our next task is to figure out the union of all
-	 * simple columns for tabular display.
-	 */
-	var columns = {};
-	flattened.forEach(function (elt) {
-		var value = elt[elt.length - 1];
-		mod_assert.equal(typeof (value), 'object');
-		mod_assert.ok(value !== null);
-		mrmeterExtractColumns(columns, value, '');
-	});
+	for (k in kvpairs)
+		maxlen = Math.max(maxlen, k.length + 1);
 
-	/*
-	 * Now that we know the set of columns, flatten out the rest of the
-	 * object.
-	 */
-	var colnames = Object.keys(columns).sort();
-	flattened.forEach(function (elt) {
-		var value = elt.pop();
+	fmt = '%-' + maxlen + 's %s\n';
 
-		colnames.forEach(function (c) {
-			elt.push(mod_jsprim.pluck(value, c) || 0);
-		});
-	});
-
-	return ({
-	    'flattened': flattened,
-	    'datacolumns': colnames
-	});
+	for (k in kvpairs)
+		stream.write(sprintf(fmt, k + ':', kvpairs[k]));
 }
-
-function mrmeterExtractColumns(columns, obj, prefix)
-{
-	for (var k in obj) {
-		if (typeof (obj[k]) == 'number' || Array.isArray(obj[k])) {
-			columns[prefix + k] = true;
-			continue;
-		}
-
-		mrmeterExtractColumns(columns, obj[k], prefix + k + '.');
-	}
-}
-
-/*
- * Pre-0.10-style stream-like object that reads lines from a stream and emits
- * an 'entry' event for each well-formed log entry.  The only argument for the
- * event is the parsed JSON record.
- *
- * This implementation does not support flow control because the only consumer
- * at the moment is an aggregator, which doesn't need it.  We should build this
- * abstraction using Node 0.10 streams.
- */
-function BunyanReader(stream)
-{
-	var reader = this;
-
-	EventEmitter.call(this);
-	this.br_stream = stream;
-
-	this.br_linenum = 0;
-	this.br_nonjson = 0;
-	this.br_malformed = 0;
-	this.br_carrier = mod_carrier.carry(stream);
-	this.br_carrier.on('end', function () { reader.emit('end'); });
-	this.br_carrier.on('line', function (line) {
-		++reader.br_linenum;
-
-		if (line[0] != '{') {
-			reader.br_nonjson++;
-			return;
-		}
-
-		var entry;
-		try {
-			entry = JSON.parse(line);
-		} catch (err) {
-			reader.br_malformed++;
-			reader.emit('warn', new VError(err,
-			    'malformed record at line %d', reader.br_linenum));
-			return;
-		}
-
-		reader.emit('entry', entry);
-	});
-
-	stream.resume();
-}
-
-mod_util.inherits(BunyanReader, EventEmitter);
-
-BunyanReader.prototype.stats = function ()
-{
-	return ({
-	    'log records': this.br_linenum,
-	    'non-JSON records': this.br_nonjson,
-	    'malformed records': this.br_malformed
-	});
-};
-
-
-/*
- * Aggregates Marlin metering records for reports by some combination of jobid,
- * taskid, and time fields.
- */
-function MeterAggregator(options)
-{
-	mod_assert.ok(options !== null);
-	mod_assert.equal(typeof (options), 'object');
-	mod_assert.ok(Array.isArray(options['aggrKey']));
-	mod_assert.ok(Array.isArray(options['resources']));
-	mod_assert.ok(options['summaryType'] == 'deltas' ||
-	    options['summaryType'] == 'cumulative');
-
-	this.ma_key = options['aggrKey'].slice(0);
-	this.ma_resources = options['resources'].slice(0);
-	this.ma_usedeltas = options['summaryType'] == 'deltas';
-	this.ma_nrecords = 0;
-	this.ma_data = {};
-
-	EventEmitter.call(this);
-}
-
-mod_util.inherits(MeterAggregator, EventEmitter);
-
-MeterAggregator.prototype.aggregate = function (entry)
-{
-	if (!entry['computeAudit'])
-		return;
-
-	this.ma_nrecords++;
-	if (entry['event'] != 'TaskDone' && entry['event'] != 'TaskCheckpoint')
-		/* XXX do something with AgentStart, TaskStart events */
-		return;
-
-	if (!this.ma_usedeltas && entry['event'] != 'TaskDone')
-		return;
-
-	this.insert(this.computeKey(entry), this.extractResources(entry));
-};
-
-MeterAggregator.prototype.computeKey = function (entry)
-{
-	return (this.ma_key.map(function (field) {
-		var value;
-
-		switch (field) {
-		case 'taskid':
-			value = entry['taskId'];
-			break;
-		case 'jobid':
-			value = entry['jobId'];
-			break;
-		case 'hour':
-			value = entry['time'].substr(0, 13);
-			break;
-		case 'minute':
-			value = entry['time'].substr(0, 16);
-			break;
-		default:
-			throw (new VError('unsupported key: "%s"', field));
-		}
-
-		return (value);
-	}));
-};
-
-MeterAggregator.prototype.extractResources = function (entry)
-{
-	var aggr = this;
-	var rv = {};
-	var metrics;
-	var metricdata;
-
-	if (this.ma_usedeltas && entry.hasOwnProperty('metricsDelta'))
-		metrics = entry['metricsDelta'];
-	else
-		metrics = entry['metricsCumul'];
-
-	if (typeof (metrics) != 'object') {
-		this.emit('warn', new VError('bad log entry: %j', entry));
-		return (undefined);
-	}
-
-	metricdata = {};
-	mod_jsprim.forEachKey(metrics, function (key, value) {
-		if (value.hasOwnProperty('snaptime'))
-			/* kstat-based: flatten out the "data" field */
-			metricdata[key] = value['data'];
-		else
-			metricdata[key] = value;
-	});
-
-	this.ma_resources.forEach(function (r) {
-		if (r == 'nrecords') {
-			rv[r] = 1;
-			return;
-		}
-
-		var pluckkey = r == 'time' ? 'hrtimestamp' : r;
-
-		var val = mod_jsprim.pluck(metricdata, pluckkey);
-		if (val instanceof Error) {
-			aggr.emit('warn', new VError(val,
-			    'failed to extract "%s" from %j', r, metrics));
-			return;
-		}
-
-		rv[r] = val;
-	});
-
-	return (rv);
-};
-
-MeterAggregator.prototype.insert = function (keyv, value)
-{
-	var obj, i;
-
-	for (i = 0, obj = this.ma_data; i < keyv.length - 1; i++) {
-		if (!obj.hasOwnProperty(keyv[i]))
-			obj[keyv[i]] = {};
-
-		obj = obj[keyv[i]];
-	}
-
-	obj[keyv[keyv.length - 1]] = this.aggregateValue(
-	    obj[keyv[keyv.length - 1]], value);
-};
-
-MeterAggregator.prototype.aggregateValue = function (oldvalue, newvalue)
-{
-	/* XXX not all fields are cumulative */
-	if (!oldvalue)
-		return (newvalue);
-
-	if (typeof (newvalue) == 'number') {
-		mod_assert.equal(typeof (oldvalue), 'number');
-		return (oldvalue + newvalue);
-	}
-
-	if (Array.isArray(newvalue)) {
-		/* hrtimestamp is an array of two-tuples */
-		mod_assert.ok(Array.isArray(oldvalue));
-		mod_assert.equal(oldvalue.length, 2);
-		mod_assert.equal(newvalue.length, 2);
-		oldvalue[0] += newvalue[0];
-		oldvalue[1] += newvalue[1];
-		if (oldvalue[1] > 1e9) {
-			oldvalue[0]++;
-			oldvalue[1] -= 1e9;
-		}
-		return (oldvalue);
-	}
-
-	mod_assert.equal(typeof (oldvalue), 'object');
-	for (var k in newvalue)
-		oldvalue[k] = this.aggregateValue(oldvalue[k], newvalue[k]);
-
-	return (oldvalue);
-};
-
-MeterAggregator.prototype.stats = function ()
-{
-	return ({
-	    'metering records': this.ma_nrecords
-	});
-};
-
-MeterAggregator.prototype.data = function ()
-{
-	return (this.ma_data);
-};
 
 
 /*
@@ -658,6 +337,26 @@ function fatal(err)
 {
 	warn(err);
 	process.exit(1);
+}
+
+function mergeFields(fields, str, allowed)
+{
+	var rv, args, i;
+
+	rv = fields === null ? [] : fields;
+	/* JSSTYLED */
+	args = str.split(/[,\s+]/);
+	for (i = 0; i < args.length; i++) {
+		if (args[i].length === 0)
+			continue;
+
+		if (allowed && !allowed[args[i]])
+			return (null);
+
+		rv.push(args[i]);
+	}
+
+	return (rv);
 }
 
 main();
