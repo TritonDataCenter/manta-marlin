@@ -36,6 +36,7 @@
 		"timeHeartbeat": 3000,
 		"timePoll": 200,
 		"timeTick": 20,
+		"timeTasksCheckpoint": 300000,
 		"zoneDisabledMaxPercent": 5,
 		"zoneReserveMin": 1,
 		"zoneReservePercent": 12

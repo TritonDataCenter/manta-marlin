@@ -79,6 +79,9 @@ var msHelp = [
     '                 keepIntermediate=true     do not remove intermediate',
     '                                           objects after processing',
     '',
+    '                 frequentCheckpoint=true   generate frequent checkpoint',
+    '                                           metering records',
+    '',
     '      along with any number of -m and -r options:',
     '',
     '          -m exec        Append a map phase with body "exec"',
@@ -472,7 +475,8 @@ function cmdSubmit()
 				    msArg0, option.optarg);
 			var key = option.optarg.substr(0, p);
 			var val = option.optarg.substr(p + 1);
-			if (key == 'keepIntermediate')
+			if (key == 'keepIntermediate' ||
+			    key == 'frequentCheckpoint')
 				val = JSON.parse(val);
 			msOptions[key] = val;
 			break;
