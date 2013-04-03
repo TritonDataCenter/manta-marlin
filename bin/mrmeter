@@ -1,0 +1,663 @@
+#!/usr/bin/env node
+
+/*
+ * mrmeter: Summarize Marlin metering logs.  See usage below for details.
+ */
+
+var mod_assert = require('assert');
+var mod_carrier = require('carrier');
+var mod_events = require('events');
+var mod_fs = require('fs');
+var mod_path = require('path');
+var mod_util = require('util');
+
+var mod_extsprintf = require('extsprintf');
+var mod_getopt = require('posix-getopt');
+var mod_jsprim = require('jsprim');
+var mod_tab = require('tab');
+var mod_verror = require('verror');
+
+var EventEmitter = mod_events.EventEmitter;
+var sprintf = mod_extsprintf.sprintf;
+var VError = mod_verror.VError;
+
+var mmArg0 = mod_path.basename(__filename);
+
+/* Valid aggregation keys and their field widths (in columns). */
+var mmValidAggrKeys = {
+    'jobid': 36,
+    'taskid': 36,
+    'hour': 13,
+    'minute': 16
+};
+
+/* Usage documentation. */
+var mmUsageMessage = [
+    'usage: $CMD [-Cdj] [-s start_time] [-e end_time] [-k field[,...] ...] ',
+    '       $CMS [-r resource[,...] ...] [logfile]',
+    '    or $CMD -h | --help'
+].join('\n').replace(/\$CMD/g, mmArg0).replace(
+    /\$CMS/, mmArg0.replace(/./g, ' '));
+
+var mmUsageExtended = [
+    '',
+    'Summarize Marlin metering records from the named logfile or stdin.',
+    'Available options include:',
+    '',
+    '    -C              Ignore TaskCheckpoint records.  By default, the ',
+    '                    report is based on incremental deltas in both ',
+    '                    TaskCheckpoint and TaskDone records.  With -C, the ',
+    '                    checkpoint records are ignored, and only the ',
+    '                    cumulative data in the TaskDone records is reported.',
+    '',
+    '    -d              Report additional auditing statistics.',
+    '',
+    '    -j              Emit output as a full JSON summary.  The default is ',
+    '                    tabular output.',
+    '',
+    '    -k fields       Break out resources used by the given key, which may ',
+    '                    be a comma-separated list of:',
+    '',
+    '                        ' + Object.keys(mmValidAggrKeys).join(', '),
+    '',
+    '                    The default is "jobid".',
+    '',
+    '    -r resources    Summarize only usage of the specified resources.',
+    '                    Each resource is identified by a hierarchical name, ',
+    '                    and multiple resources may be specified with multiple',
+    '                    -r flags or using a comma-separated list to a single ',
+    '                    -r flag (or both).  Top-level resources currently ',
+    '                    include "time", "cpu", "memory", "vfs", "zfs", and ',
+    '                    "vnic0".  The default is "time".',
+    '',
+    '    -s start_time   Only include log records at or after the given time.',
+    '',
+    '    -e end_time     Only include log records at or before the given time.',
+    '',
+    'Example 1: Summarize elapsed execution time (in milliseconds) by jobid',
+    '',
+    '    $ $CMD $(svcs -L marlin-agent)',
+    '    JOBID                                     TIME',
+    '    0110ce2f-a968-4adf-92a4-e947072ff377      7738',
+    '    035182c6-3eed-4297-8528-14197432a560     12168',
+    '    04163600-50d2-48d7-ac13-bc1fe34f4885     10569',
+    '',
+    '    This example is equivalent to:',
+    '',
+    '        $CMD -k jobid -r time $(svcs -L marlin-agent)',
+    '',
+    'Example 2: Summarize elapsed execution time (in milliseconds) by jobid ',
+    'and minute',
+    '',
+    '    # $CMD -k jobid,minute $(svcs -L marlin-agent)',
+    '    JOBID                                MINUTE                TIME',
+    '    0110ce2f-a968-4adf-92a4-e947072ff377 2013-04-02T16:16      3542',
+    '    0110ce2f-a968-4adf-92a4-e947072ff377 2013-04-02T16:17      4196',
+    '    035182c6-3eed-4297-8528-14197432a560 2013-04-02T00:16     12168',
+    '',
+    'Example 3: Summarize VFS read operations by hour (all jobs)',
+    '',
+    '    $ $CMD -k hour -r vfs.reads $(svcs -L marlin-agent)',
+    '    HOUR          VFS.READS',
+    '    2013-04-02T00     19657',
+    '    2013-04-02T01     30220',
+    '    2013-04-02T02     23356',
+    '    2013-04-02T03     27088',
+    '    2013-04-02T04     26298',
+    '',
+    'Example 4: Summarize all "zfs" stats by minute',
+    '',
+    '    $ $CMD -k minute -r zfs $(svcs -L marlin-agent)',
+    '    MINUTE           ZFS.NREAD ZFS.NWRITTEN ZFS.READS  ZFS.WRITES',
+    '    2013-04-02T00:16  62080000      1257472       893          25',
+    '    2013-04-02T00:17     67584            0        16           0',
+    '    2013-04-02T01:10   5341696            0       125           0'
+].join('\n').replace(/\$CMD/g, mmArg0);
+
+function main()
+{
+	var parser, options, option, filename, stream;
+
+	parser = new mod_getopt.BasicParser('Cde:h(help)jk:r:s:', process.argv);
+	options = {
+	    'summaryType': 'deltas',
+	    'debug': false,
+	    'aggrKey': null,
+	    'startTime': null,
+	    'endTime': null,
+	    'resources': null,
+	    'streamName': 'input',
+	    'output': 'table'
+	};
+
+	while ((option = parser.getopt()) !== undefined) {
+		switch (option.option) {
+		case 'C':
+			options['summaryType'] = 'cumulative';
+			break;
+
+		case 'd':
+			options['debug'] = true;
+			break;
+
+		case 'h':
+			console.error(mmUsageMessage);
+			console.error(mmUsageExtended);
+			process.exit(2);
+			break;
+
+		case 'j':
+			options['output'] = 'json';
+			break;
+
+		case 'k':
+			options['aggrKey'] = mergeFields(
+			    options['aggrKey'], option.optarg, mmValidAggrKeys);
+			if (!options['aggrKey'])
+				usage('invalid argument for -k: "%s"',
+				    option.optarg);
+			break;
+
+		case 'r':
+			options['resources'] = mergeFields(
+			    options['resources'], option.optarg, null);
+			if (!options['resources'])
+				usage('invalid argument for -r: "%s"',
+				    option.optarg);
+			break;
+
+		case 's':
+		case 'e':
+			var t = mod_jsprim.parseDateTime(option.optarg);
+			if (t === null)
+				usage('invalid format for -%s', option.option);
+
+			t = mod_jsprim.iso8601(t);
+			if (option.option == 's')
+				options['startTime'] = t;
+			else
+				options['endTime'] = t;
+
+			break;
+
+		default:
+			/* error message already emitted by getopt */
+			mod_assert.equal('?', option.option);
+			usage();
+			break;
+		}
+	}
+
+	if (options['aggrKey'] === null)
+		options['aggrKey'] = [ 'jobid' ];
+	if (options['resources'] === null)
+		options['resources'] = [ 'time' ];
+
+	if (parser.optind() >= process.argv.length) {
+		stream = process.stdin;
+		options['streamName'] = '<stdin>';
+		mrmeter(options, stream);
+		return;
+	}
+
+	filename = process.argv[parser.optind()];
+	options['streamName'] = filename;
+	stream = mod_fs.createReadStream(filename);
+	var onOpenErr = function (err) {
+		fatal(new VError(err, 'open "%s"', filename));
+	};
+	stream.on('error', onOpenErr);
+	stream.on('open', function () {
+		stream.removeListener('error', onOpenErr);
+		stream.pause();
+		mrmeter(options, stream);
+	});
+}
+
+function mergeFields(fields, str, allowed)
+{
+	var rv, args, i;
+
+	rv = fields === null ? [] : fields;
+	/* JSSTYLED */
+	args = str.split(/[,\s+]/);
+	for (i = 0; i < args.length; i++) {
+		if (args[i].length === 0)
+			continue;
+
+		if (allowed && !allowed[args[i]])
+			return (null);
+
+		rv.push(args[i]);
+	}
+
+	return (rv);
+}
+
+function mrmeter(options, stream)
+{
+	/* XXX should use library call for everything */
+	var reader = new BunyanReader(stream);
+	var aggr = new MeterAggregator(options);
+	reader.on('entry', function (entry) {
+		if (!entry['computeAudit'])
+			return;
+
+		if (options['startTime'] !== null &&
+		    entry['time'] < options['startTime'])
+			return;
+
+		if (options['endTime'] !== null &&
+		    entry['time'] > options['endTime'])
+			return;
+
+		aggr.aggregate(entry);
+	});
+
+	aggr.on('warn', warn);
+	reader.on('warn', warn);
+	stream.on('error', fatal);
+
+	reader.on('end', function () {
+		var stats = reader.stats();
+		var mstats = aggr.stats();
+		for (var k in mstats)
+			stats[k] = mstats[k];
+
+		mrmeterReport(options, stats, aggr.data());
+	});
+}
+
+function printTable(stream, kvpairs)
+{
+	var maxlen = 0;
+	var k, fmt;
+
+	for (k in kvpairs)
+		maxlen = Math.max(maxlen, k.length + 1);
+
+	fmt = '%-' + maxlen + 's %s\n';
+
+	for (k in kvpairs)
+		stream.write(sprintf(fmt, k + ':', kvpairs[k]));
+}
+
+function mrmeterReport(options, stats, data)
+{
+	if (options['debug'])
+		printTable(process.stderr, stats);
+
+	if (mod_jsprim.isEmpty(data))
+		return;
+
+	if (options['output'] == 'json') {
+		process.stdout.write(JSON.stringify(data) + '\n');
+		return;
+	}
+
+	var columns, rows;
+	var i, j;
+
+	columns = [];
+	options['aggrKey'].forEach(function (k) {
+		columns.push({
+		    'label': k.toUpperCase(),
+		    'width': mmValidAggrKeys[k]
+		});
+	});
+
+	data = mrmeterFlatten(options, data);
+	data['datacolumns'].forEach(function (c) {
+		columns.push({
+		    'label': c.toUpperCase(),
+		    'align': 'right',
+		    'width': c == 'time' ? 9 : c.length
+		});
+	});
+
+	rows = data['flattened'];
+	for (i = 0; i < rows.length; i++) {
+		for (j = 0; j < rows[i].length; j++) {
+			if (Array.isArray(rows[i][j])) {
+				rows[i][j] = rows[i][j][0] * 1e3 +
+				    Math.round(rows[i][j][1] / 1e6);
+			}
+		}
+	}
+
+	rows.sort(function (r1, r2) {
+		for (var k = 0; k < r1.length; k++) {
+			if (r1[k] < r2[k])
+				return (-1);
+			else if (r1[k] > r2[k])
+				return (1);
+		}
+
+		return (0);
+	});
+
+	process.on('uncaughtException', function (err) {
+		if (err['syscall'] == 'write' && err['code'] == 'EPIPE')
+			process.exit(0);
+		throw (err);
+	});
+
+	mod_tab.emitTable({
+	    'columns': columns,
+	    'rows': data['flattened']
+	});
+}
+
+function mrmeterFlatten(options, data)
+{
+	/* First, flatten the aggregation keys. */
+	var flattened = mod_jsprim.flattenObject(
+	    data, options['aggrKey'].length);
+
+	/*
+	 * Now, each object in "rv" is an array corresponding to one desired
+	 * output row.  The first N entries (for N = number of aggregation
+	 * fields) correspond to the values of the aggregation key, so they
+	 * together make up a single composite key.  There's exactly one more
+	 * entry, which corresponds to the value of this key, which itself may
+	 * be a complex object.  Our next task is to figure out the union of all
+	 * simple columns for tabular display.
+	 */
+	var columns = {};
+	flattened.forEach(function (elt) {
+		var value = elt[elt.length - 1];
+		mod_assert.equal(typeof (value), 'object');
+		mod_assert.ok(value !== null);
+		mrmeterExtractColumns(columns, value, '');
+	});
+
+	/*
+	 * Now that we know the set of columns, flatten out the rest of the
+	 * object.
+	 */
+	var colnames = Object.keys(columns).sort();
+	flattened.forEach(function (elt) {
+		var value = elt.pop();
+
+		colnames.forEach(function (c) {
+			elt.push(mod_jsprim.pluck(value, c) || 0);
+		});
+	});
+
+	return ({
+	    'flattened': flattened,
+	    'datacolumns': colnames
+	});
+}
+
+function mrmeterExtractColumns(columns, obj, prefix)
+{
+	for (var k in obj) {
+		if (typeof (obj[k]) == 'number' || Array.isArray(obj[k])) {
+			columns[prefix + k] = true;
+			continue;
+		}
+
+		mrmeterExtractColumns(columns, obj[k], prefix + k + '.');
+	}
+}
+
+/*
+ * Pre-0.10-style stream-like object that reads lines from a stream and emits
+ * an 'entry' event for each well-formed log entry.  The only argument for the
+ * event is the parsed JSON record.
+ *
+ * This implementation does not support flow control because the only consumer
+ * at the moment is an aggregator, which doesn't need it.  We should build this
+ * abstraction using Node 0.10 streams.
+ */
+function BunyanReader(stream)
+{
+	var reader = this;
+
+	EventEmitter.call(this);
+	this.br_stream = stream;
+
+	this.br_linenum = 0;
+	this.br_nonjson = 0;
+	this.br_malformed = 0;
+	this.br_carrier = mod_carrier.carry(stream);
+	this.br_carrier.on('end', function () { reader.emit('end'); });
+	this.br_carrier.on('line', function (line) {
+		++reader.br_linenum;
+
+		if (line[0] != '{') {
+			reader.br_nonjson++;
+			return;
+		}
+
+		var entry;
+		try {
+			entry = JSON.parse(line);
+		} catch (err) {
+			reader.br_malformed++;
+			reader.emit('warn', new VError(err,
+			    'malformed record at line %d', reader.br_linenum));
+			return;
+		}
+
+		reader.emit('entry', entry);
+	});
+
+	stream.resume();
+}
+
+mod_util.inherits(BunyanReader, EventEmitter);
+
+BunyanReader.prototype.stats = function ()
+{
+	return ({
+	    'log records': this.br_linenum,
+	    'non-JSON records': this.br_nonjson,
+	    'malformed records': this.br_malformed
+	});
+};
+
+
+/*
+ * Aggregates Marlin metering records for reports by some combination of jobid,
+ * taskid, and time fields.
+ */
+function MeterAggregator(options)
+{
+	mod_assert.ok(options !== null);
+	mod_assert.equal(typeof (options), 'object');
+	mod_assert.ok(Array.isArray(options['aggrKey']));
+	mod_assert.ok(Array.isArray(options['resources']));
+	mod_assert.ok(options['summaryType'] == 'deltas' ||
+	    options['summaryType'] == 'cumulative');
+
+	this.ma_key = options['aggrKey'].slice(0);
+	this.ma_resources = options['resources'].slice(0);
+	this.ma_usedeltas = options['summaryType'] == 'deltas';
+	this.ma_nrecords = 0;
+	this.ma_data = {};
+
+	EventEmitter.call(this);
+}
+
+mod_util.inherits(MeterAggregator, EventEmitter);
+
+MeterAggregator.prototype.aggregate = function (entry)
+{
+	if (!entry['computeAudit'])
+		return;
+
+	this.ma_nrecords++;
+	if (entry['event'] != 'TaskDone' && entry['event'] != 'TaskCheckpoint')
+		/* XXX do something with AgentStart, TaskStart events */
+		return;
+
+	if (!this.ma_usedeltas && entry['event'] != 'TaskDone')
+		return;
+
+	this.insert(this.computeKey(entry), this.extractResources(entry));
+};
+
+MeterAggregator.prototype.computeKey = function (entry)
+{
+	return (this.ma_key.map(function (field) {
+		var value;
+
+		switch (field) {
+		case 'taskid':
+			value = entry['taskId'];
+			break;
+		case 'jobid':
+			value = entry['jobId'];
+			break;
+		case 'hour':
+			value = entry['time'].substr(0, 13);
+			break;
+		case 'minute':
+			value = entry['time'].substr(0, 16);
+			break;
+		default:
+			throw (new VError('unsupported key: "%s"', field));
+		}
+
+		return (value);
+	}));
+};
+
+MeterAggregator.prototype.extractResources = function (entry)
+{
+	var aggr = this;
+	var rv = {};
+	var metrics;
+	var metricdata;
+
+	if (this.ma_usedeltas && entry.hasOwnProperty('metricsDelta'))
+		metrics = entry['metricsDelta'];
+	else
+		metrics = entry['metricsCumul'];
+
+	if (typeof (metrics) != 'object') {
+		this.emit('warn', new VError('bad log entry: %j', entry));
+		return (undefined);
+	}
+
+	metricdata = {};
+	mod_jsprim.forEachKey(metrics, function (key, value) {
+		if (value.hasOwnProperty('snaptime'))
+			/* kstat-based: flatten out the "data" field */
+			metricdata[key] = value['data'];
+		else
+			metricdata[key] = value;
+	});
+
+	this.ma_resources.forEach(function (r) {
+		if (r == 'nrecords') {
+			rv[r] = 1;
+			return;
+		}
+
+		var pluckkey = r == 'time' ? 'hrtimestamp' : r;
+
+		var val = mod_jsprim.pluck(metricdata, pluckkey);
+		if (val instanceof Error) {
+			aggr.emit('warn', new VError(val,
+			    'failed to extract "%s" from %j', r, metrics));
+			return;
+		}
+
+		rv[r] = val;
+	});
+
+	return (rv);
+};
+
+MeterAggregator.prototype.insert = function (keyv, value)
+{
+	var obj, i;
+
+	for (i = 0, obj = this.ma_data; i < keyv.length - 1; i++) {
+		if (!obj.hasOwnProperty(keyv[i]))
+			obj[keyv[i]] = {};
+
+		obj = obj[keyv[i]];
+	}
+
+	obj[keyv[keyv.length - 1]] = this.aggregateValue(
+	    obj[keyv[keyv.length - 1]], value);
+};
+
+MeterAggregator.prototype.aggregateValue = function (oldvalue, newvalue)
+{
+	/* XXX not all fields are cumulative */
+	if (!oldvalue)
+		return (newvalue);
+
+	if (typeof (newvalue) == 'number') {
+		mod_assert.equal(typeof (oldvalue), 'number');
+		return (oldvalue + newvalue);
+	}
+
+	if (Array.isArray(newvalue)) {
+		/* hrtimestamp is an array of two-tuples */
+		mod_assert.ok(Array.isArray(oldvalue));
+		mod_assert.equal(oldvalue.length, 2);
+		mod_assert.equal(newvalue.length, 2);
+		oldvalue[0] += newvalue[0];
+		oldvalue[1] += newvalue[1];
+		if (oldvalue[1] > 1e9) {
+			oldvalue[0]++;
+			oldvalue[1] -= 1e9;
+		}
+		return (oldvalue);
+	}
+
+	mod_assert.equal(typeof (oldvalue), 'object');
+	for (var k in newvalue)
+		oldvalue[k] = this.aggregateValue(oldvalue[k], newvalue[k]);
+
+	return (oldvalue);
+};
+
+MeterAggregator.prototype.stats = function ()
+{
+	return ({
+	    'metering records': this.ma_nrecords
+	});
+};
+
+MeterAggregator.prototype.data = function ()
+{
+	return (this.ma_data);
+};
+
+
+/*
+ * The following functions should be moved to a general-purpose CLI library (as
+ * if Node doesn't have enough of those).
+ */
+function usage(message)
+{
+	if (arguments.length > 0) {
+		var str = sprintf.apply(null,
+		    Array.prototype.slice.call(arguments));
+		console.error('%s: %s', mmArg0, str);
+	}
+
+	console.error(mmUsageMessage);
+	console.error('\nUse --help for more information.');
+	process.exit(2);
+}
+
+function warn(err)
+{
+	console.error('%s: %s', mmArg0, err.message);
+}
+
+function fatal(err)
+{
+	warn(err);
+	process.exit(1);
+}
+
+main();
