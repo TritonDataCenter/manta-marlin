@@ -18,6 +18,7 @@ var mod_memorystream = require('memorystream');
 var mod_vasync = require('vasync');
 var mod_verror = require('verror');
 
+var mod_marlin = require('../../lib/marlin');
 var mod_testcommon = require('../common');
 
 /* jsl:import ../../lib/errors.js */
@@ -929,7 +930,10 @@ function jobSubmit(api, testspec, callback)
 		'groups': [ 'operators' ] /* XXX */
 	    },
 	    'phases': testspec['job']['phases'],
-	    'jobName': 'marlin test suite job'
+	    'jobName': 'marlin test suite job',
+	    'options': {
+		'frequentCheckpoint': true
+	    }
 	};
 
 	jobdef['phases'].forEach(function (p) {
@@ -1118,7 +1122,8 @@ function jobTestVerify(api, testspec, jobid, options, callback)
 		'inputs': [],
 		'outputs': [],
 		'errors': [],
-		'content': []
+		'content': [],
+		'metering': null
 	    },
 	    'funcs': [
 		jobTestVerifyFetchJob,
@@ -1127,6 +1132,7 @@ function jobTestVerify(api, testspec, jobid, options, callback)
 		jobTestVerifyFetchOutputs,
 		jobTestVerifyFetchOutputContent,
 		jobTestVerifyFetchObjectsFound,
+		jobTestVerifyFetchMeteringRecords,
 		jobTestVerifyResult
 	    ]
 	}, callback);
@@ -1232,6 +1238,42 @@ function jobTestVerifyFetchObjectsFound(verify, callback)
 		verify['objects_found'].sort();
 		callback();
 	    });
+}
+
+function jobTestVerifyFetchMeteringRecords(verify, callback)
+{
+	var agentlog = process.env['MARLIN_METERING_LOG'];
+
+	if (!agentlog) {
+		log.warn('not checking metering records ' +
+		    '(MARLIN_METERING_LOG not set)');
+		callback();
+		return;
+	}
+
+	var barrier = mod_vasync.barrier();
+	verify['metering'] = {};
+	[ 'deltas', 'cumulative' ].forEach(function (type) {
+		barrier.start(type);
+
+		var reader = new (mod_marlin.MarlinMeterReader)({
+		    'stream': mod_fs.createReadStream(agentlog),
+		    'summaryType': type,
+		    'aggrKey': [ 'jobid', 'taskid' ],
+		    'startTime': verify['job']['timeCreated'],
+		    'endTime': verify['job']['timeDone'],
+		    'resources': [ 'time', 'nrecords', 'cpu', 'memory',
+		        'vfs', 'zfs', 'vnic0' ]
+		});
+
+		reader.on('end', function () {
+			verify['metering'][type] =
+			    reader.reportHierarchical()[verify['jobid']];
+			barrier.done(type);
+		});
+	});
+
+	barrier.on('drain', callback);
 }
 
 function jobTestVerifyResult(verify, callback)
@@ -1365,6 +1407,49 @@ function jobTestVerifyResultSync(verify)
 	 */
 	mod_assert.ok(stats['nTasksCommittedFail'] <=
 	    stats['nRetries'] + stats['nErrors']);
+
+	/*
+	 * Check metering records.  This is not part of the usual tests, but can
+	 * be run on-demand by running the test suite in the global zone (where
+	 * we have access to the metering records).  This also assumes that all
+	 * tasks executed on this server.
+	 */
+	if (verify['metering'] !== null) {
+		var sum, taskid;
+
+		if (testspec['meteringIncludesCheckpoints']) {
+			sum = 0;
+			for (taskid in verify['metering']['deltas']) {
+				if (verify['metering']['deltas'][taskid][
+				    'nrecords'] > 1)
+					sum++;
+			}
+
+			if (sum === 0) {
+				log.error('expected metering checkpoints',
+				    verify['metering']['deltas']);
+				throw (new Error(
+				    'expected metering checkpoints'));
+			}
+		}
+
+		/*
+		 * The "deltas" and "cumulative" reports should be identical
+		 * except for the "nrecords" column.
+		 */
+		for (taskid in verify['metering']['deltas'])
+			delete (verify['metering']['deltas'][
+			    taskid]['nrecords']);
+
+		var cumul = verify['metering']['cumulative'];
+		log.info('cumulative metering', cumul);
+		for (taskid in cumul) {
+			mod_assert.equal(1, cumul[taskid]['nrecords']);
+			delete (cumul[taskid]['nrecords']);
+		}
+
+		mod_assert.deepEqual(cumul, verify['metering']['deltas']);
+	}
 
 	/*
 	 * Check for intermediate objects.

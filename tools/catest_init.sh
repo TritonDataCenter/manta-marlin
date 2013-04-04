@@ -79,6 +79,7 @@ function catest_init_global
 		$(json manta.url < $agentconfig | sed -Ee \
 		s'#https?://[a-zA-Z0-9]+([^:/]*)([:/].*)?#tcp://auth\1:6379#'))
 
+	export MARLIN_METERING_LOG="$(svcs -L marlin-agent)"
 	echo "done."
 }
 
@@ -89,6 +90,12 @@ function catest_init
 	if [[ $(zonename) == "global" ]]; then
 		catest_init_global || \
 		    echo "WARN: failed to configure from $agentconfig" >&2
+	fi
+
+	if [[ -n "$MARLIN_METERING_LOG" ]]; then
+		echo -n "Rotating SMF logs with logadm ... "
+		logadm smf_logs
+		echo "done."
 	else
 		echo "NOTE: skipping metering tests because you're running" \
 		    "in a non-global zone." >&2
