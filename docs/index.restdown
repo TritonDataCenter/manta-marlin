@@ -310,6 +310,271 @@ been cancelled and abort them.  Eventually, all work on the job will complete,
 though this may take some time to propagate through the system.
 
 
+# Compute metering
+
+## Principles and design goals
+
+We want to meter each task run based on several factors, including type (map or
+reduce), memory usage, filesystem operations, CPU time used, and elapsed wall
+clock time.  Since tasks can take a very long time, we want to meter them as
+they run, not wait for them to finish.  In the future, we may want to meter jobs
+themselves to disincentivize people from leaving them "open" and idle, but it
+would probably be better to just reduce the cost of such jobs.
+
+The most important use case is generating per-user (and possibly per-job)
+summaries of resources used, matching that to a pricing schedule, and generating
+a bill.  The data should also support reports on resources used by-user, by-job,
+and so on.  We may ultimately even expose such reports to users, but they will
+certainly be valuable for engineering to understand how the system is being
+used.
+
+It may also prove valuable to be able to graph tasks executed per unit time,
+number of tasks in flight when an agent crashes, and so on.
+
+The metering data collected by Marlin should be rich enough to support whatever
+billing policy we choose to implement, but the details of that policy should be
+kept out of Marlin.  The data should support billing on any of the resources
+mentioned above, and it should also support a pricing schedule where the cost of
+resources increases as the ratio of resources used to input size decreases
+(i.e., less efficient tasks are more expensive).
+
+An important assumption of this design is that there is no easy way to avoid
+billing customers for execution time that was wasted due to system failures
+outside of their control.  The assumption is that such failures will be rare,
+and we can deal with significant cases on an ad-hoc basis by issuing credits
+after the fact.
+
+
+## Data collection
+
+The Marlin agent running on each compute node is the only trusted component that
+can collect the desired execution metrics.  The agent will record this data into
+its log, and the metering component will scan this log (just as it does for
+other Manta components) to generate summary reports and eventually bills.
+
+An important design goal is that the metering component be able to scan the log
+with constant memory usage.  Aggregated summaries obviously require additional
+memory, but it should not be necessary in the common case to keep parser state
+while processing the log.  This implies that each record contains *deltas* in
+key metrics since the previous record, rather than cumulative totals.  This way,
+records can be processed without any extra context.   The meterer doesn't need
+to worry about keeping state across rotated logs or anything like that.
+
+The main records used for metering are **task-checkpoint** and **task-done**
+events, which both indicate resources used during task execution over a given
+period.  Every *completed* task will have a **task-done** record.  Tasks *may or
+may not* have any **task-checkpoint** records.  The agent will periodically
+(say, every 5 minutes) write these out for any tasks which are currently
+running.  If a task straddles two of these 5-minute windows, even if it runs for
+a short period, it may get a **task-checkpoint** record.  Otherwise, it will
+not.  Thus, **task-checkpoint** and **task-done** records may cover any amount
+of elapsed time.
+
+The agent also emits **agent-start** and **task-start** records that are not
+used for metering directly.  They're present so that we can audit why certain
+tasks may not have any **task-done** record (which should only be because the
+agent crashed while processing them).
+
+
+## Metering record format
+
+The specific metering record format is described in lib/meter.js.  They're
+bunyan log records with high resolution timestamps, jobids, taskids, and
+resource utilization statistics.
+
+**task-checkpoint** and **task-done** records logically both contain both deltas
+and cumulative statistics.  As an optimization, either the delta or cumulative
+stats may be missing, in which case it's assumed that they're the same.  (For
+example, the first checkpoint record has no deltas, nor does a "done" record for
+a task that had no checkpoints.)
+
+**Timestamps vs. high resolution timestamps**: each record includes both a
+wall timestamp and a system high-resolution timestamp.  Some of them also
+include a high-resolution delta.  There are several things to be aware of:
+
+* The only timestamps that should be used for metering are the high-resolution
+  *deltas*, which are normal integers denoting nanoseconds elapsed.
+* **The wall timestamps are subject to clock drift and should not be used to
+  measure elapsed time.**
+* The high resolution timestamps are arbitrary nanosecond values.  They're only
+  valid for comparison between "agent-start" records, and they're 64-bit values
+  represented as a two-array tuple (see Node.js's `process.hrtime()`).  As such,
+  these are only used for reference and auditing.
+
+## Log consumers (meterer)
+
+The main use case is the meterer scans these logs to generate a report by jobid.
+Jobids can later be joined with moray to figure out which user owned them.
+
+If costs are uniform over the lifetime of the task, then the meterer only needs
+to keep in-memory counters for the resources we want to bill on, indexed by
+jobid and billing period.  It would maintain a hash with keys of the form
+`($jobid, "2013-02-28T01")`, denoting resource usage for `$jobid` during a
+specific hour.  Within each bucket are the counters we bill on, including wall
+time spent (which may exceed an hour, if tasks run in parallel), CPU time used,
+and so on.  The counters all start at zero, and they're bumped by the values in
+each **task-checkpoint** and **task-done** record.
+
+Since each record is context-free, this process can be almost arbitrarily
+parallelized: such hashes can be computed for arbitrarily small chunks of log
+entries, then aggregated up.  The final hash can be joined with Moray to
+associate jobs with users and present per-user, per-job, per-time-period reports
+of resource usage.
+
+If costs vary over the lifetime of the task, then the aggregation needs
+an additional key based on the buckets of the pricing schedule. For example, if
+we say that cost per second goes up as the number of seconds goes up, then the
+hash keys would look like `($jobid, "2013-02-28T01", <1s)`,
+`($jobid, "2013-02-28T01", 1-2s)`, and so on.  With this scheme, when processing
+each record, it's a little harder to figure out which buckets' counters to bump.
+Either the record itself needs to include the cumulative time elapsed (in
+addition to the delta), or else the meterer would need to keep per-task state
+in-memory and roll it up to the per-job state only when it has found all
+**task-checkpoint** and **task-done** events for a given task.  This latter
+approach would be expensive, since the required records could span a large
+number of different log files, which constrains how different log files can be
+processed in parallel.
+
+It's possible that the buckets wouldn't be raw seconds, but instead would be a
+function of the size of the input object.  This would work basically the same
+way, but the keys would be symbolic (e.g., "first schedule tier", "second
+schedule tier", and so on), and the appropriate key would be computed on a
+per-task basis based on the size of the object.  This works fine for map tasks,
+where the input size (and therefore appropriate pricing tier) is known when the
+task starts running, but it doesn't work for reduce, where the input size is not
+known until possibly much later than that.  If we want to bill this way for
+reduce tasks, we'll have no choice but to take the more expensive, less
+parallelizable approach of not metering until we've seen all of the records for
+a task.
+
+
+## Other consumers
+
+As an audit of the metering system, it would be good to periodically scan all
+tasks (scoped to a jobid or an interval) that ever started running and make sure
+we found audit records for them, followed either by a **task-done** event or an
+**agent-start** event.  This report would be more expensive than routine
+auditing, since it has to track more in-memory state, but it wouldn't need to be
+run frequently.
+
+Using the metering data, we could also generate reports of things like:
+
+* distribution of task execution time
+* distribution of CPU utilization during task execution
+* distribution of filesystem operations executed during task execution
+
+Such reports may use the cumulative metrics reported only in **task-done**
+events.  Resource utilization may show up in the wrong time period, but there's
+no need to deal with combining partial results for a task stored in multiple
+different log files.
+
+
+## Metric format
+
+The current plan is to collect the following information for the metrics fields
+above.  As described above, these may be cumulative or deltas, depending on
+context.
+
+* elapsed high-resolution time, using `process.hrtime()` (`gethrtime(3C)`)
+* memory usage: all data in the `memory_cap` kstat
+* cpu usage: all data in the `zone_misc` class kstat
+* vfs usage: all data in the `zone_vfs` kstat
+* zfs usage: all data in the `zone_zfs` kstat
+
+The "metrics" object will have top-level fields for "hrtime", "cpu", "vfs", and
+"zfs".  Each next-level object will contain fields from the kstats.
+
+
+## Design choices
+
+**Space usage**: We've erred on the side of including too much data (i.e., both
+delta and cumulative data) in order to make the metering and reporting processes
+efficient and highly parallelizable.  We've heard too many horror stories about
+hourly reports that take almost an hour to run, so we want to start with as
+efficient an architecture as we can.  We've also biased towards including more
+metrics to allow us to run more historical queries in the future.
+
+**Metrics**: Are there other metrics we want to include here?  What about input
+size (that is, object size for map, and total input size for reduce)?
+Compression ratio (for map only)?
+
+**Large numeric values**: JavaScript is only capable of storing numbers with up
+to 53 bits of precision.  For nanosecond timestamps, this corresponds to a
+little over three months.  For byte counters, this is 8PB.  I'm leaning towards
+saying that both node-kstat and the log records contain two-tuples for numbers
+over a certain configurable size, and for testing we can set that threshold to 0
+so that we ensure that all code paths handle both representations of numbers.
+
+This comes up in a few places: in the implementation, kstats are reported with
+numeric types, so we'll be in trouble if any counter that we're recording
+exceeds these values.  On a 32-CPU system, a user could conceivably overflow
+this in CPU time in about 3.5 days, though they'd have to own the whole box.
+
+Assuming we can process these in the implementation, we also have the issue of
+dealing with them on the wire.  In cases where we report deltas, this should
+never be an issue: assuming a 5-minute (or even hourly) reporting period, we
+shouldn't be able to overflow these values.  However, there are places where we
+report summary data, and we'll have the same issue described with kstats above.
+
+For both of these cases, the obvious options are replace numeric values with
+two-tuples when they get large, or to cap tasks at some reasonable upper bound
+of execution time that will not allow them to overflow anything.  3 days would
+probably do it.  This would fix the on-the-wire problem, but not the kstat
+problem, since kstats aren't always reset between tasks.  We'd still need to do
+the two-tuple approach internally, or reboot a zone if the counter could
+overflow during the next task.
+
+On the plus side, once we know these values can be encoded in JSON, they should
+be readable by any JavaScript implementation.
+
+
+## Alternative approaches
+
+As alluded to above, this entire proposal assumes that users are billed for
+tasks whose results are thrown away due to internal failures (i.e., box panic,
+agent crash, and so on).  There's no objectively correct answer to this.  It's
+expected that such failures would be rare, and in the current proposal, the cost
+is explicit and amortized across customers in proportion to usage.  Reversing
+this assumption would amount to increasing our own costs, which would also
+presumably be amortized across all users in proportion to usage (but
+implicitly).  In both cases, the expectation is that such costs are in the
+noise.  If that's not the case (due to a significant outage), we can issue
+credits to affected users (as competitors have done after significant outages).
+(Note that there are other uncommon cases where users pay for our failures, as
+in when muskie (or any JPC service) pitches errors and the user is paying for
+the compute required to retry requests.)
+
+While one can argue that this assumption doesn't have significant impact on user
+costs, it has a very significant impact on the architecture of metering.  Since
+the result of the task determines whether it's billable, we cannot bill a task
+until the result is known.  To avoid letting people "borrow" compute (e.g.,
+running a single task for days, weeks, or months), we'd need to bound the
+maximum task execution time to something like 1 day.  This isn't a huge deal,
+but imposes an arbitrary limit on the system that will surely be too large for
+some cases and too small for others.
+
+Additionally, relaxing this constraint actually imposes significant constraints
+on the metering component (the component that scans Marlin activity logs): in
+particular, it has to resolve multiple successful retries for the same task (as
+in the case where an agent becomes partitioned), which may span multiple hours'
+log records from multiple systems.  It has to keep in-memory state while it
+scans the logs so that it can "dedup" unique executions of the same logical
+task.  We'd have to require that retries happen within a window of N hours from
+the original attempt (and somehow ensure that), and the metering component would
+have to look back at window of N hours' worth of logs across all storage nodes
+at once, instead of being arbitrarily parallelizabe.  This is all doable, but
+*significantly* less scalable, more complex, and more time-consuming (which
+means more expensive, since that's time we're not selling to customers).
+
+Finally, if someone had a way to trigger an internal failure (e.g., crashing an
+agent), they would be able to get arbitrary compute for free by doing the
+compute, saving the results somewhere, and then inducing the failure.
+
+Many of these issues would be resolved by "crediting" users for retries (rather
+than avoiding billing them in the first place), but team experience suggests
+that this approach is prohibitively painful.
+
+
 # Future work
 
 * flesh out maggr

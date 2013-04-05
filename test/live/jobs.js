@@ -822,6 +822,86 @@ exports.jobMcancel = {
     'errors': []
 };
 
+exports.jobMmeterCheckpoints = {
+    'job': {
+	'phases': [ { 'type': 'storage-map', 'exec': 'sleep 7' } ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 30 * 1000,
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./ ],
+    'meteringIncludesCheckpoints': true,
+    'errors': []
+};
+
+/*
+ * This tests that metering data accounts for the whole time a zone is used,
+ * even if that's much longer than a task actually ran for, as in the case where
+ * the reduce task bails out early.
+ */
+exports.jobMmeterExitsEarly = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'wc'
+	}, {
+	    'type': 'reduce',
+	    'exec': 'awk {'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 60 * 1000,
+    'expected_outputs': [],
+    'meteringIncludesCheckpoints': true,
+    'errors': [ { 'code': EM_USERTASK } ],
+    'skip_input_end': true,
+    'post_submit': function (api, jobid) {
+	setTimeout(function () {
+		log.info('job "%s": ending input late', jobid);
+		api.jobEndInput(jobid, { 'retry': { 'retries': 3 } },
+		    function (err) {
+			if (err) {
+				log.fatal('failed to end input');
+				throw (err);
+			}
+
+			log.info('job input ended');
+		    });
+	}, 15 * 1000);
+    },
+    'verify': function (verify) {
+	if (verify['metering'] === null) {
+		log.warn('job "%s": skipping metering check', verify['jobid']);
+		return;
+	}
+
+	var meter, taskid, elapsed, ns;
+	meter = verify['metering']['cumulative'];
+	log.info('job "%s": checking total time elapsed', verify['jobid']);
+	for (taskid in meter) {
+		elapsed = meter[taskid]['time'];
+		ns = elapsed[0] * 1e9 + elapsed[1];
+
+		/*
+		 * When running this test concurrently with other jobs, it's
+		 * hard to know whether it actually did the right thing, since
+		 * it may be some time before the reduce task gets on-CPU.  We
+		 * leave it running for 15 seconds, but we can only really
+		 * assume it will be running for a few seconds (and obviously
+		 * that's still racy).  (We could actually address this race by
+		 * opening up a local HTTP server and having the reduce task hit
+		 * it when it starts, and only ending input 10s after that.  If
+		 * this becomes a problem, we should just do that.)
+		 */
+		if (ns >= 5 * 1e9 && ns < 20 * 1e9)
+			return;
+	}
+
+	log.error('job "%s": no task took 5 < N < 20 seconds',
+	    verify['jobid'], meter);
+	throw (new Error('no task took 5 < N < 20 seconds'));
+    }
+};
+
 exports.jobsAll = [
     exports.jobM,
     exports.jobMX,
@@ -853,7 +933,9 @@ exports.jobsAll = [
     exports.jobMerrorMuskieRetryMpipe,
     exports.jobMerrorMpipeMkdirp,
     exports.jobMenv,
-    exports.jobRenv
+    exports.jobRenv,
+    exports.jobMmeterCheckpoints,
+    exports.jobMmeterExitsEarly
 ];
 
 function initJobs()
@@ -1079,11 +1161,13 @@ function jobSubmit(api, testspec, callback)
 		queue.drain = function () { stepcb(final_err); };
 	});
 
-	funcs.push(function (_, stepcb) {
-		log.info('job "%s": ending input', jobid);
-		api.jobEndInput(jobid, { 'retry': { 'retries': 3 } },
-		    stepcb);
-	});
+	if (!testspec['skip_input_end']) {
+		funcs.push(function (_, stepcb) {
+			log.info('job "%s": ending input', jobid);
+			api.jobEndInput(jobid, { 'retry': { 'retries': 3 } },
+			    stepcb);
+		});
+	}
 
 	mod_vasync.pipeline({ 'funcs': funcs }, function (err) {
 		if (!err)
@@ -1261,7 +1345,6 @@ function jobTestVerifyFetchMeteringRecords(verify, callback)
 		    'summaryType': type,
 		    'aggrKey': [ 'jobid', 'taskid' ],
 		    'startTime': verify['job']['timeCreated'],
-		    'endTime': verify['job']['timeDone'],
 		    'resources': [ 'time', 'nrecords', 'cpu', 'memory',
 		        'vfs', 'zfs', 'vnic0' ]
 		});
@@ -1284,7 +1367,22 @@ function jobTestVerifyResult(verify, callback)
 		if (ex.name == 'AssertionError')
 			ex.message = ex.toString();
 		var err = new VError(ex, 'verifying job "%s"', verify['jobid']);
-		log.fatal(err);
+
+		/*
+		 * Cancelled jobs may take a few extra seconds for the metering
+		 * records to be written out.  Retry this whole fetch process
+		 * for up to 10 seconds to deal with that case.
+		 */
+		if (verify['job']['timeCancelled'] !== undefined &&
+		    Date.now() - Date.parse(
+		    verify['job']['timeDone']) < 10000) {
+			err.retry = true;
+			log.error(err,
+			    'retrying due to error on cancelled job');
+		} else {
+			log.fatal(err);
+		}
+
 		callback(err);
 		return;
 	}
@@ -1397,7 +1495,7 @@ function jobTestVerifyResultSync(verify)
 	mod_assert.equal(stats['nJobOutputs'], verify['outputs'].length);
 
 	if (job['timeCancelled'] === undefined)
-		mod_assert.ok(stats['nTasksDispatched'],
+		mod_assert.equal(stats['nTasksDispatched'],
 		    stats['nTasksCommittedOk'] + stats['nTasksCommittedFail']);
 
 	/*
@@ -1437,18 +1535,36 @@ function jobTestVerifyResultSync(verify)
 		 * The "deltas" and "cumulative" reports should be identical
 		 * except for the "nrecords" column.
 		 */
-		for (taskid in verify['metering']['deltas'])
+		for (taskid in verify['metering']['deltas']) {
+			if (verify['metering']['deltas'][
+			    taskid]['nrecords'] != 1)
+				log.info('checkpoint records found');
 			delete (verify['metering']['deltas'][
 			    taskid]['nrecords']);
+		}
 
 		var cumul = verify['metering']['cumulative'];
-		log.info('cumulative metering', cumul);
 		for (taskid in cumul) {
 			mod_assert.equal(1, cumul[taskid]['nrecords']);
 			delete (cumul[taskid]['nrecords']);
 		}
 
 		mod_assert.deepEqual(cumul, verify['metering']['deltas']);
+
+		/*
+		 * For cancelled jobs, it's possible that some of the tasks
+		 * never even ran.  Ditto jobs with agent dispatch errors.
+		 */
+		var expected_count = verify['job']['stats']['nTasksDispatched'];
+		for (i = 0; i < joberrors.length; i++) {
+			if (joberrors[i]['message'].indexOf(
+			    'failed to dispatch task') != -1)
+				--expected_count;
+		}
+		if (verify['job']['timeCancelled'] === undefined &&
+		    expected_count > 0)
+			mod_assert.equal(Object.keys(cumul).length,
+			    expected_count);
 	}
 
 	/*
@@ -1514,6 +1630,10 @@ function jobTestVerifyResultSync(verify)
 			throw (new Error('extra objects found'));
 		}
 	}
+
+	/* Check custom verifiers. */
+	if (testspec['verify'])
+		testspec['verify'](verify);
 
 	/* Check output content */
 	if (!testspec['expected_output_content'])
