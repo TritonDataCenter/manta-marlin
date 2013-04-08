@@ -739,7 +739,7 @@ exports.jobMenv = {
 	} ]
     },
     'inputs': [ '/%user%/stor/obj1' ],
-    'timeout': 10 * 1000,
+    'timeout': 15 * 1000,
     'expected_outputs': [
 	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
     ],

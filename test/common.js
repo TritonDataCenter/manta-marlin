@@ -32,7 +32,6 @@ var log = new mod_bunyan({
 /* Public interface */
 exports.setup = setup;
 exports.teardown = teardown;
-exports.resetBucket = resetBucket;
 exports.loginLookup = loginLookup;
 
 exports.pipeline = pipeline;
@@ -93,18 +92,6 @@ function teardown(api, callback)
 		mahi_client.close();
 	api.close();
 	callback();
-}
-
-function resetBucket(client, bucket, options, callback)
-{
-	client.delBucket(bucket, function (err) {
-		if (err && !/does not exist/.test(err.message)) {
-			callback(err);
-			return;
-		}
-
-		client.putBucket(bucket, options, callback);
-	});
 }
 
 function loginLookup(login, callback)
