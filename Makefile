@@ -35,7 +35,6 @@ BASH_FILES	 = \
     npm/preuninstall.sh		\
     tools/mparams		\
     tools/mrdeploycompute	\
-    tools/mrpost		\
     tools/mrzone		\
     tools/mrzoneremove		\
     tools/mrzonestag
@@ -45,12 +44,12 @@ JS_FILES	:= $(shell find src lib test -name '*.js')
 JS_FILES	+= \
     bin/maggr	\
     bin/mcat	\
-    bin/mlocate \
     bin/mpipe	\
-    bin/mrjob 	\
-    bin/mrmeter \
     bin/msplit	\
     bin/mtee	\
+    sbin/mlocate \
+    sbin/mrjob 	\
+    sbin/mrmeter \
     tools/mrpound
 
 JSL_CONF_NODE	 = tools/jsl.node.conf
