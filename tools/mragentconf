@@ -23,6 +23,8 @@ function fail
 
 [[ $# -gt 3 ]] || usage
 
+PATH=$PATH:/usr/sbin
+
 mac_manta_compute_id=$1
 mac_serverid=$(sysinfo | json UUID)
 mac_manta_host=$2
