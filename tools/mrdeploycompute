@@ -9,7 +9,7 @@
 set -o pipefail
 set -o xtrace
 
-export PATH=$PATH:/opt/smartdc/bin:/smartdc/bin
+export PATH=$PATH:/usr/sbin:/opt/smartdc/bin
 
 mdc_arg0="$(basename $0)"
 mdc_zonename="$1"
