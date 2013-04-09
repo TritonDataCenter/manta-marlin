@@ -65,5 +65,9 @@
 		"timeJobAbandon": 30000,
 		"timeJobSave": 10000,
 		"timeTick": 20
-	}
+	},
+
+	"images": [
+		"0.0.2"
+	]
 }
