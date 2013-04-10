@@ -27,6 +27,7 @@ var mmArg0 = mod_path.basename(__filename);
 
 /* Valid aggregation keys and their field widths (in columns). */
 var mmValidAggrKeys = {
+    'owner': 36,
     'jobid': 36,
     'taskid': 36,
     'hour': 13,
