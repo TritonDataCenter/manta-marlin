@@ -395,7 +395,8 @@ exports.jobMcore = {
 	'key': '/%user%/stor/obj1',
 	'p0key': '/%user%/stor/obj1',
 	'code': EM_USERTASK,
-	'message': 'user command or child process dumped core'
+	'message': 'user command or child process dumped core',
+	'core': /\/%user%\/jobs\/.*\/stor\/cores\/0\/core.node./
     } ]
 };
 
@@ -1582,6 +1583,8 @@ function jobTestVerifyResultSync(verify)
 		joberrors.forEach(function (e) {
 			if (e['stderr'])
 				dedup[e['stderr']] = true;
+			if (e['core'])
+				dedup[e['core']] = true;
 		});
 		foundobj = foundobj.filter(function (o) {
 			if (dedup[o])

@@ -350,6 +350,7 @@ function msUploadFiles(opts)
 			'filename': filename,
 			'key': objname,
 			'log': log,
+			'iostream': 'stdout',
 			'rIdx': i
 		}, function (args) {
 			++uploaded;

@@ -145,6 +145,7 @@ function dpUploadFile()
 	    'headers': dpHeaders,
 	    'key': dpObjkey,
 	    'log': log,
+	    'iostream': 'stdout',
 	    'rIdx': dpReducer
 	}, function (err) {
 		if (err)
