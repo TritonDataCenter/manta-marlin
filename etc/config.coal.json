@@ -47,6 +47,7 @@
 		"health": "marlin_health_v2",
 		"job": "marlin_jobs_v2",
 		"jobinput": "marlin_jobinputs_v2",
+		"storage": "manta_storage",
 		"task": "marlin_tasks_v2",
 		"taskinput": "marlin_taskinputs_v2",
 		"taskoutput": "marlin_taskoutputs_v2"
