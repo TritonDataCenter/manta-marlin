@@ -43,7 +43,7 @@ The usual procedure is:
 
 The above script takes care of setting up /etc/resolv.conf in your development
 zone to refer to the Manta name servers and adds several environment variables
-to the new user's profile script: 
+to the new user's profile script:
 
     $ export MAHI_URL=tcp://auth.bh1.joyent.us:6379/
     $ export MORAY_URL=tcp://1.moray.bh1.joyent.us:2020/
@@ -60,8 +60,11 @@ the MANTA\_KEY\_ID for poseidon, use:
     ff:4a:ad:ac:92:86:ec:d2:5a:9d:88:c8:e8:12:8d:15
 
 To run the test suite, you must also copy the ssh key of the "poseidon" user to
-"$HOME/.ssh/id\_rsa{,.pub}".  You can get this key from the "ops" Manta zone.
-If your dev zone is on the same box as the ops zone, you can do this with:
+to your dev zone.  By default, the tests expect it in
+"$HOME/.ssh/id\_rsa{,.pub}".  However, you can also set the MANTA_KEY
+environment variable if it located somewhere else.  You can get the poseidon key
+from the "ops" Manta zone.  If your dev zone is on the same box as the ops zone,
+you can do this with:
 
     # cp /zones/$(vmadm lookup alias=~ops)/root/root/.ssh/id_rsa* \
          /zones/$YOUR_DEV_ZONE_UUID/root/$YOUR_LOGIN_NAME/.ssh

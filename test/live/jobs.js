@@ -1035,13 +1035,8 @@ function jobSubmit(api, testspec, callback)
 		});
 	    },
 	    function (_, stepcb) {
-		/*
-		 * XXX It sucks that we're hardcoding the path to a particular
-		 * key here given that node-manta.git has magic for extracting
-		 * the right key from the agent or ~/.ssh based on the
-		 * fingerprint.
-		 */
-		var path = mod_path.join(process.env['HOME'], '.ssh/id_rsa');
+		var path = process.env['MANTA_KEY'] ||
+			mod_path.join(process.env['HOME'], '.ssh/id_rsa');
 		log.info('reading private key from %s', path);
 		mod_fs.readFile(path, function (err, contents) {
 			private_key = contents.toString('utf8');
