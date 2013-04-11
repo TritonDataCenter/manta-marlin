@@ -39,7 +39,8 @@
 		"timeTasksCheckpoint": 300000,
 		"zoneDisabledMaxPercent": 5,
 		"zoneReserveMin": 1,
-		"zoneReservePercent": 12
+		"zoneReservePercent": 12,
+		"zoneLivenessCheck": 15000
 	},
 
 	"zoneDefaults": {
