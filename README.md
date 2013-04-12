@@ -69,6 +69,11 @@ you can do this with:
     # cp /zones/$(vmadm lookup alias=~ops)/root/root/.ssh/id_rsa* \
          /zones/$YOUR_DEV_ZONE_UUID/root/$YOUR_LOGIN_NAME/.ssh
 
+Also, if you find the tests are failing in COAL due to retries in Marlin you
+can set the MARLIN_TESTS_STRICT environment variable to false, like so:
+
+    $ export MARLIN_TESTS_STRICT=false
+
 Finally, devsetup also adds privileges to your user.  You can do this manually
 by running this as root in your zone:
 

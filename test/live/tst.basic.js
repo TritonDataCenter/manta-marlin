@@ -12,6 +12,10 @@ var client;
 var funcs = [ setup ];
 var strict = true;
 
+if (process.env['MARLIN_TESTS_STRICT'] !== undefined) {
+	strict = process.env['MARLIN_TESTS_STRICT'] !== 'false';
+}
+
 var parser, option;
 
 parser = new mod_getopt.BasicParser('S', process.argv);

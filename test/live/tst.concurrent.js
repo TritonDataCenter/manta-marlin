@@ -17,6 +17,10 @@ var concurrency = 5;
 var parser, option;
 parser = new mod_getopt.BasicParser('Sc:', process.argv);
 
+if (process.env['MARLIN_TESTS_STRICT'] !== undefined) {
+	strict = process.env['MARLIN_TESTS_STRICT'] !== 'false';
+}
+
 while ((option = parser.getopt()) !== undefined) {
 	switch (option.option) {
 	case 'S':
