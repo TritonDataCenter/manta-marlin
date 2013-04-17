@@ -37,8 +37,8 @@ var msUsage = [
     '',
     '       mrjob list     [-H] [-o field1[,field2...]] [-c] [-s state]',
     '                      [-t sec] [-u user] [-w worker]',
-    '       mrjob submit   [-a asset] [-c count] [-d size] [-i id] [-n name]',
-    '                      [-t authToken] [-x option=value ...]',
+    '       mrjob submit   [-a asset] [-c count] [-d size] [-i image]',
+    '                      [-n name] [-t authToken] [-x option=value ...]',
     '                      [-m exec] [-r exec] ...',
     '       mrjob addkeys  jobid [key ...]',
     '       mrjob cancel   jobid',
@@ -62,7 +62,7 @@ var msHelp = [
     '',
     'SUBCOMMANDS',
     '',
-    '   submit [-a asset] [-c count] [-d size] [-i id] [-n name] [-t token]',
+    '   submit [-a asset] [-c count] [-d size] [-i image] [-n name] [-t token]',
     '          [-x option=value] [-m exec] [-r exec] ...',
     '',
     '      Submit a new job without ending input.  These options are available',
@@ -71,7 +71,7 @@ var msHelp = [
     '          -c count        Use "count" concurrent reducers for the next ' +
 	'task',
     '          -d size         Maximum DRAM for each task (megabytes)',
-    '          -i id           Use "id" for the job\'s id',
+    '          -i image        Use "image" as the following task\'s zone image',
     '          -n name         Use "name" for the job\'s name',
     '          -t token        Auth token',
     '          -x option=value Specifies a supported option, one of:',
@@ -186,6 +186,7 @@ var msOptions = {};			/* special named options */
 var msAssets = [];			/* assets (for next phase) */
 var msCount = 1;			/* reducer count (for next phase) */
 var msDram;				/* DRAM cap (for next phase) */
+var msImage;
 var msJobName = 'mrsubmit job';
 var msJobId = mod_uuid.v4();
 var msAuthToken;
@@ -457,7 +458,7 @@ function cmdSubmit()
 			break;
 
 		case 'i':
-			msJobId = option.optarg;
+			msImage = option.optarg;
 			break;
 
 		case 'n':
@@ -514,6 +515,11 @@ function cmdSubmit()
 
 				phase['memory'] = msDram;
 				msDram = undefined;
+			}
+
+			if (msImage !== undefined) {
+				phase['image'] = msImage;
+				msImage = undefined;
 			}
 
 			msPhases.push(phase);

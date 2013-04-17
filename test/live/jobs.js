@@ -718,6 +718,27 @@ exports.jobMerrorMpipeMkdirp = {
     } ]
 };
 
+exports.jobMerrorBadImage = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'wc',
+	    'image': '0.0.1'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 20 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'key': '/%user%/stor/obj1',
+	'p0key': '/%user%/stor/obj1',
+	'code': EM_INVALIDARGUMENT,
+	'message': 'failed to dispatch task: requested image is not available'
+    } ]
+};
+
 exports.jobR0inputs = {
     'job': {
 	'phases': [ {
@@ -933,6 +954,7 @@ exports.jobsAll = [
     exports.jobMerrorMuskieRetry,
     exports.jobMerrorMuskieRetryMpipe,
     exports.jobMerrorMpipeMkdirp,
+    exports.jobMerrorBadImage,
     exports.jobMenv,
     exports.jobRenv,
     exports.jobMmeterCheckpoints,
@@ -1301,7 +1323,7 @@ function jobTestVerifyFetchObjectsFound(verify, callback)
 	var cmd = mod_path.join(__dirname,
 	    '../../node_modules/manta/bin/mfind');
 
-	mod_child.execFile(cmd, ['-t', 'o',
+	mod_child.execFile(cmd, ['-i', '-t', 'o',
 	    replaceParams('/%user%/jobs/' + verify['jobid'] + '/stor') ],
 	    function (err, stdout, stderr) {
 		if (err) {
