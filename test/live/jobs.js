@@ -44,7 +44,7 @@ exports.jobM = {
 	'/%user%/stor/obj2',
 	'/%user%/stor/obj3'
     ],
-    'timeout': 15 * 1000,
+    'timeout': 60 * 1000,
     'expected_outputs': [
 	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
 	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
@@ -112,7 +112,7 @@ exports.jobMmpipeAnon = {
 	'/%user%/stor/obj2',
 	'/%user%/stor/obj3'
     ],
-    'timeout': 15 * 1000,
+    'timeout': 30 * 1000,
     'expected_outputs': [
 	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
 	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj2\.0\./,
@@ -196,7 +196,7 @@ exports.jobR = {
 	'/%user%/stor/obj2',
 	'/%user%/stor/obj3'
     ],
-    'timeout': 30 * 1000,
+    'timeout': 90 * 1000,
     'expected_outputs': [
 	/\/%user%\/jobs\/.*\/stor\/reduce\.0\./
     ],
@@ -306,7 +306,7 @@ exports.jobMasset = {
 	} ]
     },
     'inputs': [ '/%user%/stor/obj1' ],
-    'timeout': 15 * 1000,
+    'timeout': 30 * 1000,
     'expected_outputs': [
 	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
     ],
@@ -574,7 +574,7 @@ exports.jobMerrorBadReducer = {
 	} ]
     },
     'inputs': [ '/%user%/stor/obj1' ],
-    'timeout': 15 * 1000,
+    'timeout': 60 * 1000,
     'expected_outputs': [ /\/%user%\/jobs\/.*\/reduce.1./ ],
     'errors': [ {
 	'phaseNum': '1',
@@ -602,7 +602,7 @@ exports.jobMerrorOom = {
 	} ]
     },
     'inputs': [],
-    'timeout': 30 * 1000,
+    'timeout': 180 * 1000,
     'expected_outputs': [],
     'errors': [ {
 	'phaseNum': '0',
@@ -633,7 +633,7 @@ exports.jobMerrorLackeyOom = {
 	} ]
     },
     'inputs': [],
-    'timeout': 45 * 1000,
+    'timeout': 180 * 1000,
     'expected_outputs': [],
     'errors': [ {
 	'phaseNum': '0',
@@ -721,7 +721,7 @@ exports.jobMerrorMuskieRetry = {
 	} ]
     },
     'inputs': [],
-    'timeout': 60 * 1000,
+    'timeout': 360 * 1000,
     'error_count': [ 1, 25 ],
     'errors': [ {
 	'phaseNum': '0',
