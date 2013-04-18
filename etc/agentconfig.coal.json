@@ -37,6 +37,7 @@
 		"timePoll": 200,
 		"timeTick": 20,
 		"timeTasksCheckpoint": 300000,
+		"zoneMemorySlopPercent": 20,
 		"zoneDisabledMaxPercent": 5,
 		"zoneReserveMin": 1,
 		"zoneReservePercent": 12,
@@ -45,6 +46,6 @@
 
 	"zoneDefaults": {
 		"max_physical_memory": 256,
-		"max_swap": 512
+		"max_swap": 256
 	}
 }

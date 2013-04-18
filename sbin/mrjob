@@ -507,12 +507,6 @@ function cmdSubmit()
 			}
 
 			if (msDram !== undefined) {
-				if (option.option != 'r') {
-					console.error('%s: -d invalid for ' +
-					    'map phases', msArg0);
-					usage();
-				}
-
 				phase['memory'] = msDram;
 				msDram = undefined;
 			}

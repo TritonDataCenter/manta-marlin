@@ -379,6 +379,64 @@ exports.jobM0bo = {
     'errors': []
 };
 
+exports.jobMmemoryDefault = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'prtconf | grep -i memory'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
+    ],
+    'expected_output_content': [ 'Memory size: 256 Megabytes\n' ],
+    'errors': []
+};
+
+exports.jobMmemoryExtended = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'prtconf | grep -i memory',
+	    'memory': 512
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
+    ],
+    'expected_output_content': [ 'Memory size: 512 Megabytes\n' ],
+    'errors': []
+};
+
+/*
+ * This test relies on the fact that the systems where we run the test suite
+ * don't support even a single task with this much memory.
+ */
+exports.jobMerrorMemoryTooBig = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'prtconf | grep -i memory',
+	    'memory': 8192
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'key': '/%user%/stor/obj1',
+	'p0key': '/%user%/stor/obj1',
+	'code': EM_TASKINIT,
+	'message': 'failed to dispatch task: not enough memory available'
+    } ]
+};
+
 exports.jobMcore = {
     'job': {
 	'phases': [ {
@@ -941,7 +999,10 @@ exports.jobsAll = [
     exports.jobMRRoutput,
     exports.jobMcancel,
     exports.jobMasset,
+    exports.jobMmemoryDefault,
+    exports.jobMmemoryExtended,
     exports.jobMcore,
+    exports.jobMerrorMemoryTooBig,
     exports.jobMerrorsDispatch0,
     exports.jobMerrorsDispatch1,
     exports.jobMerrorAssetMissing,
