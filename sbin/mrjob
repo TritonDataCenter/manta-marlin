@@ -38,8 +38,8 @@ var msUsage = [
     '       mrjob list     [-H] [-o field1[,field2...]] [-c] [-s state]',
     '                      [-t sec] [-u user] [-w worker]',
     '       mrjob submit   [-a asset] [-c count] [-d size] [-i image]',
-    '                      [-n name] [-t authToken] [-x option=value ...]',
-    '                      [-m exec] [-r exec] ...',
+    '                      [-n name] [-s disk] [-t authToken] ',
+    '                      [-x option=value ...] [-m exec] [-r exec] ...',
     '       mrjob addkeys  jobid [key ...]',
     '       mrjob cancel   jobid',
     '       mrjob endinput jobid',
@@ -73,6 +73,7 @@ var msHelp = [
     '          -d size         Maximum DRAM for each task (megabytes)',
     '          -i image        Use "image" as the following task\'s zone image',
     '          -n name         Use "name" for the job\'s name',
+    '          -s disk         Disk space allocated for tasks (gigabytes)',
     '          -t token        Auth token',
     '          -x option=value Specifies a supported option, one of:',
     '',
@@ -186,6 +187,7 @@ var msOptions = {};			/* special named options */
 var msAssets = [];			/* assets (for next phase) */
 var msCount = 1;			/* reducer count (for next phase) */
 var msDram;				/* DRAM cap (for next phase) */
+var msDisk;				/* disk cap (for next phase) */
 var msImage;
 var msJobName = 'mrsubmit job';
 var msJobId = mod_uuid.v4();
@@ -432,7 +434,7 @@ function cmdSubmit()
 {
 	var parser, option;
 
-	parser = new mod_getopt.BasicParser('a:c:d:i:m:n:r:t:x:',
+	parser = new mod_getopt.BasicParser('a:c:d:i:m:n:r:s:t:x:',
 	    process.argv.slice(1));
 
 	while ((option = parser.getopt()) !== undefined) {
@@ -463,6 +465,14 @@ function cmdSubmit()
 
 		case 'n':
 			msJobName = option.optarg;
+			break;
+
+		case 's':
+			msDisk = parseInt(option.optarg, 10);
+			if (isNaN(msDisk) || msDisk < 2) {
+				console.error('%s: invalid size', msArg0);
+				usage();
+			}
 			break;
 
 		case 't':
@@ -509,6 +519,11 @@ function cmdSubmit()
 			if (msDram !== undefined) {
 				phase['memory'] = msDram;
 				msDram = undefined;
+			}
+
+			if (msDisk !== undefined) {
+				phase['disk'] = msDisk;
+				msDisk = undefined;
 			}
 
 			if (msImage !== undefined) {

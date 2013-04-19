@@ -379,6 +379,60 @@ exports.jobM0bo = {
     'errors': []
 };
 
+exports.jobMcore = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'node -e "process.abort();"'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 20 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'key': '/%user%/stor/obj1',
+	'p0key': '/%user%/stor/obj1',
+	'code': EM_USERTASK,
+	'message': 'user command or child process dumped core',
+	'core': /\/%user%\/jobs\/.*\/stor\/cores\/0\/core.node./
+    } ]
+};
+
+exports.jobMdiskDefault = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'df --block-size=M / | awk \'{print $4}\' | tail -1'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
+    ],
+    'expected_output_content': [ /^20\d\dM\n$/ ],
+    'errors': []
+};
+
+exports.jobMdiskExtended = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'exec': 'df --block-size=M / | awk \'{print $4}\' | tail -1',
+	    'disk': 4
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
+    ],
+    'expected_output_content': [ /^40\d\dM\n$/ ],
+    'errors': []
+};
+
 exports.jobMmemoryDefault = {
     'job': {
 	'phases': [ {
@@ -437,24 +491,27 @@ exports.jobMerrorMemoryTooBig = {
     } ]
 };
 
-exports.jobMcore = {
+/*
+ * Ditto, for disk.
+ */
+exports.jobMerrorDiskTooBig = {
     'job': {
 	'phases': [ {
 	    'type': 'storage-map',
-	    'exec': 'node -e "process.abort();"'
+	    'exec': 'df --block-size=M / | awk \'{print $4}\' | tail -1',
+	    'disk': 1024
 	} ]
     },
     'inputs': [ '/%user%/stor/obj1' ],
-    'timeout': 20 * 1000,
+    'timeout': 15 * 1000,
     'expected_outputs': [],
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/%user%/stor/obj1"',
 	'key': '/%user%/stor/obj1',
 	'p0key': '/%user%/stor/obj1',
-	'code': EM_USERTASK,
-	'message': 'user command or child process dumped core',
-	'core': /\/%user%\/jobs\/.*\/stor\/cores\/0\/core.node./
+	'code': EM_TASKINIT,
+	'message': 'failed to dispatch task: not enough disk space available'
     } ]
 };
 
@@ -999,10 +1056,13 @@ exports.jobsAll = [
     exports.jobMRRoutput,
     exports.jobMcancel,
     exports.jobMasset,
+    exports.jobMcore,
     exports.jobMmemoryDefault,
     exports.jobMmemoryExtended,
-    exports.jobMcore,
+    exports.jobMdiskDefault,
+    exports.jobMdiskExtended,
     exports.jobMerrorMemoryTooBig,
+    exports.jobMerrorDiskTooBig,
     exports.jobMerrorsDispatch0,
     exports.jobMerrorsDispatch1,
     exports.jobMerrorAssetMissing,
@@ -1722,8 +1782,13 @@ function jobTestVerifyResultSync(verify)
 
 	var bodies = verify['content'];
 	var expected = testspec['expected_output_content'].map(function (o) {
-	        return (replaceParams(
-		    o.replace(/\$jobid/g, verify['jobid'])));
+		var n;
+		if (typeof (o) == 'string')
+			n = o.replace(/\$jobid/g, verify['jobid']);
+		else
+			n = new RegExp(o.source.replace(
+			    /\$jobid/g, verify['jobid']));
+	        return (replaceParams(n));
 	});
 	bodies.sort();
 	expected.sort();
@@ -1732,73 +1797,17 @@ function jobTestVerifyResultSync(verify)
 	    'wrong number of output files');
 
 	for (i = 0; i < expected.length; i++) {
-		mod_assert.equal(bodies[i], expected[i],
-		    sprintf('output "%d" didn\'t match ' +
-		        '(expected "%s", got "%s")', i, expected[i],
-			bodies[i]));
+		if (typeof (expected[i]) == 'string')
+			mod_assert.equal(bodies[i], expected[i],
+			    sprintf('output "%d" didn\'t match ' +
+			        '(expected "%s", got "%s")', i, expected[i],
+				bodies[i]));
+		else
+			mod_assert.ok(expected[i].test(bodies[i]),
+			    sprintf('output "%d" didn\'t match ' +
+			        '(expected "%s", got "%s")', i, expected[i],
+				bodies[i]));
 	}
-}
-
-function jobTestVerifyOutputs(api, testspec, outputs, callback)
-{
-	var funcs = [];
-
-	if (!testspec['expected_output_content']) {
-		callback();
-		return;
-	}
-
-	outputs.forEach(function (output) {
-		funcs.push(function (_, stepcb) {
-			log.info('fetching output "%s"', output);
-			api.manta.get(output, function (err, mantastream) {
-				if (err) {
-					stepcb(err);
-					return;
-				}
-
-				var data = '';
-				mantastream.on('data', function (chunk) {
-					data += chunk.toString('utf8');
-				});
-
-				mantastream.on('end', function () {
-					stepcb(null, data);
-				});
-			});
-		});
-	});
-
-	mod_vasync.pipeline({
-	    'funcs': funcs
-	}, function (err, results) {
-		if (err) {
-			callback(err);
-			return;
-		}
-
-		var bodies = results.successes;
-		var expected = testspec['expected_output_content'].map(
-		    replaceParams);
-		var i, j;
-
-		for (i = 0; i < expected.length; i++) {
-			for (j = 0; j < bodies.length; j++) {
-				if (expected[i] == bodies[j])
-					break;
-			}
-
-			if (j == bodies.length)
-				log.fatal('expected content not found',
-				    expected[i], bodies);
-			mod_assert.ok(j < bodies.length,
-			    'expected content not found');
-			log.info('output matched', bodies[j]);
-			bodies = bodies.splice(j, 1);
-		}
-
-		callback();
-	});
 }
 
 function populateData(manta, keys, callback)
