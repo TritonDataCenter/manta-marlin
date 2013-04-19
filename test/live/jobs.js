@@ -876,7 +876,7 @@ exports.jobMenv = {
 	} ]
     },
     'inputs': [ '/%user%/stor/obj1' ],
-    'timeout': 15 * 1000,
+    'timeout': 30 * 1000,
     'expected_outputs': [
 	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
     ],
@@ -1039,6 +1039,161 @@ exports.jobMmeterExitsEarly = {
     }
 };
 
+exports.jobMinit = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'init': 'echo >> /var/tmp/test_temp',
+	    'exec': 'wc < /var/tmp/test_temp'
+	} ]
+    },
+    'inputs': [
+	'/%user%/stor/obj1',
+	'/%user%/stor/obj2',
+	'/%user%/stor/obj3',
+	'/%user%/stor/obj4',
+	'/%user%/stor/obj5',
+	'/%user%/stor/obj6',
+	'/%user%/stor/obj7',
+	'/%user%/stor/obj8',
+	'/%user%/stor/obj9'
+    ],
+    'timeout': 60 * 1000,
+    'expected_outputs': [
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj2\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj3\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj4\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj5\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj6\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj7\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj8\.0\./,
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj9\.0\./
+    ],
+    'expected_output_content': [
+	'1 0 1\n',
+	'1 0 1\n',
+	'1 0 1\n',
+	'1 0 1\n',
+	'1 0 1\n',
+	'1 0 1\n',
+	'1 0 1\n',
+	'1 0 1\n',
+	'1 0 1\n'
+    ],
+    'errors': []
+};
+
+exports.jobMinitEnv = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'init': 'env | egrep ^MANTA_ | sort > /var/tmp/test_temp',
+	    'exec': 'cat /var/tmp/test_temp'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 60 * 1000,
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./ ],
+    'expected_output_content': [
+	'MANTA_JOB_ID=$jobid\n' +
+	'MANTA_NO_AUTH=true\n' +
+	'MANTA_OUTPUT_BASE=/%user%/jobs/$jobid/stor/' +
+	    '%user%/stor/obj1.0.\n' +
+	'MANTA_URL=http://localhost:80/\n'
+    ],
+    'errors': []
+};
+
+exports.jobMinitFail = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'init': 'false',
+	    'exec': 'wc'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 60 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'key': '/%user%/stor/obj1',
+	'p0key': '/%user%/stor/obj1',
+	'code': EM_TASKINIT,
+	'message': 'user command exited with code 1'
+    } ]
+};
+
+exports.jobMinitCore = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'init': 'node -e "process.abort();"',
+	    'exec': 'wc'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 60 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'key': '/%user%/stor/obj1',
+	'p0key': '/%user%/stor/obj1',
+	'code': EM_TASKINIT,
+	'message': 'user command or child process dumped core',
+	'core': /\/%user%\/jobs\/.*\/stor\/cores\/0\/core.node./
+    } ]
+};
+
+/*
+ * This is a poorly handled (but extremely unlikely) error case, and all we're
+ * really checking is that we do at least report an error rather than doing the
+ * wrong thing.
+ */
+exports.jobMinitKill = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'init': 'pkill -f lackey',
+	    'exec': 'wc'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 60 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'key': '/%user%/stor/obj1',
+	'p0key': '/%user%/stor/obj1',
+	'code': EM_INTERNAL,
+	'message': 'internal error'
+    } ]
+};
+
+exports.jobMinitKillAfter = {
+    'job': {
+	'phases': [ {
+	    'type': 'storage-map',
+	    'init': 'echo >> /var/tmp/test_temp',
+	    'exec': 'if [[ -f /var/tmp/ranonce ]]; then\n' +
+	        'wc < /var/tmp/test_temp\n' +
+		'else\n' +
+		'echo > /var/tmp/ranonce\n' +
+		'pkill -f lackey\n' +
+		'fi'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 60 * 1000,
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./ ],
+    'expected_output_content': [ '1 0 1\n' ],
+    'errors': []
+};
+
 exports.jobsAll = [
     exports.jobM,
     exports.jobMX,
@@ -1079,7 +1234,13 @@ exports.jobsAll = [
     exports.jobMenv,
     exports.jobRenv,
     exports.jobMmeterCheckpoints,
-    exports.jobMmeterExitsEarly
+    exports.jobMmeterExitsEarly,
+    exports.jobMinit,
+    exports.jobMinitEnv,
+    exports.jobMinitFail,
+    exports.jobMinitCore,
+    exports.jobMinitKill,
+    exports.jobMinitKillAfter
 ];
 
 function initJobs()

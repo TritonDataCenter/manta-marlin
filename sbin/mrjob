@@ -39,7 +39,8 @@ var msUsage = [
     '                      [-t sec] [-u user] [-w worker]',
     '       mrjob submit   [-a asset] [-c count] [-d size] [-i image]',
     '                      [-n name] [-s disk] [-t authToken] ',
-    '                      [-x option=value ...] [-m exec] [-r exec] ...',
+    '                      [-x option=value ...] [-z init] ',
+    '                      [-m exec] [-r exec] ...',
     '       mrjob addkeys  jobid [key ...]',
     '       mrjob cancel   jobid',
     '       mrjob endinput jobid',
@@ -82,6 +83,7 @@ var msHelp = [
     '',
     '                 frequentCheckpoint=true   generate frequent checkpoint',
     '                                           metering records',
+    '          -z init         Per-zone init script for next phase',
     '',
     '      along with any number of -m and -r options:',
     '',
@@ -188,7 +190,8 @@ var msAssets = [];			/* assets (for next phase) */
 var msCount = 1;			/* reducer count (for next phase) */
 var msDram;				/* DRAM cap (for next phase) */
 var msDisk;				/* disk cap (for next phase) */
-var msImage;
+var msImage;				/* zone image dep (for next phase) */
+var msInit;				/* init script (for next phase) */
 var msJobName = 'mrsubmit job';
 var msJobId = mod_uuid.v4();
 var msAuthToken;
@@ -434,7 +437,7 @@ function cmdSubmit()
 {
 	var parser, option;
 
-	parser = new mod_getopt.BasicParser('a:c:d:i:m:n:r:s:t:x:',
+	parser = new mod_getopt.BasicParser('a:c:d:i:m:n:r:s:t:x:z:',
 	    process.argv.slice(1));
 
 	while ((option = parser.getopt()) !== undefined) {
@@ -492,6 +495,10 @@ function cmdSubmit()
 			msOptions[key] = val;
 			break;
 
+		case 'z':
+			msInit = option.optarg;
+			break;
+
 		case 'm':
 		case 'r':
 			var phase = {
@@ -529,6 +536,11 @@ function cmdSubmit()
 			if (msImage !== undefined) {
 				phase['image'] = msImage;
 				msImage = undefined;
+			}
+
+			if (msInit !== undefined) {
+				phase['init'] = msInit;
+				msInit = undefined;
 			}
 
 			msPhases.push(phase);
