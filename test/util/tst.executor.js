@@ -165,7 +165,7 @@ function testFdInput(_, next)
 
 function testStatusFail(_, next)
 {
-	runTest('awk {', stdin, {}, function (result, outstr, errstr) {
+	runTest('/usr/bin/nawk {', stdin, {}, function (result, outstr, errstr) {
 		mod_assert.deepEqual(result, {
 		    'code': 2,
 		    'signal': null,
@@ -175,10 +175,10 @@ function testStatusFail(_, next)
 
 		mod_assert.equal('', outstr);
 		mod_assert.equal([
-		    'awk: syntax error at source line 1',
+		    '/usr/bin/nawk: syntax error at source line 1',
 		    ' context is',
 		    '\t >>> { <<< ',
-		    'awk: illegal statement at source line 1',
+		    '/usr/bin/nawk: illegal statement at source line 1',
 		    '\tmissing }', ''].join('\n'), errstr);
 		next();
 	});
