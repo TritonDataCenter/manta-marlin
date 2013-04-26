@@ -23,6 +23,17 @@ lab machine.  In principle, you can develop Marlin on a different system from
 the one where you deploy it, but the existing tools are optimized for the
 single-system case.
 
+If you are using COAL for Marlin development, you may need to increase the
+ram and disk sizes for the COAL VM.  For example, for 4GB RAM and 70GB disk,
+edit your usb-headnode/build.spec.local:
+
+    {
+      "build-tgz": "false",
+      "answer-file": "answers.json",
+      "coal-memsize": 8192,
+      "coal-zpool-disk-size": "70"
+    }
+
 ## Dev zone: Quick setup
 
 The usual procedure is:
@@ -33,9 +44,9 @@ The usual procedure is:
 
     /opt/smartdc/agents/lib/node_modules/cabase/tools/devsetup -t manta dap
 
-   Replace "dap" with whatever username you want to use.  If
-   http://manta-beta.joyentcloud.com/$user/public/.ssh/id_rsa.pub exists, this
-   script will download that to `$HOME/.ssh/authorized_keys` in the new zone.
+Replace "dap" with whatever username you want to use.  If
+http://manta-beta.joyentcloud.com/$user/public/.ssh/id_rsa.pub exists, this
+script will download that to `$HOME/.ssh/authorized_keys` in the new zone.
 
 ## Dev zone: gritty details
 
