@@ -72,12 +72,14 @@ function catest_init_global
 	#
 	# The mahi URL is trickier because it's not actually in the agent
 	# configuration.  But we can guess it by replacing the first component
-	# of the unresolved $MANTA_URL with "auth".
+	# of the unresolved $MANTA_URL with "authcache".
 	#
+	local sedreg='https?://[a-zA-Z0-9]+([^:/]*)([:/].*)?'
+	local sedrep='tcp://authcache\1:6379'
 	[[ -z $MAHI_URL ]] &&
 	    export MAHI_URL=$(resolve $nameserver \
 		$(json manta.url < $agentconfig | sed -Ee \
-		s'#https?://[a-zA-Z0-9]+([^:/]*)([:/].*)?#tcp://auth\1:6379#'))
+		"s#$sedreg#$sedrep#"))
 
 	export MARLIN_METERING_LOG="$(svcs -L marlin-agent)"
 	echo "done."
