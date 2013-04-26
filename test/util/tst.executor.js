@@ -165,7 +165,8 @@ function testFdInput(_, next)
 
 function testStatusFail(_, next)
 {
-	runTest('/usr/bin/nawk {', stdin, {}, function (result, outstr, errstr) {
+	runTest('/usr/bin/nawk {', stdin, {},
+	    function (result, outstr, errstr) {
 		mod_assert.deepEqual(result, {
 		    'code': 2,
 		    'signal': null,
@@ -181,7 +182,7 @@ function testStatusFail(_, next)
 		    '/usr/bin/nawk: illegal statement at source line 1',
 		    '\tmissing }', ''].join('\n'), errstr);
 		next();
-	});
+	    });
 }
 
 function testCore(_, next)

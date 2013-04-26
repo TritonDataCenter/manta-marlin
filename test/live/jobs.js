@@ -387,7 +387,7 @@ exports.jobMcore = {
 	} ]
     },
     'inputs': [ '/%user%/stor/obj1' ],
-    'timeout': 20 * 1000,
+    'timeout': 60 * 1000,
     'expected_outputs': [],
     'errors': [ {
 	'phaseNum': '0',

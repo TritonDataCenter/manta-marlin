@@ -43,6 +43,7 @@
 	},
 
 	"buckets": {
+		"domain": "marlin_domains_v2",
 		"error": "marlin_errors_v2",
 		"health": "marlin_health_v2",
 		"job": "marlin_jobs_v2",
@@ -62,10 +63,13 @@
 		"maxTaskRetries": 2,
 		"timeAgentPoll": 5000,
 		"timeAgentTimeout": 60000,
+		"timeHeartbeat": 5000,
+		"timeMarkInputs": 5000,
 		"timePoll": 200,
-		"timeJobAbandon": 30000,
 		"timeJobSave": 10000,
-		"timeTick": 20
+		"timeTick": 20,
+		"timeWorkerAbandon": 30000,
+		"timeWorkerPoll": 5000
 	},
 
 	"images": [
