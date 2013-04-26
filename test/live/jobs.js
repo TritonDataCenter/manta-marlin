@@ -328,8 +328,8 @@ exports.jobMerrorAssetMissing = {
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/%user%/stor/obj1"',
-	'key': '/%user%/stor/obj1',
-	'p0key': '/%user%/stor/obj1',
+	'input': '/%user%/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_TASKINIT,
 	'message': 'failed to dispatch task: first of 1 error: error ' +
 	    'retrieving asset "/%user%/stor/notavalidasset" ' +
@@ -392,8 +392,8 @@ exports.jobMcore = {
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/%user%/stor/obj1"',
-	'key': '/%user%/stor/obj1',
-	'p0key': '/%user%/stor/obj1',
+	'input': '/%user%/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_USERTASK,
 	'message': 'user command or child process dumped core',
 	'core': /\/%user%\/jobs\/.*\/stor\/cores\/0\/core.node./
@@ -484,8 +484,8 @@ exports.jobMerrorMemoryTooBig = {
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/%user%/stor/obj1"',
-	'key': '/%user%/stor/obj1',
-	'p0key': '/%user%/stor/obj1',
+	'input': '/%user%/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_TASKINIT,
 	'message': 'failed to dispatch task: not enough memory available'
     } ]
@@ -508,8 +508,8 @@ exports.jobMerrorDiskTooBig = {
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/%user%/stor/obj1"',
-	'key': '/%user%/stor/obj1',
-	'p0key': '/%user%/stor/obj1',
+	'input': '/%user%/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_TASKINIT,
 	'message': 'failed to dispatch task: not enough disk space available'
     } ]
@@ -541,22 +541,22 @@ exports.jobMerrorsDispatch0 = {
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/notavalidusername/stor/obj1"',
-	'key': '/notavalidusername/stor/obj1',
-	'p0key': '/notavalidusername/stor/obj1',
+	'input': '/notavalidusername/stor/obj1',
+	'p0input': '/notavalidusername/stor/obj1',
 	'code': EM_RESOURCENOTFOUND,
 	'message': 'no such object: "/notavalidusername/stor/obj1"'
     }, {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/%user%/stor/notavalidfilename"',
-	'key': '/%user%/stor/notavalidfilename',
-	'p0key': '/%user%/stor/notavalidfilename',
+	'input': '/%user%/stor/notavalidfilename',
+	'p0input': '/%user%/stor/notavalidfilename',
 	'code': EM_RESOURCENOTFOUND,
 	'message': 'no such object: "/%user%/stor/notavalidfilename"'
     }, {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/%user%/stor/mydir"',
-	'key': '/%user%/stor/mydir',
-	'p0key': '/%user%/stor/mydir',
+	'input': '/%user%/stor/mydir',
+	'p0input': '/%user%/stor/mydir',
 	'code': EM_INVALIDARGUMENT,
 	'message': 'objects of type "directory" are not supported: ' +
 	    '"/%user%/stor/mydir"'
@@ -596,24 +596,24 @@ exports.jobMerrorsDispatch1 = {
 	'phaseNum': '1',
 	'what': 'phase 1: map input "/notavalidusername/stor/obj1" ' +
 	    '(from job input "/%user%/stor/obj1")',
-	'key': '/notavalidusername/stor/obj1',
-	'p0key': '/%user%/stor/obj1',
+	'input': '/notavalidusername/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_RESOURCENOTFOUND,
 	'message': 'no such object: "/notavalidusername/stor/obj1"'
     }, {
 	'phaseNum': '1',
 	'what': 'phase 1: map input "/%user%/stor/notavalidfilename" ' +
 	    '(from job input "/%user%/stor/obj1")',
-	'key': '/%user%/stor/notavalidfilename',
-	'p0key': '/%user%/stor/obj1',
+	'input': '/%user%/stor/notavalidfilename',
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_RESOURCENOTFOUND,
 	'message': 'no such object: "/%user%/stor/notavalidfilename"'
     }, {
 	'phaseNum': '1',
 	'what': 'phase 1: map input "/%user%/stor/mydir" ' +
 	    '(from job input "/%user%/stor/obj1")',
-	'key': '/%user%/stor/mydir',
-	'p0key': '/%user%/stor/obj1',
+	'input': '/%user%/stor/mydir',
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_INVALIDARGUMENT,
 	'message': 'objects of type "directory" are not supported: ' +
 	    '"/%user%/stor/mydir"'
@@ -638,8 +638,8 @@ exports.jobMerrorBadReducer = {
 	'what': new RegExp('phase 1: map input ' +
 	    '"/%user%/jobs/.*/stor/%user%/stor/obj1.0..*" ' +
 	    '\\(from job input "/%user%/stor/obj1"\\)'),
-	'key': new RegExp('/%user%/jobs/.*/stor/%user%/stor/obj1.0..*'),
-	'p0key': '/%user%/stor/obj1',
+	'input': new RegExp('/%user%/jobs/.*/stor/%user%/stor/obj1.0..*'),
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_INVALIDARGUMENT,
 	'message': 'reducer "1" specified, but only 1 reducers exist'
     } ]
@@ -713,8 +713,8 @@ exports.jobMerrorCmd = {
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/%user%/stor/obj1"',
-	'key': '/%user%/stor/obj1',
-	'p0key': '/%user%/stor/obj1',
+	'input': '/%user%/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_USERTASK,
 	'message': 'user command exited with code 1'
     } ]
@@ -733,8 +733,8 @@ exports.jobMerrorMuskie = {
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/%user%/stor/obj1"',
-	'key': '/%user%/stor/obj1',
-	'p0key': '/%user%/stor/obj1',
+	'input': '/%user%/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_INTERNAL,
 	'message': 'internal error'
     } ]
@@ -757,8 +757,8 @@ exports.jobMerrorMuskieMpipe = {
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/%user%/stor/obj1"',
-	'key': '/%user%/stor/obj1',
-	'p0key': '/%user%/stor/obj1',
+	'input': '/%user%/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_USERTASK,
 	'message': 'user command exited with code 1'
     } ]
@@ -826,8 +826,8 @@ exports.jobMerrorMpipeMkdirp = {
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/%user%/stor/obj1"',
-	'key': '/%user%/stor/obj1',
-	'p0key': '/%user%/stor/obj1',
+	'input': '/%user%/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_USERTASK,
 	'message': 'user command exited with code 1'
     } ]
@@ -847,8 +847,8 @@ exports.jobMerrorBadImage = {
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/%user%/stor/obj1"',
-	'key': '/%user%/stor/obj1',
-	'p0key': '/%user%/stor/obj1',
+	'input': '/%user%/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_INVALIDARGUMENT,
 	'message': 'failed to dispatch task: requested image is not available'
     } ]
@@ -1119,8 +1119,8 @@ exports.jobMinitFail = {
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/%user%/stor/obj1"',
-	'key': '/%user%/stor/obj1',
-	'p0key': '/%user%/stor/obj1',
+	'input': '/%user%/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_TASKINIT,
 	'message': 'user command exited with code 1'
     } ]
@@ -1140,8 +1140,8 @@ exports.jobMinitCore = {
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/%user%/stor/obj1"',
-	'key': '/%user%/stor/obj1',
-	'p0key': '/%user%/stor/obj1',
+	'input': '/%user%/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_TASKINIT,
 	'message': 'user command or child process dumped core',
 	'core': /\/%user%\/jobs\/.*\/stor\/cores\/0\/core.node./
@@ -1167,8 +1167,8 @@ exports.jobMinitKill = {
     'errors': [ {
 	'phaseNum': '0',
 	'what': 'phase 0: map input "/%user%/stor/obj1"',
-	'key': '/%user%/stor/obj1',
-	'p0key': '/%user%/stor/obj1',
+	'input': '/%user%/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
 	'code': EM_INTERNAL,
 	'message': 'internal error'
     } ]
@@ -1916,7 +1916,7 @@ function jobTestVerifyResultSync(verify)
 			var j, e;
 			for (j = 0; j < joberrors.length; j++) {
 				e = joberrors[j];
-				if (e['key'] == o &&
+				if (e['input'] == o &&
 				    e['code'] == EM_INVALIDARGUMENT &&
 				    /* JSSTYLED */
 				    /reducer "\d+" specified, but only/.test(
