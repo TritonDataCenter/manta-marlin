@@ -9,10 +9,10 @@
 	},
 
 	"moray": {
-		"indexing": {
-			"urls": [ "tcp://1.moray.sf.joyent.us:2020" ],
-			"replicas": 100,
-			"reconnect": {
+		"index": {
+			"host": "electric-moray.sf.joyent.us",
+			"port": 2020,
+			"retry": {
 				"maxTimeout": 30000,
 				"retries": 120
 			}
