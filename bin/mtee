@@ -12,22 +12,28 @@ var mod_manta = require('manta');
  * mtee: demux streams to send to multiple reducers
  */
 var msUsageMessage = [
-	'usage: mtee manta_key',
+	'usage: mtee [manta_key] [-t output_file]',
 	'',
 	'mtee is used to capture stdin and write to both stdout and a manta',
 	'object.  For example, this will capture the output of cmd to manta',
 	'object /$MANTA_USER/stor/tee.out and still pipe what was coming from',
 	'cmd to cmd2:',
-	'  $ cmd | mtee /$MANTA_USER/stor/tee.out | cmd2'
+	'  $ cmd | mtee /$MANTA_USER/stor/tee.out | cmd2',
+	'',
+	'To test mtee, use the -t [output file] option which will output to',
+	'both stdout and to the file, but leave the file on the local',
+	'filesystem and not upload to manta.  If the -t option is used, the',
+	'manta_key will be ignored.'
 ].join('\n');
 
 var mtHeaders = {};
 var mtKey = null;
+var mtTestMode = false;
 var mtTmpFile = '/var/tmp/mtee.' + process.pid;
 
 function main() {
 	var option;
-	var parser = new mod_getopt.BasicParser('H:', process.argv);
+	var parser = new mod_getopt.BasicParser('H:t:', process.argv);
 
 	while ((option = parser.getopt()) !== undefined) {
 		switch (option.option) {
@@ -39,6 +45,13 @@ function main() {
 			}
 			var p = option.optarg.split(': ');
 			mtHeaders[p[0]] = p.slice(1).join(': ');
+			break;
+
+		case 't':
+			mtTestMode = true;
+			if (option.optarg) {
+				mtTmpFile = option.optarg;
+			}
 			break;
 
 		default:
@@ -53,32 +66,39 @@ function main() {
 		mtKey = process.argv[parser.optind()];
 	}
 
-	if (!mtKey) {
+	if (!mtKey && !mtTestMode) {
 		console.error('A manta object key must be specified.');
 		usage();
 	}
 
-	try {
-		mod_manta.checkBinEnv({});
-	} catch (err) {
-		usage(err.message);
+	if (!mtTestMode) {
+		try {
+			mod_manta.checkBinEnv({});
+		} catch (err) {
+			usage(err.message);
+		}
 	}
 
 	var stream = mod_fs.createWriteStream(mtTmpFile);
-	stream.on('close', function () {
-		mtUploadFile();
+	stream.once('open', function (fd) {
+		process.stdin.pipe(stream);
+		process.stdin.pipe(process.stdout);
+		process.stdin.resume();
 	});
 
-	process.stdin.on('data', function (data) {
-		process.stdout.write(data);
-		stream.write(data);
+	stream.once('error', function (err) {
+		mtFatal(err);
 	});
 
-	process.stdin.on('end', function () {
+	stream.once('close', function () {
+		if (!mtTestMode) {
+			mtUploadFile();
+		}
+	});
+
+	process.stdin.once('end', function () {
 		stream.end();
 	});
-
-	process.stdin.resume();
 }
 
 function usage(message)
@@ -129,7 +149,12 @@ function mtUploadFile()
 				if (err2) {
 					mtFatal(err2.message);
 				}
-				process.exit(0);
+				mod_fs.unlink(mtTmpFile, function (err3) {
+					if (err3) {
+						mtFatal(err3.message);
+					}
+					process.exit(0);
+				});
 			});
 		});
 	});
