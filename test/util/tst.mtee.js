@@ -9,7 +9,9 @@ var mod_child_process = require('child_process');
 var mod_bunyan = require('bunyan');
 var mod_vasync = require('vasync');
 
-var mtee = '../../bin/mtee';
+var common = require('../common');
+
+var mtee = null;
 var tmpdir = process.env['TMPDIR'] || '/tmp';
 
 var log = new mod_bunyan({
@@ -18,6 +20,7 @@ var log = new mod_bunyan({
 });
 
 mod_vasync.pipeline({ 'funcs': [
+	findMtee,
 	testNoOpts,
 	testBasic
 ] }, function (err) {
@@ -48,6 +51,10 @@ function runTest(opts, callback)
 		error = err;
 	});
 
+	spawn.stdin.on('error', function (err) {
+		error = err;
+	});
+
 	spawn.on('close', function (code) {
 		var file = '';
 		if (opts.file) {
@@ -66,6 +73,18 @@ function runTest(opts, callback)
 	process.nextTick(function () {
 		spawn.stdin.write(opts.stdin || '');
 		spawn.stdin.end();
+	});
+}
+
+function findMtee(_, next)
+{
+	common.findbin(function (err, bin) {
+		if (err) {
+			next(err);
+			return;
+		}
+		mtee = bin + '/mtee';
+		next();
 	});
 }
 

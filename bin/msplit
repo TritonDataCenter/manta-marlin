@@ -25,7 +25,7 @@ var msUsageMessage = [
 	'reducers your job has and must match the number of reducers for the',
 	'next phase of your job.',
 	'',
-	'msplit can work on newline sepaerated text or json records.  By',
+	'msplit can work on newline separated text or json records.  By',
 	'default msplit works on text lines, similar to the unix cut utility.',
 	'',
 	'Using to parse text:',
@@ -159,51 +159,107 @@ function main()
 	}
 
 	// Streams
-	var streamsClosed = 0;
+	var waitingForDrain = [];
+	var ended = false;
+
 	var fileNames = '';
+	function tryEnd() {
+		if (ended) {
+			return;
+		}
+		var endNow = !process.stdin.readable;
+		for (var j = 0; j < msStreams.length; ++j) {
+			endNow = endNow && !msStreams[j].writable;
+		}
+		if (endNow) {
+			ended = true;
+			if (!msTestMode) {
+				msUploadFiles(opts);
+			} else {
+				console.log(fileNames);
+			}
+		}
+	}
+
+	// Carrier for stdin
+	carrier = mod_carrier.carry(process.stdin);
+
+	carrier.on('line', function (line) {
+		var ws = msStreams[selectReducer(line, opts)];
+		var flushed = ws.write(line);
+		flushed = ws.write('\n') && flushed;
+		if (!flushed) {
+			if (waitingForDrain.indexOf(ws) === -1) {
+				waitingForDrain.push(ws);
+			}
+			process.stdin.pause();
+		}
+	});
+
+	carrier.once('error', function (err) {
+		msFatal('error with stdin: ' + err.message);
+	});
+
+	carrier.once('end', function () {
+		for (i = 0; i < opts.nReducers; ++i) {
+			msStreams[i].end();
+		}
+		tryEnd();
+	});
+
+	// Set up file write streams
 	for (i = 0; i < opts.nReducers; ++i) {
 		var filename = msTmpFilePrefix + i;
 		fileNames += filename + '\n';
 		var stream = mod_fs.createWriteStream(filename);
-		msStreams.push(stream);
-		stream.on('close', function () {
-			++streamsClosed;
-			if (streamsClosed === opts.nReducers) {
-				if (!msTestMode) {
-					msUploadFiles(opts);
-				} else {
-					console.log(fileNames);
-				}
+		stream.filename = filename;
+
+		stream.once('open', function () {
+			msStreams.push(this);
+			if (msStreams.length === opts.nReducers) {
+				process.stdin.resume();
 			}
-		});
+		}.bind(stream));
+
+		stream.on('drain', function () {
+			var index = waitingForDrain.indexOf(this);
+			if (index !== -1) {
+				waitingForDrain.splice(index, 1);
+			}
+			if (waitingForDrain.length === 0) {
+				process.stdin.resume();
+			}
+		}.bind(stream));
+
+		stream.once('error', function (err) {
+			msFatal('File: ' + this.filename + ': ' +
+				err.message);
+		}.bind(stream));
+
+		stream.once('close', function () {
+			if (process.stdin.readable) {
+				msFatal('File: ' + this.filename + ': ' +
+					'write stream closed prematurely');
+				return;
+			}
+			tryEnd();
+		}.bind(stream));
 	}
-
-	// Carrier takes care of the rest
-	carrier = mod_carrier.carry(process.stdin);
-
-	carrier.on('line', function (line) {
-		var r = selectReducer(line, opts);
-		msStreams[r].write(line + '\n');
-	});
-
-	carrier.on('end', function () {
-		for (i = 0; i < opts.nReducers; ++i) {
-			msStreams[i].end();
-		}
-	});
-
-	process.stdin.resume();
 }
 
 // Only factored out so that the large comment isn't duplicated everywhere.
-function parseJson(line) {
+function parseJson(line)
+{
+	if (line === '') {
+		return (null);
+	}
 	var obj = null;
 	try {
 		obj = JSON.parse(line);
 	} catch (e) {
 		// The options we had here were to (1) use the line as the key,
-		// (2) ignore the line completely, or (3) blow up.  #3 seemed
-		// like the best thing to do sine (1) is hard to debug and #3
+		// (2) ignore the line completely, or (3) blow up.  (3) seemed
+		// like the best thing to do sine (1) is hard to debug and (3)
 		// would cause data to mysteriously disappear.
 		msFatal('error: input is not json: ' + line);
 	}

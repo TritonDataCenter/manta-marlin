@@ -9,6 +9,7 @@
  */
 
 var mod_assert = require('assert');
+var mod_fs = require('fs');
 var mod_path = require('path');
 var mod_url = require('url');
 
@@ -33,6 +34,7 @@ var log = new mod_bunyan({
 exports.setup = setup;
 exports.teardown = teardown;
 exports.loginLookup = loginLookup;
+exports.findbin = findbin;
 
 exports.pipeline = pipeline;
 exports.timedCheck = timedCheck;
@@ -159,6 +161,25 @@ function loginLookup(login, callback)
 
 		log.info('user "%s" has uuid', login, user['uuid']);
 		callback(null, user['uuid']);
+	});
+}
+
+function findbin(cb) {
+	var paths = ['../../../marlin/bin',
+		     '../marlin/bin'
+		    ];
+
+	mod_vasync.forEachParallel({
+		func: mod_fs.stat,
+		inputs: paths
+	}, function (err, results) {
+		for (var i = 0; i < results.operations.length; ++i) {
+			if (results.operations[i].status === 'ok') {
+				cb(null, paths[i]);
+				return;
+			}
+		}
+		cb(err);
 	});
 }
 
