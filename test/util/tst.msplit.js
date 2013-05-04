@@ -26,7 +26,9 @@ mod_vasync.pipeline({ 'funcs': [
 	testBasicAltField,
 	testBasicJson,
 	testBasicExec,
-	testBasicExecJson
+	testBasicExecJson,
+	testExecWithoutReturn,
+	testExecWithTrailingSemicolon
 ] }, function (err) {
 	if (err) {
 		log.fatal(err, 'test failed');
@@ -178,7 +180,7 @@ function testBasicExec(_, next)
 	runTest({
 		stdin: sin,
 		opts: ['-t', '-n', 2, '-e',
-		       'line < 3 ? "1" : "2";'],
+		       'return (line < 3 ? "1" : "2")'],
 		nReducers: 2
 	}, function (result) {
 		mod_assert.equal(0, result.code);
@@ -198,13 +200,53 @@ function testBasicExecJson(_, next)
 	runTest({
 		stdin: sin,
 		opts: ['-t', '-n', 2, '-j', '-e',
-		       'this.x < 3 ? "1" : "2";'],
+		       'this.x < 3 ? "1" : "2"'],
 		nReducers: 2
 	}, function (result) {
 		mod_assert.equal(0, result.code);
 		mod_assert.deepEqual({
 				'0': '{"x":1}\n{"x":2}\n',
 				'1': '{"x":3}\n{"x":4}\n'
+		}, result.files);
+		mod_assert.ok(result.error === null);
+		next();
+	});
+}
+
+function testExecWithoutReturn(_, next)
+{
+	var sin = '1\n2\n3\n4\n';
+	log.info('running testExecWithoutReturn');
+	runTest({
+		stdin: sin,
+		opts: ['-t', '-n', 2, '-e',
+		       'line < 3 ? "1" : "2"'],
+		nReducers: 2
+	}, function (result) {
+		mod_assert.equal(0, result.code);
+		mod_assert.deepEqual({
+				'0': '1\n2\n',
+				'1': '3\n4\n'
+		}, result.files);
+		mod_assert.ok(result.error === null);
+		next();
+	});
+}
+
+function testExecWithTrailingSemicolon(_, next)
+{
+	var sin = '1\n2\n3\n4\n';
+	log.info('running testExecWithTrailingSemicolon');
+	runTest({
+		stdin: sin,
+		opts: ['-t', '-n', 2, '-e',
+		       'line < 3 ? "1" : "2";'],
+		nReducers: 2
+	}, function (result) {
+		mod_assert.equal(0, result.code);
+		mod_assert.deepEqual({
+				'0': '1\n2\n',
+				'1': '3\n4\n'
 		}, result.files);
 		mod_assert.ok(result.error === null);
 		next();

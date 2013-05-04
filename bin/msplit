@@ -39,7 +39,7 @@ var msUsageMessage = [
 	'',
 	'For example, to split on comma and use the 5th and 3rd fields to ',
 	'demux to 4 reducers:',
-	'... | msplit -d \',\' -f 5,3 -n 4',
+	'   ... | msplit -d \',\' -f 5,3 -n 4',
 	'',
 	'Using to parse json (using the -j option):',
 	'The -f field is required and is used to specify the fields that will',
@@ -47,21 +47,27 @@ var msUsageMessage = [
 	'if the field doesn\'t exist, the field will be ignored.',
 	'',
 	'For example, to split json records on the id and type fields to ',
-	'demux to 6 reducers:',
-	'... | msplit -j -f id,type -n 4',
+	'demux to 4 reducers:',
+	'   ... | msplit -j -f id,type -n 4',
 	'',
 	'Using the exec option (-e):',
 	'You can also write arbitrary javascript to work over your records.',
-	'If you are consuming text, you can reference the text with the',
-	'\'line\' variable.  For example, to work off the first 16 characters',
-	'of the text:',
-	'... | msplit -e "line.substring(0,16)" -n 4',
+	'The exec line given will become the function body for the following',
+	'function signature:',
+	'   function (line) { ... }',
+	'',
+	'A string must be returned from the function.  For example, if you are',
+	'parsing text and want the partition key to be the first 16',
+	'characters:',
+	'   ... | msplit -e "return line.substring(0,16)" -n 4',
 	'',
 	'If you are using the -j option, the object will be parsed as json and',
-	'properties can be accessed directly.  For example, given this object:',
-	'{"id":"1234567890-22-0987654321", "name":...}',
+	'bound to \'this\' when the function is invoked.  For example, given',
+	'this object:',
+	'   {"id":"1234567890-22-0987654321", "name":...}',
+	'',
 	'You can use the first 9 characters of the id field with:',
-	'... | msplit -e "id.substring(0,9)" -n 4'
+	'   ... | msplit -e "return this.id.substring(0,9)" -n 4'
 ].join('\n');
 
 var msHashAlgo = 'md5';
@@ -139,6 +145,7 @@ function main()
 
 	// Select the line splitter and verify we have everything
 	if (opts.exec !== undefined) {
+		opts.execFunc = constructExecFunc(opts);
 		opts.parseKey = parseAndExec;
 	} else if (opts.parseJson) { // Just json
 		opts.parseKey = parseLikeJson;
@@ -266,28 +273,34 @@ function parseJson(line)
 	return (obj);
 }
 
-function parseAndExec(line, opts)
+function constructExecFunc(opts)
 {
 	var exec = opts.exec;
+	if (exec.indexOf('return') === -1) {
+		if (exec.substring(exec.length - 1) === ';') {
+			exec = exec.substring(0, exec.length - 1);
+		}
+		exec = 'return (' + exec + ')';
+	}
+	return (new Function('line', exec));
+}
+
+function parseAndExec(line, opts)
+{
+	var func = opts.execFunc;
 	var parse = opts.parseJson;
 
-	var context = null;
+	var thiz = null;
 	if (parse) {
-		context = parseJson(line);
+		thiz = parseJson(line);
 	} else {
-		context = { line: line };
+		thiz = { line: line };
 	}
 
-	var key = null;
-	try {
-		key = mod_vm.runInNewContext(exec, context);
-	} catch (e) {
-		msFatal('Error running ' + exec + ' on line ' + line +
-			': ' + e);
-	}
+	var key = func.call(thiz, line);
 
-	var t = typeof (key);
 	// Blow up if the key isn't a String
+	var t = typeof (key);
 	if (t !== 'string') {
 		msFatal(key + ' must be of type string, but was type ' + t);
 	}
