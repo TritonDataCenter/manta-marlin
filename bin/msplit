@@ -56,10 +56,15 @@ var msUsageMessage = [
 	'function signature:',
 	'   function (line) { ... }',
 	'',
-	'A string must be returned from the function.  For example, if you are',
-	'parsing text and want the partition key to be the first 16',
-	'characters:',
+	'A string must be returned from the function.  To reduce the size of',
+	'one-liners, if msplit detects no \'return\', it will enclose the code',
+	'in \'return ( ... )\'.  For example, if you are parsing text and want',
+	'the partition key to be the first 16 characters, either of these',
+	'will work:',
 	'   ... | msplit -e "return line.substring(0,16)" -n 4',
+	'   ... | msplit -e "line.substring(0,16)" -n 4',
+	'',
+	'For multiple statements, you must include a \'return\'.',
 	'',
 	'If you are using the -j option, the object will be parsed as json and',
 	'bound to \'this\' when the function is invoked.  For example, given',
@@ -67,7 +72,7 @@ var msUsageMessage = [
 	'   {"id":"1234567890-22-0987654321", "name":...}',
 	'',
 	'You can use the first 9 characters of the id field with:',
-	'   ... | msplit -e "return this.id.substring(0,9)" -n 4'
+	'   ... | msplit -e "this.id.substring(0,9)" -n 4'
 ].join('\n');
 
 var msHashAlgo = 'md5';
