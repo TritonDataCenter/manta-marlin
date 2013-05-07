@@ -5,13 +5,13 @@ var mod_test = require('../common');
 var test_cases = [
     /* simplest valid case */
     [ null, {
-	'jobName': '',
+	'name': '',
 	'phases': [ { 'exec': 'wc' } ]
     } ],
 
     /* complex valid case */
     [ null, {
-	'jobName': 'hello world',
+	'name': 'hello world',
 	'phases': [ {
 	    'exec': 'wc',
 	    'assets': [ '/poseidon/stor/obj1' ],
@@ -31,39 +31,39 @@ var test_cases = [
 
     /* missing and bad values */
     [ /property "phases".*required/,
-      { 'jobName': '' } ],
+      { 'name': '' } ],
     [ /property "phases".*number value found.*array is required/,
-      { 'jobName': '', 'phases': 3 } ],
+      { 'name': '', 'phases': 3 } ],
     [ /property "phases":.*minimum/,
-      { 'jobName': '', 'phases': [] } ],
+      { 'name': '', 'phases': [] } ],
     [ /phases\[0\].exec.*required/,
-      { 'jobName': '', 'phases': [ {} ] } ],
+      { 'name': '', 'phases': [ {} ] } ],
     [ /property "phases\[0\].exec.*number.*string is required/,
-      { 'jobName': '', 'phases': [ { 'exec': 5 } ] } ],
-    [ /property "jobName":.*number.*string is required/,
-      { 'jobName': 3, 'phases': [ { 'exec': 'wc' } ] } ],
+      { 'name': '', 'phases': [ { 'exec': 5 } ] } ],
+    [ /property "name":.*number.*string is required/,
+      { 'name': 3, 'phases': [ { 'exec': 'wc' } ] } ],
 
     /* extra fields should be rejected */
     [ /property "phases\[0\].junk": unsupported property/,
-      { 'jobName': '', 'phases': [ { 'exec': 'wc', 'junk': true } ] } ],
+      { 'name': '', 'phases': [ { 'exec': 'wc', 'junk': true } ] } ],
     [ /property "junk": unsupported property/,
-      { 'jobName': '', 'phases': [ { 'exec': 'wc' } ], 'junk': true } ],
+      { 'name': '', 'phases': [ { 'exec': 'wc' } ], 'junk': true } ],
 
     /* bad phase values */
     [ /property "phases\[0\].type"/,
-      { 'jobName': '', 'phases': [ { 'exec': 'wc', 'type': 'junk' } ] } ],
+      { 'name': '', 'phases': [ { 'exec': 'wc', 'type': 'junk' } ] } ],
     [ /property "phases\[0\].count":.*maximum value of/,
-      { 'jobName': '', 'phases': [ { 'exec': 'wc', 'count': 1000 } ] } ],
+      { 'name': '', 'phases': [ { 'exec': 'wc', 'count': 1000 } ] } ],
     [ /property "phases\[0\].memory":/,
-      { 'jobName': '', 'phases': [ { 'exec': 'wc', 'memory': 122 } ] } ],
+      { 'name': '', 'phases': [ { 'exec': 'wc', 'memory': 122 } ] } ],
     [ /property "phases\[0\].image": number.*string is required/,
-      { 'jobName': '', 'phases': [ { 'exec': 'wc', 'image': 122 } ] } ],
+      { 'name': '', 'phases': [ { 'exec': 'wc', 'image': 122 } ] } ],
     [ /property "phases\[0\].image": invalid semver range: ""/,
-      { 'jobName': '', 'phases': [ { 'exec': 'wc', 'image': '' } ] } ],
+      { 'name': '', 'phases': [ { 'exec': 'wc', 'image': '' } ] } ],
 
     /* bad semantic values */
     [ /property "phases\[0\].image": unsupported version: "0.0.1"/,
-      { 'jobName': '', 'phases': [ { 'exec': 'wc', 'image': '0.0.1' } ] } ]
+      { 'name': '', 'phases': [ { 'exec': 'wc', 'image': '0.0.1' } ] } ]
 ];
 /* END JSSSTYLED */
 

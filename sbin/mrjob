@@ -563,7 +563,7 @@ function cmdSubmit()
 
 	var job = {
 	    'jobId': msJobId,
-	    'jobName': msJobName,
+	    'name': msJobName,
 	    'phases': msPhases,
 	    'options': msOptions,
 	    'owner': process.env['MANTA_USER_UUID'],
@@ -976,7 +976,8 @@ function makeJobRow(job, mtime)
 	    'DONE': job['timeDone'] || '-',
 	    'INPUTDONE': job['timeInputDone'] || '-',
 	    'JOBID': job['jobId'] || '-',
-	    'JOBNAME': (job['jobName'] || '-').substr(0, 16),
+	    /* XXX jobName compatibility -- can remove before GA */
+	    'JOBNAME': (job['jobName'] || job['name'] || '-').substr(0, 16),
 	    'LOGIN': job['auth']['login'],
 	    'MODIFIED': mtime || '-',
 	    'NASGN': job['stats'] ? job['stats']['nAssigns'] : '-',

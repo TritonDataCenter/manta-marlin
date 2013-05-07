@@ -1322,7 +1322,7 @@ function jobSubmit(api, testspec, callback)
 		'groups': [ 'operators' ] /* XXX */
 	    },
 	    'phases': testspec['job']['phases'],
-	    'jobName': 'marlin test suite job',
+	    'name': 'marlin test suite job',
 	    'options': {
 		'frequentCheckpoint': true
 	    }
