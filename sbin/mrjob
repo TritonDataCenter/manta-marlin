@@ -502,8 +502,7 @@ function cmdSubmit()
 		case 'm':
 		case 'r':
 			var phase = {
-			    'type': option.option == 'm' ?
-				'storage-map' : 'reduce',
+			    'type': option.option == 'm' ?  'map' : 'reduce',
 			    'exec': option.optarg
 			};
 
@@ -555,7 +554,7 @@ function cmdSubmit()
 	}
 
 	if (msPhases.length === 0)
-		msPhases.push({ 'type': 'storage-map', 'exec': 'echo' });
+		msPhases.push({ 'type': 'map', 'exec': 'echo' });
 
 	if (!msAuthToken) {
 		console.error('%s: auth token (-t) is required', msArg0);
@@ -1137,7 +1136,7 @@ function printJobDetails(records)
 
 	job['phases'].forEach(function (phase, i) {
 		var label = i === 0 ? 'PHASE' : '';
-		var type = phase['type'] || 'storage-map';
+		var type = phase['type'] || 'map';
 		if (type == 'reduce')
 			type += ' (' + (phase['count'] || 1) + ')';
 		println('%-7s %2d %-11s %s', label, i, type,

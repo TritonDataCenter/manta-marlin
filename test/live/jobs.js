@@ -36,7 +36,7 @@ exports.populateData = populateData;
 
 exports.jobM = {
     'job': {
-	'phases': [ { 'type': 'storage-map', 'exec': 'wc' } ]
+	'phases': [ { 'type': 'map', 'exec': 'wc' } ]
     },
     'inputs': [
 	'/%user%/stor/obj1',
@@ -58,7 +58,7 @@ exports.jobM = {
 exports.jobMX = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'cat > /var/tmp/tmpfile; ' +
 		'for i in 1 2 3 4 5 6 7 8; do ' +
 		'    wc < /var/tmp/tmpfile | mpipe; ' +
@@ -103,7 +103,7 @@ exports.jobMX = {
 exports.jobMmpipeAnon = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'echo foo; echo bar | mpipe'
 	} ]
     },
@@ -125,7 +125,7 @@ exports.jobMmpipeAnon = {
 exports.jobMmpipeNamed = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'echo foo; echo bar | mpipe -p /%user%/stor/extra/out1'
 	} ]
     },
@@ -143,7 +143,7 @@ exports.jobMmpipeNamed = {
 exports.jobMmcat = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'echo foo; mcat /%user%/stor/obj1'
 	} ]
     },
@@ -169,8 +169,8 @@ exports.jobMmcat = {
 exports.jobMM = {
     'job': {
 	'phases': [
-	    { 'type': 'storage-map', 'exec': 'wc' },
-	    { 'type': 'storage-map', 'exec': 'wc' }
+	    { 'type': 'map', 'exec': 'wc' },
+	    { 'type': 'map', 'exec': 'wc' }
 	]
     },
     'inputs': [
@@ -206,7 +206,7 @@ exports.jobR = {
 exports.jobMR = {
     'job': {
 	'phases': [
-	    { 'type': 'storage-map', 'exec': 'wc' },
+	    { 'type': 'map', 'exec': 'wc' },
 	    { 'type': 'reduce', 'exec': 'wc' }
 	]
     },
@@ -225,8 +225,8 @@ exports.jobMR = {
 exports.jobMMRR = {
     'job': {
 	'phases': [
-	    { 'type': 'storage-map', 'exec': 'wc' },
-	    { 'type': 'storage-map', 'exec': 'wc' },
+	    { 'type': 'map', 'exec': 'wc' },
+	    { 'type': 'map', 'exec': 'wc' },
 	    { 'type': 'reduce', 'exec': 'wc' },
 	    { 'type': 'reduce', 'exec': 'wc' }
 	]
@@ -245,7 +245,7 @@ exports.jobMMRR = {
 
 exports.jobM500 = {
     'job': {
-	'phases': [ { 'type': 'storage-map', 'exec': 'wc' } ]
+	'phases': [ { 'type': 'map', 'exec': 'wc' } ]
     },
     'inputs': [],
     'timeout': 90 * 1000,
@@ -256,7 +256,7 @@ exports.jobM500 = {
 exports.jobMR1000 = {
     'job': {
 	'phases': [
-	    { 'type': 'storage-map', 'exec': 'wc' },
+	    { 'type': 'map', 'exec': 'wc' },
 	    { 'type': 'reduce', 'exec': 'wc' }
 	]
     },
@@ -270,7 +270,7 @@ exports.jobMR1000 = {
 exports.jobMRRoutput = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'for i in {1..10}; do echo $i; done | msplit -n 3'
 	}, {
 	    'type': 'reduce',
@@ -301,7 +301,7 @@ exports.jobMasset = {
 	},
 	'phases': [ {
 	    'assets': [ '/%user%/stor/test_asset.sh' ],
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': '/assets/%user%/stor/test_asset.sh 17'
 	} ]
     },
@@ -318,7 +318,7 @@ exports.jobMerrorAssetMissing = {
     'job': {
 	'phases': [ {
 	    'assets': [ '/%user%/stor/notavalidasset' ],
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'echo "should not ever get here"'
 	} ]
     },
@@ -339,7 +339,7 @@ exports.jobMerrorAssetMissing = {
 
 exports.jobM0bi = {
     'job': {
-	'phases': [ { 'type': 'storage-map', 'exec': 'wc' } ]
+	'phases': [ { 'type': 'map', 'exec': 'wc' } ]
     },
     'inputs': [ '/%user%/stor/0bytes' ],
     'timeout': 15 * 1000,
@@ -368,7 +368,7 @@ exports.jobR0bi = {
 
 exports.jobM0bo = {
     'job': {
-	'phases': [ { 'type': 'storage-map', 'exec': 'true' } ]
+	'phases': [ { 'type': 'map', 'exec': 'true' } ]
     },
     'inputs': [ '/%user%/stor/obj1' ],
     'timeout': 15 * 1000,
@@ -382,7 +382,7 @@ exports.jobM0bo = {
 exports.jobMcore = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'node -e "process.abort();"'
 	} ]
     },
@@ -403,7 +403,7 @@ exports.jobMcore = {
 exports.jobMdiskDefault = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'df --block-size=M / | awk \'{print $4}\' | tail -1'
 	} ]
     },
@@ -419,7 +419,7 @@ exports.jobMdiskDefault = {
 exports.jobMdiskExtended = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'df --block-size=M / | awk \'{print $4}\' | tail -1',
 	    'disk': 4
 	} ]
@@ -436,7 +436,7 @@ exports.jobMdiskExtended = {
 exports.jobMmemoryDefault = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'prtconf | grep -i memory'
 	} ]
     },
@@ -452,7 +452,7 @@ exports.jobMmemoryDefault = {
 exports.jobMmemoryExtended = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'prtconf | grep -i memory',
 	    'memory': 512
 	} ]
@@ -473,7 +473,7 @@ exports.jobMmemoryExtended = {
 exports.jobMerrorMemoryTooBig = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'prtconf | grep -i memory',
 	    'memory': 8192
 	} ]
@@ -497,7 +497,7 @@ exports.jobMerrorMemoryTooBig = {
 exports.jobMerrorDiskTooBig = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'df --block-size=M / | awk \'{print $4}\' | tail -1',
 	    'disk': 1024
 	} ]
@@ -518,7 +518,7 @@ exports.jobMerrorDiskTooBig = {
 exports.jobMerrorsDispatch0 = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'wc'
 	} ]
     },
@@ -579,10 +579,10 @@ exports.jobMerrorsDispatch0 = {
 exports.jobMerrorsDispatch1 = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'mcat ' + exports.jobMerrorsDispatch0['inputs'].join(' ')
 	}, {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'wc'
 	} ]
     },
@@ -623,7 +623,7 @@ exports.jobMerrorsDispatch1 = {
 exports.jobMerrorBadReducer = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'mpipe -r1'
 	}, {
 	    'type': 'reduce',
@@ -703,7 +703,7 @@ exports.jobMerrorLackeyOom = {
 exports.jobMerrorCmd = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'grep professor_frink'
 	} ]
     },
@@ -723,7 +723,7 @@ exports.jobMerrorCmd = {
 exports.jobMerrorMuskie = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'curl -i -X POST localhost/my/jobs/task/perturb?p=1'
 	} ]
     },
@@ -747,7 +747,7 @@ exports.jobMerrorMuskie = {
 exports.jobMerrorMuskieMpipe = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'curl -i -X POST localhost/my/jobs/task/perturb?p=1 | mpipe'
 	} ]
     },
@@ -773,7 +773,7 @@ exports.jobMerrorMuskieMpipe = {
 exports.jobMerrorMuskieRetry = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'curl -i -X POST localhost/my/jobs/task/perturb?p=0.5'
 	} ]
     },
@@ -793,7 +793,7 @@ exports.jobMerrorMuskieRetry = {
 exports.jobMerrorMuskieRetryMpipe = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'curl -i -X POST localhost/my/jobs/task/perturb?p=0.5 |' +
 	        'mpipe'
 	} ]
@@ -816,7 +816,7 @@ exports.jobMerrorMuskieRetryMpipe = {
 exports.jobMerrorMpipeMkdirp = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'echo hello | mpipe /%user%/stor/marlin_tests/1/2/3/4'
 	} ]
     },
@@ -836,7 +836,7 @@ exports.jobMerrorMpipeMkdirp = {
 exports.jobMerrorBadImage = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'wc',
 	    'image': '0.0.1'
 	} ]
@@ -871,7 +871,7 @@ exports.jobR0inputs = {
 exports.jobMenv = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'env | egrep ^MANTA_ | sort'
 	} ]
     },
@@ -937,7 +937,7 @@ exports.jobRenv = {
 exports.jobMcancel = {
     'job': {
 	'phases': [
-	    { 'type': 'storage-map', 'exec': 'wc && sleep 3600' }
+	    { 'type': 'map', 'exec': 'wc && sleep 3600' }
 	]
     },
     'inputs': [
@@ -965,7 +965,7 @@ exports.jobMcancel = {
 
 exports.jobMmeterCheckpoints = {
     'job': {
-	'phases': [ { 'type': 'storage-map', 'exec': 'sleep 7' } ]
+	'phases': [ { 'type': 'map', 'exec': 'sleep 7' } ]
     },
     'inputs': [ '/%user%/stor/obj1' ],
     'timeout': 30 * 1000,
@@ -982,7 +982,7 @@ exports.jobMmeterCheckpoints = {
 exports.jobMmeterExitsEarly = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'exec': 'wc'
 	}, {
 	    'type': 'reduce',
@@ -1046,7 +1046,7 @@ exports.jobMmeterExitsEarly = {
 exports.jobMinit = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'init': 'echo >> /var/tmp/test_temp',
 	    'exec': 'wc < /var/tmp/test_temp'
 	} ]
@@ -1091,7 +1091,7 @@ exports.jobMinit = {
 exports.jobMinitEnv = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'init': 'env | egrep ^MANTA_ | sort > /var/tmp/test_temp',
 	    'exec': 'cat /var/tmp/test_temp'
 	} ]
@@ -1113,7 +1113,7 @@ exports.jobMinitEnv = {
 exports.jobMinitFail = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'init': 'false',
 	    'exec': 'wc'
 	} ]
@@ -1134,7 +1134,7 @@ exports.jobMinitFail = {
 exports.jobMinitCore = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'init': 'node -e "process.abort();"',
 	    'exec': 'wc'
 	} ]
@@ -1161,7 +1161,7 @@ exports.jobMinitCore = {
 exports.jobMinitKill = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'init': 'pkill -f lackey',
 	    'exec': 'wc'
 	} ]
@@ -1182,7 +1182,7 @@ exports.jobMinitKill = {
 exports.jobMinitKillAfter = {
     'job': {
 	'phases': [ {
-	    'type': 'storage-map',
+	    'type': 'map',
 	    'init': 'echo >> /var/tmp/test_temp',
 	    'exec': 'if [[ -f /var/tmp/ranonce ]]; then\n' +
 	        'wc < /var/tmp/test_temp\n' +
