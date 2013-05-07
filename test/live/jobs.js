@@ -54,6 +54,20 @@ exports.jobM = {
     'errors': []
 };
 
+exports.jobMimage = {
+    'job': {
+	'phases': [ {
+	    'type': 'map',
+	    'image': '13.1.0',
+	    'exec': 'grep 13.1.0 /etc/motd'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 60 * 1000,
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./ ],
+    'errors': []
+};
+
 /* Like jobM, but makes use of separate external task output objects */
 exports.jobMX = {
     'job': {
@@ -1201,6 +1215,7 @@ exports.jobMinitKillAfter = {
 
 exports.jobsAll = [
     exports.jobM,
+    exports.jobMimage,
     exports.jobMX,
     exports.jobMmpipeAnon,
     exports.jobMmpipeNamed,
