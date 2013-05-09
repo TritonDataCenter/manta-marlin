@@ -1,0 +1,96 @@
+#!/usr/sbin/dtrace -ZCs
+
+/*
+ * mragentsnoop: snoop marlin agent activity
+ *
+ * This script may be invoked with -DJSON to print out full JSON records.
+ */
+
+#pragma D option quiet
+#pragma D option strsize=1k
+
+BEGIN
+{
+	printf("Snooping.\n");
+	start = timestamp;
+}
+
+marlin-agent*:::agent-started,
+marlin-agent*:::zone-reset-start
+{
+	this->t = timestamp - start;
+	printf("%5d.%03d  %-22s %s\n",
+	    this->t / 1000000000, (this->t % 1000000000) / 1000000,
+	    probename, copyinstr(arg0));
+}
+
+marlin-agent*:::zone-reset-done
+{
+	this->t = timestamp - start;
+	this->e = copyinstr(arg1);
+	printf("%5d.%03d  %-22s %s (%s)\n",
+	    this->t / 1000000000, (this->t % 1000000000) / 1000000,
+	    probename, copyinstr(arg0), this->e == "" ? "ok" : this->e);
+}
+
+marlin-agent*:::sched-stream-created
+{
+	this->t = timestamp - start;
+	this->jobid = copyinstr(arg0);
+	this->jobid[8] = '\0';
+	printf("%5d.%03d  %-22s %-8s %s (phase %2s)\n",
+	    this->t / 1000000000, (this->t % 1000000000) / 1000000,
+	    probename, this->jobid, copyinstr(arg2), copyinstr(arg1));
+}
+
+marlin-agent*:::task-enqueued,
+marlin-agent*:::task-dispatched,
+marlin-agent*:::task-done,
+marlin-agent*:::task-killed
+{
+	this->t = timestamp - start;
+	this->jobid = copyinstr(arg0);
+	this->jobid[8] = '\0';
+	printf("%5d.%03d  %-22s %-8s %s\n",
+	    this->t / 1000000000, (this->t % 1000000000) / 1000000,
+	    probename, this->jobid, copyinstr(arg1));
+}
+
+marlin-agent*:::taskinput-enqueued
+{
+	this->t = timestamp - start;
+	this->jobid = copyinstr(arg0);
+	this->jobid[8] = '\0';
+	printf("%5d.%03d  %-22s %-8s ph %2s %s\n",
+	    this->t / 1000000000, (this->t % 1000000000) / 1000000,
+	    probename, this->jobid, json(copyinstr(arg2), "phaseNum"),
+	    json(copyinstr(arg3), "input"));
+}
+
+marlin-agent*:::taskoutput-emitted
+{
+	this->t = timestamp - start;
+	this->jobid = copyinstr(arg0);
+	this->jobid[8] = '\0';
+	printf("%5d.%03d  %-22s %-8s ph %2s %-6s %s\n",
+	    this->t / 1000000000, (this->t % 1000000000) / 1000000,
+	    probename, this->jobid, json(copyinstr(arg2), "phaseNum"),
+	    copyinstr(arg3), copyinstr(arg4));
+}
+
+#ifdef JSON
+marlin-agent*:::task-enqueued,
+marlin-agent*:::task-dispatched,
+marlin-agent*:::task-done,
+marlin-agent*:::task-killed,
+marlin-agent*:::taskinput-enqueued,
+marlin-agent*:::taskoutput-emitted
+{
+	printf("%s\n", copyinstr(arg2));
+}
+
+marlin-agent*:::taskinput-enqueued
+{
+	printf("%s\n", copyinstr(arg3));
+}
+#endif
