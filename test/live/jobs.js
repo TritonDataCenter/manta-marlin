@@ -328,6 +328,42 @@ exports.jobMasset = {
     'errors': []
 };
 
+/*
+ * It's important that users aren't able to reboot zones.  If they could, our
+ * metering data would get blown away, and users could steal compute.
+ */
+exports.jobRerrorReboot = {
+    'job': {
+	'phases': [ {
+	    'type': 'reduce',
+	    'exec': 'uadmin 2 1; uadmin 1 1'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: reduce',
+	'code': 'UserTaskError',
+	'message': 'user command exited with code 1'
+    } ]
+};
+
+exports.jobMerrorRebootOutput = {
+    'job': {
+	'phases': [ {
+	    'type': 'map',
+	    'exec': 'uadmin 2 1 2>&1; uadmin 1 1 2>&1; true'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./ ],
+    'expected_output_content': [ 'uadmin: Not owner\nuadmin: Not owner\n' ],
+    'errors': []
+};
+
 exports.jobMerrorAssetMissing = {
     'job': {
 	'phases': [ {
@@ -1240,6 +1276,8 @@ exports.jobsAll = [
     exports.jobMerrorDiskTooBig,
     exports.jobMerrorsDispatch0,
     exports.jobMerrorsDispatch1,
+    exports.jobRerrorReboot,
+    exports.jobMerrorRebootOutput,
     exports.jobMerrorAssetMissing,
     exports.jobMerrorBadReducer,
     exports.jobMerrorOom,
