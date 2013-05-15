@@ -5,7 +5,7 @@
  -->
 
 <service_bundle type="manifest" name="smartdc-ca-castashsvc">
-<service name="smartdc/marlin-worker" type="service" version="1">
+<service name="smartdc/application/jobsupervisor" type="service" version="1">
 
 <dependency name="network" grouping="require_all" restart_on="error" type="service">
 	<service_fmri value="svc:/network/physical" />
@@ -26,7 +26,7 @@
 <stability value='Unstable' />
 
 <template>
-	<common_name><loctext xml:lang="C">Joyent Marlin Worker</loctext></common_name>
+	<common_name><loctext xml:lang="C">Joyent Manta Job Supervisor</loctext></common_name>
 </template>
 
 </service>
