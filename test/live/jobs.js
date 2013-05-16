@@ -516,6 +516,55 @@ exports.jobMmemoryExtended = {
     'errors': []
 };
 
+exports.jobMmget = {
+    'job': {
+	'phases': [ {
+	    'type': 'map',
+	    'exec': 'mget $MANTA_INPUT_OBJECT > /var/tmp/tmpfile; ' +
+	        'diff $MANTA_INPUT_FILE /var/tmp/tmpfile && echo okay'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 30 * 1000,
+    'expected_outputs': [
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
+    ],
+    'expected_output_content': [ 'okay\n' ],
+    'errors': []
+};
+
+exports.jobMmls = {
+    'job': {
+	'phases': [ {
+	    'type': 'map',
+	    'exec': 'mls $MANTA_INPUT_OBJECT'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 30 * 1000,
+    'expected_outputs': [
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
+    ],
+    'expected_output_content': [ 'obj1\n' ],
+    'errors': []
+};
+
+exports.jobMmjob = {
+    'job': {
+	'phases': [ {
+	    'type': 'map',
+	    'exec': 'mjob inputs $MANTA_JOB_ID'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 30 * 1000,
+    'expected_outputs': [
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
+    ],
+    'expected_output_content': [ '/%user%/stor/obj1\n' ],
+    'errors': []
+};
+
 /*
  * This test relies on the fact that the systems where we run the test suite
  * don't support even a single task with this much memory.
@@ -1272,6 +1321,9 @@ exports.jobsAll = [
     exports.jobMmemoryExtended,
     exports.jobMdiskDefault,
     exports.jobMdiskExtended,
+    exports.jobMmget,
+    exports.jobMmls,
+    exports.jobMmjob,
     exports.jobMerrorMemoryTooBig,
     exports.jobMerrorDiskTooBig,
     exports.jobMerrorsDispatch0,
