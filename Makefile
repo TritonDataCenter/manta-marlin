@@ -42,11 +42,6 @@ DOC_FILES	 = index.restdown
 JSON_FILES	:= $(shell find src etc -name '*.json')
 JS_FILES	:= $(shell find src lib test -name '*.js')
 JS_FILES	+= \
-    bin/maggr	\
-    bin/mcat	\
-    bin/mpipe	\
-    bin/msplit	\
-    bin/mtee	\
     sbin/mlocate \
     sbin/mrjob 	\
     sbin/mrmeter \
