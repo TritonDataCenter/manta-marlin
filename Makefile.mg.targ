@@ -13,7 +13,6 @@ MG_NAME			 = marlin
 IMAGEROOT_FILES =		 			\
     $(MG_IMAGEROOT)/build/node				\
     $(MG_IMAGEROOT)/build/docs				\
-    $(MG_IMAGEROOT)/bin					\
     $(MG_IMAGEROOT)/etc					\
     $(MG_IMAGEROOT)/lib					\
     $(MG_IMAGEROOT)/node_modules			\
