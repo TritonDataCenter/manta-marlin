@@ -495,7 +495,7 @@ exports.jobMmemoryDefault = {
     'expected_outputs': [
 	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
     ],
-    'expected_output_content': [ 'Memory size: 256 Megabytes\n' ],
+    'expected_output_content': [ 'Memory size: 1024 Megabytes\n' ],
     'errors': []
 };
 

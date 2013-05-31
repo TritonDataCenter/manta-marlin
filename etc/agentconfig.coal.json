@@ -48,8 +48,8 @@
 	},
 
 	"zoneDefaults": {
-		"max_physical_memory": 256,
-		"max_swap": 256,
+		"max_physical_memory": 1024,
+		"max_swap": 1024,
 		"quota": 2
 	}
 }
