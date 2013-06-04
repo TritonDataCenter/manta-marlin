@@ -30,6 +30,8 @@ var test_cases = [
     } ],
 
     /* missing and bad values */
+    [ /property "name".*required/,
+      {} ],
     [ /property "phases".*required/,
       { 'name': '' } ],
     [ /property "phases".*number value found.*array is required/,
@@ -79,20 +81,22 @@ function run(_, next)
 {
 	test_cases.forEach(function (testcase) {
 		var input = testcase[1];
-		mod_test.log.info('testing', input);
 
-		var err = client.jobValidate(input, false);
-		if (err === null) {
-			mod_test.log.info('validated okay');
-			mod_assert.ok(testcase[0] === null,
-			    'test case validated, but expected an error');
-		} else {
-			mod_test.log.info('validate failed', err.message);
-			mod_assert.ok(testcase[0] !== null,
-			    'test case failed, but expected it to validate');
-			mod_assert.ok(testcase[0].test(err.message),
-			    'expected error message ' + testcase[0].source);
-		}
+		[ true, false ].forEach(function (priv) {
+			var err = client.jobValidate(input, priv);
+			mod_test.log.info('testing', input, priv);
+			if (err === null) {
+				mod_test.log.info('validated okay');
+				mod_assert.ok(testcase[0] === null,
+				    'test case validated, but expected an error');
+			} else {
+				mod_test.log.info('validate failed', err.message);
+				mod_assert.ok(testcase[0] !== null,
+				    'test case failed, but expected it to validate');
+				mod_assert.ok(testcase[0].test(err.message),
+				    'expected error message ' + testcase[0].source);
+			}
+		});
 	});
 
 	next();
