@@ -41,11 +41,80 @@ mac_code="$mac_code; dns.nameservers = []"
 mkdir -p "$mac_confdir" || fail "failed to mkdir $mac_confdir"
 
 shift 3
+mac_nameservers="$(/usr/node/bin/node \
+    -pe 'JSON.stringify(process.argv.slice(1))' "$@")"
 for ns in "$@"; do
 	mac_code="$mac_code; dns.nameservers.push('$ns')"
 done
 
-json -e "$mac_code" < $mac_root/etc/agentconfig.coal.json > \
-    $mac_confdir/agentconfig.json || fail "failed to rewrite config"
-svcadm disable -st marlin-agent || fail "failed to disable marlin-agent"
-svcadm enable -s marlin-agent || fail "failed to enable marlin-agent"
+#
+# Update the configuration file, if it doesn't already exist.  We avoid blowing
+# away whatever's there in case of hand-patched configuration.  This should be
+# better handled by SAPI-38.
+#
+if [[ ! -e $mac_confdir/agentconfig.json ]]; then
+	json -e "$mac_code" < $mac_root/etc/agentconfig.coal.json > \
+	    $mac_confdir/agentconfig.json || fail "failed to rewrite config"
+	svcadm disable -st marlin-agent || fail "failed to disable marlin-agent"
+	svcadm enable -s marlin-agent || fail "failed to enable marlin-agent"
+	echo "updated marlin agent configuration"
+else
+	echo "skipping agent reconfiguration (file already present)"
+fi
+
+#
+# Copy the ssh keys from the local mako zone, if present.
+#
+if [[ ! -f $mac_confdir/id_rsa || ! -f $mac_confdir/id_rsa.pub ]]; then
+	mac_mako="$(vmadm lookup tags.manta_role=storage | tail -1)"
+	if [[ -z "$mac_mako" ]]; then
+		echo "skipping private key copy (no mako zone found)"
+	else
+		cp /zones/$mac_mako/root/root/.ssh/id_rsa \
+		   $mac_confdir/id_rsa || fail "failed to copy private key"
+		cp /zones/$mac_mako/root/root/.ssh/id_rsa.pub \
+		   $mac_confdir/id_rsa.pub || fail "failed to copy public key"
+		echo "copied private keys from zone $mac_mako"
+	fi
+else
+	echo "skipping private key copy (keys already present)"
+fi
+
+
+# Write out a configuration file for log rotation.
+cat > $mac_confdir/logpush.json <<EOF || fail "failed to write logpush.json"
+{
+	"logroot": "/var/log/manta/upload",
+	"nameservers": $mac_nameservers,
+	"manta": {
+		"user": "poseidon",
+		"host": "$mac_manta_host",
+		"keypath": "/opt/smartdc/marlin/etc/id_rsa",
+		"logroot": "/poseidon/stor/logs"
+	}
+}
+EOF
+echo "wrote logpush.json"
+
+# Add the log rotator to the crontab.
+mac_tmpfile=/var/tmp/$mac_arg0.$$
+crontab -l | grep -v $mac_confdir/logpush.json > $mac_tmpfile || \
+    fail "failed to save old crontab"
+echo "1,2,3,4,5 * * * * $mac_root/sbin/logpush.sh $mac_confdir/logpush.json " \
+    ">> /var/log/mbackup.log 2>&1" >> $mac_tmpfile || fail "failed to append"
+crontab $mac_tmpfile || fail "failed to load $mac_tmpfile"
+rm -f $mac_tmpfile
+echo "updated crontab"
+
+# Update logadm.conf to rotate the Marlin agent log before the other SMF logs.
+logadm -r marlin-agent
+logadm -r mbackup
+logadm -w "marlin-agent" -C 48 -c -p 1h \
+    -t "/var/log/manta/upload/marlin-agent_\$nodename_%FT%H:00:00.log" \
+    "/var/svc/log/*marlin-agent*.log" || fail "failed to add marlin-agent log"
+logadm -w mbackup -C 3 -c -s 1m /var/log/mbackup.log || \
+    fail "failed to add mbackup log"
+grep -v smf_logs /etc/logadm.conf > $mac_tmpfile
+grep smf_logs /etc/logadm.conf >> $mac_tmpfile
+mv $mac_tmpfile /etc/logadm.conf || fail "failed to update logadm.conf"
+echo "updated logadm.conf"
