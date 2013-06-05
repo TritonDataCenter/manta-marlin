@@ -109,16 +109,3 @@ if ! crontab -l | grep logpush.json > /dev/null; then
 else
 	echo "skipping crontab update (already done)"
 fi
-
-# Update logadm.conf to rotate the Marlin agent log before the other SMF logs.
-logadm -r marlin-agent
-logadm -r mbackup
-logadm -w "marlin-agent" -C 48 -c -p 1h \
-    -t "/var/log/manta/upload/marlin-agent_\$nodename_%FT%H:00:00.log" \
-    "/var/svc/log/*marlin-agent*.log" || fail "failed to add marlin-agent log"
-logadm -w mbackup -C 3 -c -s 1m /var/log/mbackup.log || \
-    fail "failed to add mbackup log"
-grep -v smf_logs /etc/logadm.conf > $mac_tmpfile
-grep smf_logs /etc/logadm.conf >> $mac_tmpfile
-mv $mac_tmpfile /etc/logadm.conf || fail "failed to update logadm.conf"
-echo "updated logadm.conf"
