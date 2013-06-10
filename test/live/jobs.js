@@ -565,6 +565,26 @@ exports.jobMmjob = {
     'errors': []
 };
 
+exports.jobMRnormalize = {
+    'job': {
+	'phases': [ {
+	    'type': 'reduce',
+	    'exec': 'mcat /%user%//stor/obj1'
+	}, {
+	    'type': 'map',
+	    'exec': 'wc -w'
+	} ]
+    },
+    'inputs': [ '/%user%/stor///obj1' ],
+    'timeout': 30 * 1000,
+    'expected_outputs': [
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.1\./
+    ],
+    'expected_output_content': [ '5\n' ],
+    'errors': []
+};
+
+
 /*
  * This test relies on the fact that the systems where we run the test suite
  * don't support even a single task with this much memory.
@@ -1324,6 +1344,7 @@ exports.jobsAll = [
     exports.jobMmget,
     exports.jobMmls,
     exports.jobMmjob,
+    exports.jobMRnormalize,
     exports.jobMerrorMemoryTooBig,
     exports.jobMerrorDiskTooBig,
     exports.jobMerrorsDispatch0,
