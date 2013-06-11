@@ -42,7 +42,9 @@ BASH_FILES	 = \
     tools/mrzonestag
 
 DOC_FILES	 = index.restdown
-JSON_FILES	:= $(shell find src etc -name '*.json')
+JSON_FILES	:= $(shell find src etc -name '*.json') \
+                   sapi_manifests/marlin/manifest.json  \
+                   sapi_manifests/marlin/template
 JS_FILES	:= $(shell find src lib test -name '*.js')
 JS_FILES	+= \
     sbin/mlocate \
