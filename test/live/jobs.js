@@ -2142,7 +2142,7 @@ function populateData(manta, keys, callback)
 			data = '';
 		    else
 			data = 'auto-generated content for key /someuser' +
-			    key.substr(key.indexOf('/', 1));
+			    mod_path.normalize(key.substr(key.indexOf('/', 1)));
 
 		    var stream = new StringInputStream(data);
 
