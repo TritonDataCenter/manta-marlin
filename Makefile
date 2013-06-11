@@ -33,11 +33,14 @@ CC      	 = gcc
 BASH_FILES	 = \
     npm/postinstall.sh		\
     npm/preuninstall.sh		\
+    sbin/mrlogexpire.sh		\
+    tools/mragentconf		\
     tools/mparams		\
     tools/mrdeploycompute	\
     tools/mrzone		\
     tools/mrzoneremove		\
     tools/mrzonestag
+
 DOC_FILES	 = index.restdown
 JSON_FILES	:= $(shell find src etc -name '*.json')
 JS_FILES	:= $(shell find src lib test -name '*.js')
