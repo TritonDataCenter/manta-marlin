@@ -789,6 +789,24 @@ exports.jobMerrorOom = {
     } ]
 };
 
+exports.jobMerrorLackeyCrash = {
+    'job': {
+	'phases': [ {
+	    'type': 'map',
+	    'exec': 'pkill -f lackey'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 30 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'code': EM_INTERNAL,
+	'message': 'internal error'
+    } ]
+};
+
 /*
  * It would be better if we could actually run the lackey out of memory, but
  * this seems difficult to do in practice.  But when it happens, the lackey
@@ -1307,6 +1325,12 @@ exports.jobMinitKillAfter = {
 	        'wc < /var/tmp/test_temp\n' +
 		'else\n' +
 		'echo > /var/tmp/ranonce\n' +
+		/*
+		 * We have to hack around the error-on-lackey-crash behavior in
+		 * order to test that we do the right thing with respect to
+		 * "init".
+		 */
+		'rm -f /var/tmp/.marlin_task_started\n' +
 		'pkill -f lackey\n' +
 		'fi'
 	} ]
@@ -1354,6 +1378,7 @@ exports.jobsAll = [
     exports.jobMerrorAssetMissing,
     exports.jobMerrorBadReducer,
     exports.jobMerrorOom,
+    exports.jobMerrorLackeyCrash,
     exports.jobMerrorLackeyOom,
     exports.jobMerrorCmd,
     exports.jobMerrorMuskie,
