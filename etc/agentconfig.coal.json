@@ -41,7 +41,7 @@
 		"timeTick": 20,
 		"zoneDisabledMaxPercent": 5,
 		"zoneDiskSlopPercent": 15,
-		"zoneLivenessCheck": 15000,
+		"zoneLivenessCheck": 120000,
 		"zoneMemorySlopPercent": 20,
 		"zoneReserveMin": 1,
 		"zoneReservePercent": 12
