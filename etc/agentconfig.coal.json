@@ -32,6 +32,7 @@
 
 	"tunables": {
 		"httpMaxSockets": 512,
+		"maxPendingOutputsPerTask": 25,
 		"maxPendingPuts": 25,
 		"timeHeartbeat": 3000,
 		"timeHogGrace": 60000,
