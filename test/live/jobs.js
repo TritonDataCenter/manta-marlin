@@ -462,7 +462,7 @@ exports.jobMdiskDefault = {
     'expected_outputs': [
 	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
     ],
-    'expected_output_content': [ /^20\d\dM\n$/ ],
+    'expected_output_content': [ /^81\d\dM\n$/ ],
     'errors': []
 };
 
@@ -471,7 +471,7 @@ exports.jobMdiskExtended = {
 	'phases': [ {
 	    'type': 'map',
 	    'exec': 'df --block-size=M / | awk \'{print $4}\' | tail -1',
-	    'disk': 4
+	    'disk': 16
 	} ]
     },
     'inputs': [ '/%user%/stor/obj1' ],
@@ -479,7 +479,7 @@ exports.jobMdiskExtended = {
     'expected_outputs': [
 	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
     ],
-    'expected_output_content': [ /^40\d\dM\n$/ ],
+    'expected_output_content': [ /^163\d\dM\n$/ ],
     'errors': []
 };
 
