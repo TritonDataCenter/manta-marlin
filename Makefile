@@ -33,6 +33,7 @@ CC      	 = gcc
 BASH_FILES	 = \
     npm/postinstall.sh		\
     npm/preuninstall.sh		\
+    sbin/jobreport		\
     sbin/mrerrors		\
     sbin/mrlogexpire.sh		\
     tools/mparams		\
