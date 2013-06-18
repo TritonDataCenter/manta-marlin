@@ -33,9 +33,10 @@ CC      	 = gcc
 BASH_FILES	 = \
     npm/postinstall.sh		\
     npm/preuninstall.sh		\
+    sbin/mrerrors		\
     sbin/mrlogexpire.sh		\
-    tools/mragentconf		\
     tools/mparams		\
+    tools/mragentconf		\
     tools/mrdeploycompute	\
     tools/mrzone		\
     tools/mrzoneremove		\
@@ -48,6 +49,7 @@ JSON_FILES	:= $(shell find src etc -name '*.json') \
 JS_FILES	:= $(shell find src lib test -name '*.js')
 JS_FILES	+= \
     sbin/mlocate \
+    sbin/mrerrorsummary \
     sbin/mrjob 	\
     sbin/mrmeter \
     tools/mrpound

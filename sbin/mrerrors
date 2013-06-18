@@ -1,0 +1,140 @@
+#!/bin/bash
+
+#
+# mrerrors: summarize Marlin errors.
+#
+
+shopt -s xpg_echo
+
+function fail
+{
+	echo "$jr_arg0: $*" >&2
+	exit 1
+}
+
+function usage
+{
+	[[ -n "$@" ]] && echo "$jr_arg0: $@" >&2
+	cat >&2 <<EOF
+usage: $jr_arg0 [-f] -j jobid
+       $jr_arg0 [-f] -a
+       $jr_arg0 [-f] t1 t2
+
+Fetch and summarize information about a job (with -j), all jobs for all time
+(-a), or all jobs between two timestamps.  Fetched data is cached and used in
+subsequent invocations.  Use -f to refetch data.
+EOF
+	exit 2
+}
+
+#
+# Given either a numeric milliseconds-since-epoch value or any string recognized
+# by JavaScript's Date.parse(), emit it formatted using the standard ISO format.
+#
+function format_date
+{
+	#
+	# If there's a better way to format dates portably from the shell (using
+	# JS or otherwise), I'd like to see it.  Unary "+" on a string is
+	# dubious, but makes the code substantially shorter.
+	#
+	local s
+	s="x = process.argv[1], new Date(Date.parse(x) || +x).toISOString()"
+	node -pe "$s" "$@"
+}
+
+#
+# Given two strings of the same format as the input to format_date, return a
+# human-readable string describing the interval between them.
+#
+function format_interval
+{
+	local s
+	s="x = process.argv[1], y = process.argv[2]"
+	s="$s, d = (Date.parse(y) || +y) - (Date.parse(x) || +x)"
+	s="$s, h = Math.floor(d / (60 * 60 * 1000))"
+	s="$s, m = Math.floor((d - h * 60 * 60 * 1000) / (60 * 1000))"
+	s="$s, (h !== 0 ? (h + 'h') : '') + "
+	s="$s (h > 0 && m < 10 ? '0' + m : m) + 'm'"
+	node -pe "$s" "$@"
+}
+
+
+# Static configuration
+jr_arg0=$(basename $0)
+jr_bindir=$(dirname $0)				# path to helper tools
+jr_datadir=${TMPDIR:-/var/tmp}/mrerrors_data	# path to cache data
+
+# Arguments and dynamic configuration
+opt_a=						# fetch all jobs
+opt_j=						# jobid
+opt_f=false					# force cache refresh
+opt_m=localhost					# moray server
+jr_database=					# base name for data files
+jr_filter=					# moray filter
+jr_title=					# report title
+
+while getopts ":afj:m:" c $@; do
+	case "$c" in
+	a|f)	eval opt_$c=true ;;
+	j|m)	eval opt_$c="$OPTARG" ;;
+	h)	usage ;;
+	:)	usage "option requires an argument -- $OPTARG" ;;
+	*)	usage "invalid option: $OPTARG" ;;
+	esac
+done
+
+shift $((OPTIND - 1))
+if [[ -n "$opt_j" ]]; then
+	[[ "$opt_a" == "true" ]] && usage "only one of -j or -a may be used"
+	[[ $# != 0 ]] && usage "-j is not compatible with time arguments"
+	jr_database="$jr_datadir/job_$opt_j"
+	jr_filter="(jobId=$opt_j)"
+	jr_title="job $opt_j"
+elif [[ "$opt_a" == "true" ]]; then
+	[[ $# != 0 ]] && usage "-a is not compatible with time arguments"
+	jr_database="$jr_datadir/all"
+	jr_filter="(jobId=*)"
+	jr_title="all jobs"
+else
+	[[ $# != 2 ]] && usage
+	jr_t1=$(node -pe "Date.parse('$1');")		# start time
+	jr_t2=$(node -pe "Date.parse('$2');")		# end time
+	
+	[[ $jr_t1 == "NaN" ]] && fail "start time not valid"
+	[[ $jr_t2 == "NaN" ]] && fail "end time not valid"
+	[[ $jr_t1 -ge $jr_t2 ]] && fail "start time is after end time"
+	jr_filter="(&(_mtime>=$jr_t1)(_mtime<=$jr_t2))"
+	jr_database="$jr_datadir/all_$jr_t1-$jr_t2"
+	jr_title="$(format_date $jr_t1) to $(format_date $jr_t2)"
+	jr_title="$jr_title ($(format_interval $jr_t1 $jr_t2))"
+fi
+
+mkdir -p $jr_datadir || fail "failed to create cache directory"
+
+if [[ $opt_f == "true" || ! -f "$jr_database-oktasks.json" ]]; then
+	echo "Fetching count of successful tasks ... \c "
+	findobjects -h $opt_m -l1 marlin_tasks_v2 \
+	    "(&$jr_filter(result=ok))" > $jr_database-oktasks.json
+	json _count < $jr_database-oktasks.json
+fi
+
+if [[ $opt_f == "true" || ! -f "$jr_database-failedtasks.json" ]]; then
+	echo "Fetching count of failed tasks ... \c "
+	findobjects -h $opt_m -l1 marlin_tasks_v2 \
+	    "(&$jr_filter(!(result=ok)))" > $jr_database-failedtasks.json
+	json _count < $jr_database-failedtasks.json
+fi
+
+if [[ $opt_f == "true" || ! -f "$jr_database-errors.json" ]]; then
+	echo "Fetching up to 10000 errors ... \c"
+	findobjects -h $opt_m -l10000 -H marlin_errors_v2 "$jr_filter" \
+	    > $jr_database-errors.json
+	head -1 $jr_database-errors.json | json _count
+	echo
+fi
+
+echo "Marlin error report: $jr_title"
+printf "%9d tasks ok\n"  $(json _count < $jr_database-oktasks.json)
+printf "%9d tasks failed\n\n"  $(json _count < $jr_database-failedtasks.json)
+$jr_bindir/mrerrorsummary < $jr_database-errors.json
