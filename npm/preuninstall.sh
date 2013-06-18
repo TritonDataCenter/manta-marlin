@@ -8,6 +8,17 @@
 set -o xtrace
 set -o errexit
 
+state=$(svcs -Hostate marlin-agent)
+
+#
+# To support upgrade properly, we save our current SMF state persistently.  When
+# the upgraded package is installed, it can re-enable itself iff it was enabled
+# before the uninstall.
+#
+if [[ "$state" == "online" || "$state" == "maintenance" ]]; then
+	touch /opt/smartdc/marlin/etc/enabled
+fi
+
 svcadm disable -s marlin-agent
 svccfg delete marlin-agent 
 rm -f $npm_config_smfdir/marlin-agent.xml

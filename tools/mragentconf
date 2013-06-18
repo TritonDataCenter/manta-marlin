@@ -31,6 +31,7 @@ mac_manta_host=$2
 mac_moray_host=$3
 mac_root=$(dirname $0)/..
 mac_confdir=/opt/smartdc/marlin/etc
+mac_smfdir=/opt/smartdc/agents/smf
 
 mac_code="instanceUuid='$mac_serverid'"
 mac_code="$mac_code; mantaComputeId='$mac_manta_compute_id'"
@@ -52,11 +53,16 @@ done
 # away whatever's there in case of hand-patched configuration.  This should be
 # better handled by SAPI-38.
 #
+# We also re-export our service manifest to reflect the service's new enabled
+# state.
+#
 if [[ ! -e $mac_confdir/agentconfig.json ]]; then
 	json -e "$mac_code" < $mac_root/etc/agentconfig.coal.json > \
 	    $mac_confdir/agentconfig.json || fail "failed to rewrite config"
 	svcadm disable -st marlin-agent || fail "failed to disable marlin-agent"
 	svcadm enable -s marlin-agent || fail "failed to enable marlin-agent"
+	svccfg export marlin-agent > $mac_smfdir/marlin-agent.xml || \
+	    fail "failed to save marlin-agent manifest"
 	echo "updated marlin agent configuration"
 else
 	echo "skipping agent reconfiguration (file already present)"

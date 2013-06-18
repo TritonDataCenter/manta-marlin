@@ -33,3 +33,15 @@ sed -e "s#@@PREFIX@@#$mpi_root#g" -e "s/@@VERSION@@/$mpi_version/g" \
 # Import the manifest to start the service.
 #
 svccfg import $mpi_smfdir/marlin-agent.xml
+
+#
+# Check if we were enabled prior to a previous uninstall operation.  If so,
+# enable the service now and re-export the manifest so that the persistent state
+# reflects the live state.  We also remove the sentinel file: it's only intended
+# for use across an upgrade.
+#
+if [[ -e /opt/smartdc/marlin/etc/enabled ]]; then
+	svcadm enable -s marlin-agent
+	svccfg export marlin-agent > $mpi_smfdir/marlin-agent.xml
+	rm -f /opt/smartdc/marlin/etc/enabled
+fi

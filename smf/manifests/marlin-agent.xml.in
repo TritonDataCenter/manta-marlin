@@ -13,6 +13,9 @@
 <dependency name="filesystem" grouping="require_all" restart_on="error" type="service">
 	<service_fmri value="svc:/system/filesystem/local" />
 </dependency>
+<dependency name="zones" grouping="require_all" restart_on="error" type="service">
+	<service_fmri value="svc:/system/zones" />
+</dependency>
 
 <exec_method type="method" name="start" exec="@@PREFIX@@/build/node/bin/node @@PREFIX@@/lib/agent/agent.js /opt/smartdc/marlin/etc/agentconfig.json &amp;" timeout_seconds="30" />
 <exec_method type="method" name="stop" exec=":kill" timeout_seconds="30" />
