@@ -27,7 +27,10 @@ IMAGEROOT_FILES =		 			\
     $(MG_IMAGEROOT)/tools/mragentconf			\
     $(MG_IMAGEROOT)/tools/mrdeploycompute		\
     $(MG_IMAGEROOT)/tools/mrzone			\
-    $(MG_IMAGEROOT)/tools/mrzoneremove
+    $(MG_IMAGEROOT)/tools/mrzonedisable			\
+    $(MG_IMAGEROOT)/tools/mrzoneremove			\
+    $(MG_IMAGEROOT)/tools/mrzones			\
+    $(MG_IMAGEROOT)/tools/util.sh
 
 #
 # Generic definitions and targets for installing files into the proto area into

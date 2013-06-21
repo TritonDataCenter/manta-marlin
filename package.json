@@ -5,6 +5,11 @@
 	"author": "Joyent (joyent.com)",
 	"private": true,
 	"main": "lib/marlin.js",
+	"bin": {
+		"mrzone": "tools/mrzone",
+		"mrzonedisable": "tools/mrzonedisable",
+		"mrzones": "tools/mrzones"
+	},
 	"dependencies": {
 		"assert-plus": "0.1.2",
 		"bunyan": "0.20.0",

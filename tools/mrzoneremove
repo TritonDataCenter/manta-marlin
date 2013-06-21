@@ -7,58 +7,23 @@
 
 shopt -s xpg_echo
 
-set -o pipefail
-
-mr_arg0=$(basename $0)
-mr_zonename="$1"
-
-function fail
-{
-	echo "$mr_arg0: $*" >&2
-	exit 1
-}
-
-function curlagent
-{
-	local path=$1
-	local tmpfile=/var/tmp/$mr_arg0.$$
-	local url="${AGENT_URL:-http://localhost:9080}"
-	local status
-	shift
-
-	if ! curl -is "$@" "$url$path" > $tmpfile; then
-		echo "$mr_arg0: failed to hit \"$url\" (see $tmpfile)" >&2
-		return 1
-	fi
-
-	status="$(grep '^HTTP' $tmpfile | head -1 | awk '{print $2}')"
-	if [[ $status -ge 400 ]]; then
-		echo "$mr_arg0: \"$url\" failed (code $status see $tmpfile)" >&2
-		return 1
-	fi
-
-	nawk '/^\r$/,EOF' $tmpfile
-}
-
-function zone_disable
-{
-	local zonename=$1
-
-	if ! curlagent /zones/$zonename/disable -XPOST > /dev/null; then
-		echo "$mr_arg0: failed to disable zone \"$zonename\"" >&2
-		return 1
-	fi
-}
+arg0=$(basename $0)
+if [[ -h "$0" ]]; then
+	cd $(dirname $0)
+	. $(dirname $(readlink "$arg0"))/util.sh
+else
+	. $(dirname $0)/util.sh
+fi
 
 function zone_wait_state
 {
 	local zonename=$1
-	local state=$2
+	local endstate=$2
 
 	while true; do
 		state="$(curlagent /zones | json -a zonename state | 
 		    nawk "\$1 == \"$zonename\" { print \$2 }")"
-		[[ "$state" == "disabled" ]] && break
+		[[ "$state" == "$endstate" ]] && break
 		sleep 1
 	done
 }
@@ -68,12 +33,19 @@ function zone_remove
 	local zonename=$1
 
 	if ! curlagent /zones/$zonename -XDELETE > /dev/null; then
-		echo "$mr_arg0: failed to disable zone \"$zonename\"" >&2
+		echo "$arg0: failed to disable zone \"$zonename\"" >&2
 		return 1
 	fi
 }
 
-[[ -n "$mr_zonename" ]] || fail "usage: $mr_arg0 zonename"
+if [[ $# -ne 1 ]]; then
+	echo "usage: $arg0 ZONENAME" >&2
+	echo "Permanently remove a zone from Marlin service in preparation" >&2
+	echo "for destroying it." >&2
+	exit 2
+fi
+
+mr_zonename="$1"
 
 echo -n "Checking for zone \"$mr_zonename\" ... \c "
 if ! curlagent /zones | json -a zonename | grep ^$mr_zonename\$ >/dev/null; then

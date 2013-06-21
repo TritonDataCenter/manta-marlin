@@ -1,0 +1,22 @@
+#!/bin/bash
+
+#
+# mrzonedisable: remove a zone from Marlin service temporarily
+#
+
+arg0=$(basename $0)
+
+if [[ -h "$0" ]]; then
+	cd $(dirname $0)
+	. $(dirname $(readlink "$arg0"))/util.sh
+else
+	. $(dirname $0)/util.sh
+fi
+
+if [[ $# -ne 1 ]]; then
+	echo "usage: $arg0 ZONENAME" >&2
+	echo "Temporarily remove a zone from Marlin service." >&2
+	exit 2
+fi
+
+zone_disable "$1"

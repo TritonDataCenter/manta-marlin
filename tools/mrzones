@@ -1,0 +1,92 @@
+#!/bin/bash
+
+#
+# mrzones: list local marlin zones
+#
+
+arg0=$(basename $0)
+if [[ -h "$0" ]]; then
+	cd $(dirname $0)
+	. $(dirname $(readlink "$arg0"))/util.sh
+else
+	. $(dirname $0)/util.sh
+fi
+
+function usage
+{
+	[[ -n "$@" ]] && echo "$arg0: $*" >&2
+	cat <<EOF
+usage: $arg0
+       $arg0 -l [-b | -d | -r]
+       $arg0 -z ZONENAME
+
+Lists Marlin zones running on the local system.
+
+By default, shows a count of zones broken down by state.
+
+Options:
+
+    -l             List each zone by name
+
+         -b    list only busy zones (those running tasks)
+         -d    list only disabled zones (requiring operator intervention)
+	 -r    list only ready zones
+	 
+    -z ZONENAME    Report the state of the named zone
+EOF
+	exit 2
+}
+
+function list_zones
+{
+	curlagent /zones
+}
+
+opt_b=false
+opt_d=false
+opt_l=false
+opt_r=false
+opt_z=""
+
+while getopts ":bdhlrz:" c $@; do
+	case "$c" in
+	b|d|l|r)	eval opt_$c=true ;;
+	z)		eval opt_$c=$OPTARG ;;
+	h)		usage ;;
+	:)		usage "option requires an argument -- $OPTARG" ;;
+	*)		usage "invalid option: $OPTARG" ;;
+	esac
+done
+
+shift $((OPTIND - 1))
+[[ $# -eq 0 ]] || usage "unexpected argument: $1"
+
+count=0
+[[ $opt_b == "true" ]] && ((count++))
+[[ $opt_d == "true" ]] && ((count++))
+[[ $opt_r == "true" ]] && ((count++))
+
+if [[ $opt_l == "false" ]] && [[ $count -gt 0 ]]; then
+	usage "-l is required for any combination of -b, -d, and -r"
+fi
+
+if [[ -n "$opt_z" ]]; then
+	[[ $opt_l == "true" ]] && usage "-l cannot be used with -z"
+	list_zones | json -Hac "zonename == '$opt_z'" state
+elif [[ $opt_l == "false" ]]; then
+	list_zones | json -Ha state | sort | uniq -c
+elif [[ $count -eq 0 ]]; then
+	list_zones | json -Ha zonename
+else
+	[[ $count -gt 1 ]] && usage "only one of -b, -d, and -r are allowed"
+
+	if [[ $opt_b == "true" ]]; then
+		state="busy"
+	elif [[ $opt_d == "true" ]]; then
+		state="disabled"
+	else
+		state="ready"
+	fi
+
+	list_zones | json -Hac "state == '$state'" zonename
+fi
