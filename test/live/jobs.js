@@ -789,6 +789,25 @@ exports.jobMerrorOom = {
     } ]
 };
 
+exports.jobMerrorDisk = {
+    'job': {
+	'phases': [ {
+	    'type': 'reduce',
+	    'disk': 2,
+	    'exec': 'mkfile 2g /var/tmp/junk'
+	} ]
+    },
+    'inputs': [],
+    'timeout': 300 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: reduce',
+	'code': EM_USERTASK,
+	'message': 'user task ran out of local disk space'
+    } ]
+};
+
 exports.jobMerrorLackeyCrash = {
     'job': {
 	'phases': [ {
@@ -1378,6 +1397,7 @@ exports.jobsAll = [
     exports.jobMerrorAssetMissing,
     exports.jobMerrorBadReducer,
     exports.jobMerrorOom,
+    exports.jobMerrorDisk,
     exports.jobMerrorLackeyCrash,
     exports.jobMerrorLackeyOom,
     exports.jobMerrorCmd,
