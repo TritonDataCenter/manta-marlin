@@ -35,7 +35,7 @@
 		"maxPendingOutputsPerTask": 25,
 		"maxPendingPuts": 25,
 		"timeHeartbeat": 3000,
-		"timeHogGrace": 60000,
+		"timeHogGrace": 300000,
 		"timeHogKill": 15000,
 		"timePoll": 200,
 		"timeTasksCheckpoint": 300000,
