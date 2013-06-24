@@ -114,6 +114,25 @@ exports.jobMX = {
     'errors': []
 };
 
+exports.jobMqparams = {
+    'job': {
+	'assets': {
+	    '/%user%/stor/queryparams.sh':
+	        mod_fs.readFileSync(mod_path.join(
+		    __dirname, 'queryparams.sh'))
+	},
+	'phases': [ {
+	    'assets': [ '/%user%/stor/queryparams.sh' ],
+	    'type': 'reduce',
+	    'exec': '/assets/%user%/stor/queryparams.sh'
+	} ]
+    },
+    'inputs': [],
+    'timeout': 30 * 1000,
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/reduce.0./ ],
+    'errors': []
+};
+
 exports.jobMmpipeAnon = {
     'job': {
 	'phases': [ {
@@ -798,7 +817,7 @@ exports.jobMerrorDisk = {
 	} ]
     },
     'inputs': [],
-    'timeout': 300 * 1000,
+    'timeout': 450 * 1000,
     'expected_outputs': [],
     'errors': [ {
 	'phaseNum': '0',
@@ -1365,6 +1384,7 @@ exports.jobsAll = [
     exports.jobM,
     exports.jobMimage,
     exports.jobMX,
+    exports.jobMqparams,
     exports.jobMmpipeAnon,
     exports.jobMmpipeNamed,
     exports.jobMmcat,
