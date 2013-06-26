@@ -6,6 +6,7 @@
 	"private": true,
 	"main": "lib/marlin.js",
 	"bin": {
+		"mrgroups": "tools/mrgroups",
 		"mrzone": "tools/mrzone",
 		"mrzonedisable": "tools/mrzonedisable",
 		"mrzones": "tools/mrzones"

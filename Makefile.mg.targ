@@ -26,6 +26,7 @@ IMAGEROOT_FILES =		 			\
     $(MG_IMAGEROOT)/smf/manifests/marlin-lackey.xml	\
     $(MG_IMAGEROOT)/tools/mragentconf			\
     $(MG_IMAGEROOT)/tools/mrdeploycompute		\
+    $(MG_IMAGEROOT)/tools/mrgroups			\
     $(MG_IMAGEROOT)/tools/mrzone			\
     $(MG_IMAGEROOT)/tools/mrzonedisable			\
     $(MG_IMAGEROOT)/tools/mrzoneremove			\

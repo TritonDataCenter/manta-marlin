@@ -48,6 +48,9 @@ opt_l=false
 opt_r=false
 opt_z=""
 
+[[ $(zonename) == "global" ]] || \
+    fail "system does not appear to be a Manta storage node"
+
 while getopts ":bdhlrz:" c $@; do
 	case "$c" in
 	b|d|l|r)	eval opt_$c=true ;;
