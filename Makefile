@@ -36,12 +36,10 @@ BASH_FILES	 = \
     sbin/jobreport		\
     sbin/mrerrors		\
     sbin/mrlogexpire.sh		\
-    tools/mparams		\
     tools/mragentconf		\
     tools/mrdeploycompute	\
     tools/mrzone		\
-    tools/mrzoneremove		\
-    tools/mrzonestag
+    tools/mrzoneremove
 
 DOC_FILES	 = index.restdown
 JSON_FILES	:= $(shell find src etc -name '*.json') \
