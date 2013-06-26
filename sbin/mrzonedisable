@@ -8,9 +8,9 @@ arg0=$(basename $0)
 
 if [[ -h "$0" ]]; then
 	cd $(dirname $0)
-	. $(dirname $(readlink "$arg0"))/util.sh
+	. $(dirname $(readlink "$arg0"))/../tools/util.sh
 else
-	. $(dirname $0)/util.sh
+	. $(dirname $0)/../tools/util.sh
 fi
 
 if [[ $# -ne 1 ]]; then

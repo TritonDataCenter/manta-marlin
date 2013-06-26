@@ -33,9 +33,12 @@ CC      	 = gcc
 BASH_FILES	 = \
     npm/postinstall.sh		\
     npm/preuninstall.sh		\
-    sbin/jobreport		\
     sbin/mrerrors		\
+    sbin/mrgroups		\
+    sbin/mrjobreport		\
     sbin/mrlogexpire.sh		\
+    sbin/mrzonedisable		\
+    sbin/mrzones		\
     tools/mragentconf		\
     tools/mrdeploycompute	\
     tools/mrzone		\

@@ -6,10 +6,19 @@
 	"private": true,
 	"main": "lib/marlin.js",
 	"bin": {
-		"mrgroups": "tools/mrgroups",
+		"mlocate": "sbin/mlocate",
+		"mrerrors": "sbin/mrerrors",
+		"mrerrorsummary": "sbin/mrerrorsummary",
+		"mrjob": "sbin/mrjob",
+		"mrjobreport": "sbin/mrjobreport",
+		"mrmeter": "sbin/mrmeter",
+		"mrsupsnoop": "sbin/mrsupsnoop",
+
+		"mragentsnoop": "sbin/mragentsnoop",
+		"mrgroups": "sbin/mrgroups",
 		"mrzone": "tools/mrzone",
-		"mrzonedisable": "tools/mrzonedisable",
-		"mrzones": "tools/mrzones"
+		"mrzonedisable": "sbin/mrzonedisable",
+		"mrzones": "sbin/mrzones"
 	},
 	"dependencies": {
 		"assert-plus": "0.1.2",
@@ -17,6 +26,8 @@
 		"carrier": "0.1.7",
 		"dtrace-provider": "0.2.8",
 		"extsprintf": "1.0.1",
+		"hyprlofs": "0.0.1",
+		"illumos_contract": "0.0.9",
 		"jsprim": "0.5.0",
 		"kang": "0.0.5",
 		"kstat": "0.3.0",
@@ -42,10 +53,6 @@
 		"wordwrap": "0.0.2",
 		"zoneid": "0.1.0",
 		"zsock-async": "0.0.1"
-	},
-	"optionalDependencies": {
-		"hyprlofs": "0.0.1",
-		"illumos_contract": "0.0.9"
 	},
 	"bundledDependencies": [
 		"assert-plus",
