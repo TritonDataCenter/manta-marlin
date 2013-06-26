@@ -51,7 +51,7 @@ BASH_FILES	 = \
     tools/mrzone		\
     tools/mrzoneremove
 
-DOC_FILES	 = index.restdown
+DOC_FILES	 = index.restdown ops.restdown
 JSON_FILES	:= $(shell find src etc -name '*.json') \
                    sapi_manifests/marlin/manifest.json  \
                    sapi_manifests/marlin/template
