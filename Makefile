@@ -99,7 +99,7 @@ EXECS   	 = src/mallocbomb/mallocbomb
 CLEANFILES	+= $(EXECS)
 
 .PHONY: all
-all: $(SMF_MANIFESTS) deps $(EXECS)
+all: $(SMF_MANIFESTS) deps $(EXECS) scripts
 
 .PHONY: deps
 deps: $(DEPS_EXTRADEPS) | $(REPO_DEPS) $(NPM_EXEC)

@@ -47,7 +47,11 @@ MG_AGENT_TARBALL	 = $(MG_NAME)-$(STAMP).tar.gz
 AGENT_TARBALL	 	 = $(BUILD)/$(MG_AGENT_TARBALL)
 BITS_AGENT_TARBALL	 = $(BITS_DIR)/$(MG_NAME)/$(MG_AGENT_TARBALL)
 
-PROTO_FILES		 = $(IMAGEROOT_FILES) $(MG_PROTO)/site/.do-not-delete-me
+PROTO_FILES		 = 				\
+    $(IMAGEROOT_FILES) 					\
+    $(MG_IMAGEROOT)/boot/configure.sh			\
+    $(MG_IMAGEROOT)/boot/scripts				\
+    $(MG_PROTO)/site/.do-not-delete-me
 PROTO_DIRS		 = $(sort $(dir $(PROTO_FILES)))
 
 CLEAN_FILES		+= $(MG_PROTO) \
@@ -59,6 +63,16 @@ $(IMAGEROOT_FILES): $(MG_IMAGEROOT)/%: % | $(PROTO_DIRS)
 
 $(MG_PROTO)/site/.do-not-delete-me: | $(PROTO_DIRS)
 	touch $@
+
+$(MG_IMAGEROOT)/boot/configure.sh:
+	mkdir -p $(MG_PROTO)/root/opt/smartdc/boot
+	cp ./boot/configure.sh $(MG_IMAGEROOT)/boot/configure.sh
+	ln -s /opt/smartdc/$(MG_NAME)/boot/configure.sh \
+	    $(MG_PROTO)/root/opt/smartdc/boot/configure.sh
+	chmod 755 $(MG_IMAGEROOT)/boot/configure.sh
+
+$(MG_IMAGEROOT)/boot/scripts:
+	cp -r $(BUILD)/scripts $(MG_IMAGEROOT)/boot/scripts
 
 $(PROTO_DIRS):
 	mkdir -p $@
