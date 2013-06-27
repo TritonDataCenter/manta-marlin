@@ -15,6 +15,31 @@ docs/index.restdown (or https://mo.joyent.com/docs/marlin).
 This document describes the development workflow.
 
 
+# Quick start for using the tools
+
+Since it's useful to run the Marlin client tools (mrjob, mrjobreport, mrerrors,
+etc.) on an OS X laptop, the build system includes hacks to allow just those
+bits to build on OS X.  To use these tools:
+
+    $ git clone git@git.joyent.com:marlin.git
+    ...
+    $ cd marlin
+    $ make
+
+At this point, you'll have several tools available inside the "sbin" directory:
+
+* mrerrors: fetch and summarize errors for a particular job or a given time
+  period
+* mrjob: create, show, summarize, and manipulate Marlin jobs by interacting with
+  Moray directly (instead of the web tier)
+* mrjobreport: summarize performance of a job's execution
+
+By default, these tools assume they can contact the 1.moray shard at
+localhost:2020.  For the us-east production deployment, it's recommended to set
+up an ssh tunnel so that this works.  "mrjob" also supports a MORAY\_URL
+environment variable.
+
+
 # Development
 
 The standard Marlin development environment is a SmartOS zone deployed on a
