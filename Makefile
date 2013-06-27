@@ -16,9 +16,16 @@
 #
 # While we only support developing on SmartOS, where we have sdcnode builds
 # available, it's convenient to be able to use tools like "mrjob" and the like
-# from Mac laptops without having to set up a complete dev environment.
+# from Mac laptops without having to set up a complete dev environment.  The
+# junk about the dependencies is especially regrettable, but reality until we
+# have a better solution via npm or multiple npm packages.
 #
-USE_LOCAL_NODE=false
+ifeq ($(shell uname -s),Darwin)
+	USE_LOCAL_NODE=true
+	DEPS_EXTRADEPS=rmdeps
+else
+	USE_LOCAL_NODE=false
+endif
 
 #
 # Tools
@@ -95,8 +102,25 @@ CLEANFILES	+= $(EXECS)
 all: $(SMF_MANIFESTS) deps $(EXECS)
 
 .PHONY: deps
-deps: | $(REPO_DEPS) $(NPM_EXEC)
+deps: $(DEPS_EXTRADEPS) | $(REPO_DEPS) $(NPM_EXEC)
 	$(NPM_ENV) $(NPM) --no-rebuild install
+
+# As discussed above, this is highly regrettable.
+.PHONY: rmdeps
+rmdeps:
+	json -e "this.dependencies['hyprlofs'] = undefined" \
+	    < package.json > package.json.1 && mv package.json.1 package.json
+	json -e "this.dependencies['illumos_contract'] = undefined" \
+	    < package.json > package.json.1 && mv package.json.1 package.json
+	json -e "this.dependencies['kstat'] = undefined" \
+	    < package.json > package.json.1 && mv package.json.1 package.json
+	json -e "this.dependencies['statvfs'] = undefined" \
+	    < package.json > package.json.1 && mv package.json.1 package.json
+	json -e "this.dependencies['zoneid'] = undefined" \
+	    < package.json > package.json.1 && mv package.json.1 package.json
+	json -e "this.dependencies['zsock-async'] = undefined" \
+	    < package.json > package.json.1 && mv package.json.1 package.json
+	rm -f package.json.1
 
 .PHONY: test
 test: all
