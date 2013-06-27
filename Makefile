@@ -108,7 +108,7 @@ deps: $(DEPS_EXTRADEPS) | $(REPO_DEPS) $(NPM_EXEC)
 # As discussed above, this is highly regrettable.
 .PHONY: rmdeps
 rmdeps:
-	json -e "this.dependencies['hyprlofs'] = undefined" \
+	json -e "this.optionalDependencies['hyprlofs'] = undefined" \
 	    < package.json > package.json.1 && mv package.json.1 package.json
 	json -e "this.dependencies['illumos_contract'] = undefined" \
 	    < package.json > package.json.1 && mv package.json.1 package.json

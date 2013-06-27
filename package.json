@@ -26,7 +26,6 @@
 		"carrier": "0.1.7",
 		"dtrace-provider": "0.2.8",
 		"extsprintf": "1.0.1",
-		"hyprlofs": "0.0.1",
 		"illumos_contract": "0.0.9",
 		"jsprim": "0.5.0",
 		"kang": "0.0.5",
@@ -53,6 +52,9 @@
 		"wordwrap": "0.0.2",
 		"zoneid": "0.1.0",
 		"zsock-async": "0.0.1"
+	},
+	"optionalDependencies": {
+		"hyprlofs": "0.0.1"
 	},
 	"bundledDependencies": [
 		"assert-plus",
