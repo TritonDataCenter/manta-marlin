@@ -110,7 +110,7 @@ deps: $(DEPS_EXTRADEPS) | $(REPO_DEPS) $(NPM_EXEC)
 rmdeps:
 	json -e "this.optionalDependencies['hyprlofs'] = undefined" \
 	    < package.json > package.json.1 && mv package.json.1 package.json
-	json -e "this.dependencies['illumos_contract'] = undefined" \
+	json -e "this.optionalDependencies['illumos_contract'] = undefined" \
 	    < package.json > package.json.1 && mv package.json.1 package.json
 	json -e "this.dependencies['kstat'] = undefined" \
 	    < package.json > package.json.1 && mv package.json.1 package.json
