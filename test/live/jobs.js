@@ -20,6 +20,7 @@ var mod_verror = require('verror');
 
 var mod_marlin = require('../../lib/marlin');
 var mod_testcommon = require('../common');
+var mod_schema = require('../../lib/schema');
 
 /* jsl:import ../../lib/errors.js */
 require('../../lib/errors');
@@ -783,6 +784,29 @@ exports.jobMerrorBadReducer = {
     } ]
 };
 
+exports.jobMerrorVeryBadReducer = {
+    'job': {
+	'phases': [ {
+	    'type': 'map',
+	    'exec': 'mpipe -r' + mod_schema.sMaxReducers
+	}, {
+	    'type': 'reduce',
+	    'exec': 'wc'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 30 * 1000,
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/reduce.1./ ],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'input': '/%user%/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
+	'code': EM_USERTASK,
+	'message': 'user command exited with code 1'
+    } ]
+};
+
 exports.jobMerrorOom = {
     'job': {
 	'assets': {
@@ -1416,6 +1440,7 @@ exports.jobsAll = [
     exports.jobMerrorRebootOutput,
     exports.jobMerrorAssetMissing,
     exports.jobMerrorBadReducer,
+    exports.jobMerrorVeryBadReducer,
     exports.jobMerrorOom,
     exports.jobMerrorDisk,
     exports.jobMerrorLackeyCrash,
