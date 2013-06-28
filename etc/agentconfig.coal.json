@@ -40,6 +40,8 @@
 		"timePoll": 200,
 		"timeTasksCheckpoint": 300000,
 		"timeTick": 20,
+		"timeZoneIdleMin": 5000,
+		"timeZoneIdleMax": 10000,
 		"zoneDisabledMaxPercent": 5,
 		"zoneDiskSlopPercent": 15,
 		"zoneLivenessCheck": 120000,
