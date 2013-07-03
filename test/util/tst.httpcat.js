@@ -13,7 +13,10 @@ var serv1, serv2, log, cache, stream, buffer;
 
 function handle(server, request, response, next)
 {
-	response.send(server.address().port + request.url);
+	if (request.url == '/error')
+		response.send(503);
+	else
+		response.send(server.address().port + request.url);
 	next();
 }
 
@@ -92,9 +95,9 @@ function runSuccess(_, next)
 	});
 }
 
-function runError(_, next)
+function runConnectError(_, next)
 {
-	log.info('runError');
+	log.info('runConnectError');
 
 	stream = new mod_httpcat.HttpCatStream({
 	    'clients': cache,
@@ -125,6 +128,45 @@ function runError(_, next)
 
 		next();
 	});
+}
+
+function runRequestError(_, next)
+{
+	log.info('runRequestError');
+
+	stream = new mod_httpcat.HttpCatStream({
+	    'clients': cache,
+	    'log': log.child({ 'component': 'HttpCatStream2' })
+	});
+
+	stream.write({
+	    'url': 'http://localhost:8123',
+	    'uri': '/file4'
+	});
+
+	stream.write({
+	    'url': 'http://localhost:8123',
+	    'uri': '/error'
+	});
+
+	stream.end({
+	    'url': 'http://localhost:8123',
+	    'uri': '/file3'
+	});
+
+	buffer = '';
+	var error = null;
+	stream.on('data', function (chunk) { buffer += chunk; });
+	stream.on('error', function (err) {
+		error = err;
+		log.info(err, 'expected error');
+
+		mod_assert.equal(buffer.toString('utf8'), '"8123/file4"');
+
+		next();
+	});
+
+	stream.on('end', function () { mod_assert.ok(error !== null); });
 }
 
 function pause(_, next)
@@ -377,7 +419,8 @@ function teardown(_, next)
 mod_vasync.pipeline({ 'funcs': [
     setup,
     runSuccess,
-    runError,
+    runConnectError,
+    runRequestError,
     pause,
     resume,
     etagMismatch,
