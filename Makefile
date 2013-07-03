@@ -82,7 +82,7 @@ include ./tools/mk/Makefile.node_deps.defs
 
 ifneq ($(USE_LOCAL_NODE),true)
     REPO_MODULES     = src/node-hyprlofs
-    NODE_PREBUILT_VERSION = v0.8.22
+    NODE_PREBUILT_VERSION = v0.8.25
     NODE_PREBUILT_TAG = zone
 
     include ./tools/mk/Makefile.node_prebuilt.defs
