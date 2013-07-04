@@ -604,79 +604,6 @@ exports.jobMRnormalize = {
     'errors': []
 };
 
-/*
- * The following several tests validate that we properly deal with object names
- * with characters that require encoding.  The first job exercises their use in:
- * - job input API
- * - jobinput, task, taskinput, and taskoutput records
- * - mcat, mpipe, and default stdout capture
- * - job output API
- */
-exports.jobMMRenc = {
-    'job': {
-	'phases': [ {
-	    /* Covers job input API, jobinput, task, taskoutput, and mcat. */
-	    'type': 'map',
-	    'exec': 'mcat "$MANTA_INPUT_OBJECT"'
-	}, {
-	    /* Covers use in default stdout capture. */
-	    'type': 'map',
-	    'exec': 'cat && echo' /* append newline so we can sort */
-	}, {
-	    /* Covers use in reduce, taskinput, mpipe, and job output API. */
-	    'type': 'reduce',
-	    'exec': 'sort | mpipe "${MANTA_OUTPUT_BASE} with spaces"'
-	} ]
-    },
-    'inputs': [
-	'/%user%/stor/my obj1',	/* covers normal case that should be encoded */
-	'/%user%/stor/M%41RK'	/* this should be encoded, and we should */
-				/* never see "MARK" */
-    ],
-    'timeout': 45 * 1000,
-    'expected_outputs': [
-	/\/%user%\/jobs\/.*\/stor\/reduce\.2\.* with spaces/
-    ],
-    'expected_output_content': [
-	'auto-generated content for key /someuser/stor/M%41RK\n' +
-	'auto-generated content for key /someuser/stor/my obj1\n'
-    ],
-    'errors': []
-};
-
-/*
- * This job does something similar, but exercises stderr capture and the job
- * error API.
- */
-exports.jobMerrorEnc = {
-    'job': {
-	'phases': [ {
-	    'type': 'map',
-	    'exec': 'grep nothing_here "$MANTA_INPUT_OBJECT"'
-	} ]
-    },
-    'inputs': [
-	'/%user%/stor/my obj1',	/* see above */
-	'/%user%/stor/M%41RK'	/* see above */
-    ],
-    'timeout': 15 * 1000,
-    'expected_outputs': [],
-    'errors': [ {
-	'phaseNum': '0',
-	'what': 'phase 0: map input "/%user%/stor/my obj1"',
-	'input': '/%user%/stor/my obj1',
-	'p0input': '/%user%/stor/my obj1',
-	'code': EM_USERTASK,
-	'stderr': /\/%user%\/jobs\/.*\/stor\/%user%\/stor\/my obj1.0.err/
-    }, {
-	'phaseNum': '0',
-	'what': 'phase 0: map input "/%user%/stor/M%41RK"',
-	'input': '/%user%/stor/M%41RK',
-	'p0input': '/%user%/stor/M%41RK',
-	'code': EM_USERTASK,
-	'stderr': /\/%user%\/jobs\/.*\/stor\/%user%\/stor\/M%41RK.0.err/
-    } ]
-};
 
 /*
  * This test relies on the fact that the systems where we run the test suite
@@ -1505,8 +1432,6 @@ exports.jobsAll = [
     exports.jobMmls,
     exports.jobMmjob,
     exports.jobMRnormalize,
-    exports.jobMMRenc,
-    exports.jobMerrorEnc,
     exports.jobMerrorMemoryTooBig,
     exports.jobMerrorDiskTooBig,
     exports.jobMerrorsDispatch0,
