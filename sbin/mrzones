@@ -33,6 +33,8 @@ Options:
 	 -r    list only ready zones
 	 
     -z ZONENAME    Report the state of the named zone
+
+    -x             List disabled zones with detailed reasons why
 EOF
 	exit 2
 }
@@ -46,14 +48,15 @@ opt_b=false
 opt_d=false
 opt_l=false
 opt_r=false
+opt_x=false
 opt_z=""
 
 [[ $(zonename) == "global" ]] || \
     fail "system does not appear to be a Manta storage node"
 
-while getopts ":bdhlrz:" c $@; do
+while getopts ":bdhlrxz:" c $@; do
 	case "$c" in
-	b|d|l|r)	eval opt_$c=true ;;
+	b|d|l|r|x)	eval opt_$c=true ;;
 	z)		eval opt_$c=$OPTARG ;;
 	h)		usage ;;
 	:)		usage "option requires an argument -- $OPTARG" ;;
@@ -75,7 +78,17 @@ fi
 
 if [[ -n "$opt_z" ]]; then
 	[[ $opt_l == "true" ]] && usage "-l cannot be used with -z"
+	[[ $opt_x == "true" ]] && usage "-l cannot be used with -x"
 	list_zones | json -Hac "zonename == '$opt_z'" state
+elif [[ "$opt_x" == "true" ]]; then
+	[[ $opt_l == "true" ]] && usage "-l cannot be used with -z"
+	list_zones | \
+	    json -Hac "state == 'disabled'" -e \
+	        'd = (this.disableErrorMessage || "").replace(/\n/g, " ");' \
+	        zonename disableTime d |
+	    while read zonename since msg; do
+	    	printf "%s (since %s)\n    %s\n" $zonename $since "$msg"
+	    done
 elif [[ $opt_l == "false" ]]; then
 	list_zones | json -Ha state | sort | uniq -c
 elif [[ $count -eq 0 ]]; then
