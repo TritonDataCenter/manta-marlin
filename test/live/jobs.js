@@ -629,7 +629,9 @@ exports.jobMMRenc = {
 	} ]
     },
     'inputs': [
+	'/%user%/stor/my dir',
 	'/%user%/stor/my obj1',	/* covers normal case that should be encoded */
+	'/%user%/stor/my dir/my obj',	/* ditto, in dir with spaces */
 	'/%user%/stor/M%41RK'	/* this should be encoded, and we should */
 				/* never see "MARK" */
     ],
@@ -639,9 +641,18 @@ exports.jobMMRenc = {
     ],
     'expected_output_content': [
 	'auto-generated content for key /someuser/stor/M%41RK\n' +
+	'auto-generated content for key /someuser/stor/my dir/my obj\n' +
 	'auto-generated content for key /someuser/stor/my obj1\n'
     ],
-    'errors': []
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/%user%/stor/my dir"',
+	'input': '/%user%/stor/my dir',
+	'p0input': '/%user%/stor/my dir',
+	'code': EM_INVALIDARGUMENT,
+	'message': 'objects of type "directory" are not supported: ' +
+	    '"/%user%/stor/my dir"'
+    } ]
 };
 
 /*
