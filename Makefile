@@ -41,6 +41,7 @@ BASH_FILES	 = \
     npm/postinstall.sh		\
     npm/preuninstall.sh		\
     sbin/mrerrors		\
+    sbin/mrextractjob		\
     sbin/mrgroups		\
     sbin/mrjobreport		\
     sbin/mrlogexpire.sh		\

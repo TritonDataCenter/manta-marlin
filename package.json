@@ -9,6 +9,7 @@
 		"mlocate": "sbin/mlocate",
 		"mrerrors": "sbin/mrerrors",
 		"mrerrorsummary": "sbin/mrerrorsummary",
+		"mrextractjob": "sbin/mrextractjob",
 		"mrjob": "sbin/mrjob",
 		"mrjobreport": "sbin/mrjobreport",
 		"mrmeter": "sbin/mrmeter",

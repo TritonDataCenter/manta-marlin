@@ -1,0 +1,61 @@
+#!/bin/bash
+
+arg0="$(basename $0)"
+
+if [[ $# -ne 3 ]]; then
+	cat <<EOF >&2
+usage: $arg0 DUMP_PATH OUT_PATH JOBID
+
+Extracts all Moray records for a given JOBID from a directory of database dumps
+in DUMP_PATH and save the extracted records into OUT_PATH.
+
+  DUMP_PATH     Manta path where source database dumps are stored
+  OUT_PATH      Manta path where the extracted record objects should be stored
+  JOBID         Job to extract
+
+For example, to extract all records for job afeeb47c-f088-11e2-a2d1-3ba9cfafb5eb
+to /dap/stor/debugging, you might use:
+
+  $arg0 \\
+      /poseidon/stor/manatee_backups/1.moray.us-east.joyent.us/2013/07/18/17 \\
+      /dap/stor/debugging afeeb47c-f088-11e2-a2d1-3ba9cfafb5eb
+EOF
+	exit 2
+fi
+
+ej_pattern="marlin_(errors|jobinputs|jobs|taskinputs|taskoutputs|tasks)"
+ej_tmpfile="${TMPDIR:-/var/tmp}/$arg0-map.sh"
+ej_molatgz="/poseidon/stor/manta_pg_job/assets/mola.tar.gz"
+
+cat > "$ej_tmpfile" <<EOF
+#!/bin/bash
+
+set -o pipefail
+outfile="\$(basename \$MANTA_INPUT_FILE)"
+outfile="\${outfile#marlin_}"
+outfile="$2/\${outfile%_*}.json"
+
+echo "using output file \"\$outfile\"" >&2
+
+cd /var/tmp/mola
+gzcat | \
+    awk 'NR==1 || /\\\\"jobId\\\\":\\\\"$3\\\\"/' | \
+    ./build/node/bin/node ./bin/pg_transform.js | \
+    mpipe -p "\$outfile"
+
+EOF
+
+mfind -t o "$1" | egrep "$ej_pattern" | \
+    mjob create -w \
+	-s "$ej_molatgz" \
+	--init="cd /var/tmp; tar xzf /assets/$ej_molatgz" \
+	--memory=4096 -m "$(cat $ej_tmpfile)"
+ej_status="$?"
+rm -f $ej_tmpfile
+if [[ $ej_status -eq "0" ]]; then
+	echo "mls -l \"$2\":"
+	mls -l "$2"
+else
+	echo "failed" >&2
+	exit 1
+fi
