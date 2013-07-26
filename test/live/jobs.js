@@ -655,6 +655,20 @@ exports.jobMMRenc = {
     } ]
 };
 
+exports.jobMkill = {
+    'job': {
+	'phases': [ { 'type': 'map', 'exec': 'sleep 86400 &' } ]
+    },
+    'inputs': [
+	'/%user%/stor/obj1'
+    ],
+    'timeout': 15 * 1000,
+    'expected_outputs': [
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
+    ],
+    'errors': []
+};
+
 /*
  * This job does something similar, but exercises stderr capture and the job
  * error API.
@@ -1137,6 +1151,25 @@ exports.jobMerrorBadImage = {
     } ]
 };
 
+exports.jobRerrorFetch = {
+    'job': {
+	'phases': [ {
+	    'type': 'reduce',
+	    'init': 'curl -i -X POST localhost/my/jobs/task/perturb?p=1',
+	    'exec': 'cat'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 20 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: reduce',
+	'code': EM_INTERNAL,
+	'message': 'internal error'
+    } ]
+};
+
 exports.jobR0inputs = {
     'job': {
 	'phases': [ {
@@ -1517,6 +1550,7 @@ exports.jobsAll = [
     exports.jobMmjob,
     exports.jobMRnormalize,
     exports.jobMMRenc,
+    exports.jobMkill,
     exports.jobMerrorEnc,
     exports.jobMerrorMemoryTooBig,
     exports.jobMerrorDiskTooBig,
@@ -1538,6 +1572,7 @@ exports.jobsAll = [
     exports.jobMerrorMuskieRetryMpipe,
     exports.jobMerrorMpipeMkdirp,
     exports.jobMerrorBadImage,
+    exports.jobRerrorFetch,
     exports.jobMenv,
     exports.jobRenv,
     exports.jobMmeterCheckpoints,

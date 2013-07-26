@@ -58,7 +58,7 @@
 	},
 	"optionalDependencies": {
 		"hyprlofs": "0.0.1",
-		"illumos_contract": "0.0.9"
+		"illumos_contract": "0.1.0"
 	},
 	"bundledDependencies": [
 		"assert-plus",
