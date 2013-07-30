@@ -1188,7 +1188,7 @@ exports.jobMenv = {
     'job': {
 	'phases': [ {
 	    'type': 'map',
-	    'exec': 'env | egrep ^MANTA_ | sort'
+	    'exec': 'env | egrep "^(MANTA_|HOME)" | sort'
 	} ]
     },
     'inputs': [ '/%user%/stor/obj1' ],
@@ -1198,6 +1198,7 @@ exports.jobMenv = {
     ],
     'errors': [],
     'expected_output_content': [
+	'HOME=/root\n' +
 	'MANTA_INPUT_FILE=/manta/%user%/stor/obj1\n' +
 	'MANTA_INPUT_OBJECT=/%user%/stor/obj1\n' +
 	'MANTA_JOB_ID=$jobid\n' +
@@ -1215,7 +1216,7 @@ exports.jobRenv = {
 	    'type': 'reduce',
 	    'count': 3,
 	    /* Workaround MANTA-992 */
-	    'exec': 'cat > /dev/null; env | egrep ^MANTA_ | sort'
+	    'exec': 'cat > /dev/null; env | egrep "^(MANTA_|HOME)" | sort'
 	} ]
     },
     'inputs': [],
@@ -1227,6 +1228,7 @@ exports.jobRenv = {
     ],
     'errors': [],
     'expected_output_content': [
+	'HOME=/root\n' +
 	'MANTA_JOB_ID=$jobid\n' +
 	'MANTA_NO_AUTH=true\n' +
 	'MANTA_OUTPUT_BASE=/%user%/jobs/$jobid/stor/reduce.0.\n' +
@@ -1234,6 +1236,7 @@ exports.jobRenv = {
 	'MANTA_URL=http://localhost:80/\n' +
 	'MANTA_USER=%user%\n',
 
+	'HOME=/root\n' +
 	'MANTA_JOB_ID=$jobid\n' +
 	'MANTA_NO_AUTH=true\n' +
 	'MANTA_OUTPUT_BASE=/%user%/jobs/$jobid/stor/reduce.0.\n' +
@@ -1241,6 +1244,7 @@ exports.jobRenv = {
 	'MANTA_URL=http://localhost:80/\n' +
 	'MANTA_USER=%user%\n',
 
+	'HOME=/root\n' +
 	'MANTA_JOB_ID=$jobid\n' +
 	'MANTA_NO_AUTH=true\n' +
 	'MANTA_OUTPUT_BASE=/%user%/jobs/$jobid/stor/reduce.0.\n' +
