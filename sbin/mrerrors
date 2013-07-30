@@ -74,6 +74,11 @@ jr_database=					# base name for data files
 jr_filter=					# moray filter
 jr_title=					# report title
 
+if [[ -n "$MORAY_URL" ]]; then
+	opt_m="${MORAY_URL#tcp://}"
+	opt_m="${opt_m%:*}"
+fi
+
 while getopts ":afj:m:" c $@; do
 	case "$c" in
 	a|f)	eval opt_$c=true ;;
