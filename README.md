@@ -238,6 +238,28 @@ Then you can run individual tests just like inside a zone:
 
     $ node test/...
 
+### Stress testing
+
+In one shell, start the worker in a way that will be automatically restarted:
+
+    $ while :; do node lib/worker/server.js ../config.json | \
+        tee ../worker.out | bunyan -o short; done
+
+In another, start a loop that will *kill* the worker a random interval between 5
+and 30 seconds apart:
+
+    $ while sleep $(( RANDOM % 30 + 5 )); do date; pkill -f worker/server.js; done
+
+And finally, run the test suite in "stress" mode, which is a little laxer about
+transient failures:
+
+    $ for (( i = 0; ; i++ )) { \
+        echo "$i: $(date)"; \
+        if ! node test/live/tst.concurrent.js -S >> ../tests.out 2>&1; then \
+            echo "FAILED" \
+            break; \
+        fi \
+    }
 
 # Before pushing changes
 

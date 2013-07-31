@@ -2214,9 +2214,11 @@ function jobTestVerifyResultSync(verify)
 	}
 
 	/*
-	 * Check for intermediate objects.
+	 * Check for intermediate objects.  We don't do this in non-strict mode
+	 * because agent restarts can result in extra copies of stderr and core
+	 * files.
 	 */
-	if (job['timeCancelled'] === undefined) {
+	if (strict && job['timeCancelled'] === undefined) {
 		/*
 		 * "foundobj" may not contain all output objects, since some of
 		 * those may have been given names somewhere else.  But it must
