@@ -1106,6 +1106,48 @@ exports.jobMerrorMuskieRetryMpipe = {
 };
 
 /*
+ * Tests that reducers that experience transient errors fetching data continue
+ * to retry the requests.
+ */
+exports.jobRmuskieRetry = {
+    'job': {
+	'phases': [ {
+	    'type': 'reduce',
+	    'init': 'curl -i -X POST localhost/my/jobs/task/perturb?p=0.1',
+	    'exec': 'wc'
+	} ]
+    },
+    'inputs': [],
+    'timeout': 60 * 1000,
+    'errors': [],
+    'expected_outputs': [ /%user%\/jobs\/.*\/stor\/reduce\.0\./ ],
+    'expected_output_content': [ '      0     401    5090\n' ]
+};
+
+/*
+ * Tests that reducers that experience large numbers of transient errors
+ * eventually blow up with an error.
+ */
+exports.jobRerrorMuskieRetry = {
+    'job': {
+	'phases': [ {
+	    'type': 'reduce',
+	    'init': 'curl -i -X POST localhost/my/jobs/task/perturb?p=1',
+	    'exec': 'wc'
+	} ]
+    },
+    'inputs': [ '/poseidon/stor/obj1' ],
+    'timeout': 60 * 1000,
+    'expected_outputs': [],
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: reduce',
+	'code': EM_SERVICEUNAVAILABLE,
+	'message': /error fetching inputs/
+    } ]
+};
+
+/*
  * mpipe should not auto-create directories by default, and it should fail if
  * the directory does not exist.  The case where it creates directories is
  * tested by jobMpipeNamed.
@@ -1151,25 +1193,6 @@ exports.jobMerrorBadImage = {
     } ]
 };
 
-exports.jobRerrorFetch = {
-    'job': {
-	'phases': [ {
-	    'type': 'reduce',
-	    'init': 'curl -i -X POST localhost/my/jobs/task/perturb?p=1',
-	    'exec': 'cat'
-	} ]
-    },
-    'inputs': [ '/%user%/stor/obj1' ],
-    'timeout': 20 * 1000,
-    'expected_outputs': [],
-    'errors': [ {
-	'phaseNum': '0',
-	'what': 'phase 0: reduce',
-	'code': EM_INTERNAL,
-	'message': 'internal error'
-    } ]
-};
-
 exports.jobR0inputs = {
     'job': {
 	'phases': [ {
@@ -1182,6 +1205,29 @@ exports.jobR0inputs = {
     'expected_outputs': [ /\/%user%\/jobs\/.*\/stor\/reduce\.0\./ ],
     'errors': [],
     'expected_output_content': [ '      0       0       0\n' ]
+};
+
+exports.jobRcatbin = {
+    'job': {
+	'phases': [ {
+	    'type': 'map',
+	    'exec': 'mpipe -f /bin/bash'
+	}, {
+	    'type': 'reduce',
+	    'exec': 'cat /bin/bash /bin/bash /bin/bash > /var/tmp/exp && ' +
+	        'cat > /var/tmp/actual && ' +
+		'diff /var/tmp/exp /var/tmp/actual && echo okay'
+	} ]
+    },
+    'inputs': [
+	'/poseidon/stor/obj1',
+	'/poseidon/stor/obj2',
+	'/poseidon/stor/obj3'
+    ],
+    'timeout': 60 * 1000,
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/stor\/reduce\.1\./ ],
+    'errors': [],
+    'expected_output_content': [ 'okay\n' ]
 };
 
 exports.jobMenv = {
@@ -1538,6 +1584,7 @@ exports.jobsAll = [
     exports.jobM0bo,
     exports.jobR,
     exports.jobR0inputs,
+    exports.jobRcatbin,
     exports.jobMM,
     exports.jobMR,
     exports.jobMMRR,
@@ -1573,10 +1620,11 @@ exports.jobsAll = [
     exports.jobMerrorMuskie,
     exports.jobMerrorMuskieMpipe,
     exports.jobMerrorMuskieRetry,
+    exports.jobRmuskieRetry,
+    exports.jobRerrorMuskieRetry,
     exports.jobMerrorMuskieRetryMpipe,
     exports.jobMerrorMpipeMkdirp,
     exports.jobMerrorBadImage,
-    exports.jobRerrorFetch,
     exports.jobMenv,
     exports.jobRenv,
     exports.jobMmeterCheckpoints,
@@ -1614,6 +1662,8 @@ function initJobs()
 	}
 
 	exports.jobMerrorMuskieRetryMpipe['inputs'] =
+	    exports.jobMerrorMuskieRetry['inputs'];
+	exports.jobRmuskieRetry['inputs'] =
 	    exports.jobMerrorMuskieRetry['inputs'];
 }
 
