@@ -16,13 +16,10 @@
 #
 # While we only support developing on SmartOS, where we have sdcnode builds
 # available, it's convenient to be able to use tools like "mrjob" and the like
-# from Mac laptops without having to set up a complete dev environment.  The
-# junk about the dependencies is especially regrettable, but reality until we
-# have a better solution via npm or multiple npm packages.
+# from Mac laptops without having to set up a complete dev environment.
 #
 ifeq ($(shell uname -s),Darwin)
 	USE_LOCAL_NODE=true
-	DEPS_EXTRADEPS=rmdeps
 else
 	USE_LOCAL_NODE=false
 endif
@@ -30,46 +27,59 @@ endif
 #
 # Tools
 #
-BASHSTYLE	 = $(NODE) tools/bashstyle
+BASHSTYLE	 = $(NODE) dev/tools/bashstyle
 CATEST		 = tools/catest
 CC      	 = gcc
+SMF_DTD		 = dev/tools/service_bundle.dtd.1
 
 #
 # Files
 #
+COMPONENT_DIRS   = agent client common dev jobsupervisor
 BASH_FILES	 = \
-    npm/postinstall.sh		\
-    npm/preuninstall.sh		\
-    sbin/mrerrors		\
-    sbin/mrextractjob		\
-    sbin/mrgroups		\
-    sbin/mrjobreport		\
-    sbin/mrlogexpire.sh		\
-    sbin/mrzonedisable		\
-    sbin/mrzones		\
-    tools/mragentconf		\
-    tools/mrdeploycompute	\
-    tools/mrzone		\
-    tools/mrzoneremove
+    agent/npm/postinstall.sh		\
+    agent/npm/preuninstall.sh		\
+    agent/sbin/logpush.sh		\
+    agent/sbin/mragentconf		\
+    agent/sbin/mrdeploycompute		\
+    agent/sbin/mrgroups			\
+    agent/sbin/mrlogexpire.sh		\
+    agent/sbin/mrzone			\
+    agent/sbin/mrzonedisable		\
+    agent/sbin/mrzoneremove		\
+    agent/sbin/mrzones			\
+    client/sbin/mrjobreport		\
+    client/sbin/mrerrors		\
+    client/sbin/mrextractjob	\
+    dev/tools/catest			\
+    dev/tools/mru			\
+    jobsupervisor/boot/configure.sh
 
 DOC_FILES	 = index.restdown ops.restdown
-JSON_FILES	:= $(shell find src etc -name '*.json') \
-                   sapi_manifests/marlin/manifest.json  \
-                   sapi_manifests/marlin/template
-JS_FILES	:= $(shell find src lib test -name '*.js')
-JS_FILES	+= \
-    sbin/mlocate \
-    sbin/mrerrorsummary \
-    sbin/mrjob 	\
-    sbin/mrmeter \
-    tools/mrpound
 
-JSL_CONF_NODE	 = tools/jsl.node.conf
+JSON_DIRS        = $(COMPONENT_DIRS:%=%/package.json %/etc %/sapi_manifests)
+JSON_DIRS	+= $(COMPONENT_DIRS:%=%/etc)
+JSON_DIRS	+= $(COMPONENT_DIRS:%=%/sapi_manifests)
+JSON_FILES	:= $(shell find $(JSON_DIRS) -name '*.json' 2>/dev/null)
+JSON_FILES	+= jobsupervisor/sapi_manifests/marlin/template
+
+JS_DIRS		 = $(COMPONENT_DIRS:%=%/lib)
+JS_DIRS		+= $(COMPONENT_DIRS:%=%/dev)
+JS_FILES	:= $(shell find $(JS_DIRS) -name '*.js' 2>/dev/null)
+JS_FILES	+= \
+    client/sbin/mrerrorsummary	\
+    client/sbin/mrjob		\
+    client/sbin/mrmeter 	\
+    dev/tools/bashstyle		\
+    dev/tools/mrpound		\
+    jobsupervisor/sbin/mlocate
+
+JSL_CONF_NODE	 = dev/tools/jsl.node.conf
 JSL_FILES_NODE   = $(JS_FILES)
 JSSTYLE_FILES	 = $(JS_FILES)
 SMF_MANIFESTS_IN = \
-    smf/manifests/marlin-agent.xml.in \
-    smf/manifests/marlin-lackey.xml.in
+    agent/smf/marlin-agent.xml.in \
+    agent/smf/marlin-lackey.xml.in
 
 #
 # v8plus uses the CTF tools as part of its build, but they can safely be
@@ -77,16 +87,14 @@ SMF_MANIFESTS_IN = \
 #
 NPM_ENV		 = MAKE_OVERRIDES="CTFCONVERT=/bin/true CTFMERGE=/bin/true"
 
-include ./tools/mk/Makefile.defs
-include ./tools/mk/Makefile.smf.defs
-include ./tools/mk/Makefile.node_deps.defs
+include ./dev/tools/mk/Makefile.defs
+include ./dev/tools/mk/Makefile.smf.defs
 
 ifneq ($(USE_LOCAL_NODE),true)
-    REPO_MODULES     = src/node-hyprlofs
     NODE_PREBUILT_VERSION = v0.8.25
     NODE_PREBUILT_TAG = zone
 
-    include ./tools/mk/Makefile.node_prebuilt.defs
+    include ./dev/tools/mk/Makefile.node_prebuilt.defs
 else
     NPM_EXEC :=
     NPM = npm
@@ -96,47 +104,30 @@ endif
 # Repo-specific targets
 #
 CFLAGS		+= -Wall -Werror
-EXECS   	 = src/mallocbomb/mallocbomb
+EXECS   	 = dev/tests/mallocbomb/mallocbomb
 CLEANFILES	+= $(EXECS)
 
+# XXX need to build the agent, jobsupervisor, and dev packages
 .PHONY: all
-all: $(SMF_MANIFESTS) deps $(EXECS) scripts
+all: $(SMF_MANIFESTS) deps $(EXECS)
 
 .PHONY: deps
-deps: $(DEPS_EXTRADEPS) | $(REPO_DEPS) $(NPM_EXEC)
+deps: | $(NPM_EXEC)
 	$(NPM_ENV) $(NPM) --no-rebuild install
-
-# As discussed above, this is highly regrettable.
-.PHONY: rmdeps
-rmdeps:
-	json -e "this.optionalDependencies['hyprlofs'] = undefined" \
-	    < package.json > package.json.1 && mv package.json.1 package.json
-	json -e "this.optionalDependencies['illumos_contract'] = undefined" \
-	    < package.json > package.json.1 && mv package.json.1 package.json
-	json -e "this.dependencies['kstat'] = undefined" \
-	    < package.json > package.json.1 && mv package.json.1 package.json
-	json -e "this.dependencies['statvfs'] = undefined" \
-	    < package.json > package.json.1 && mv package.json.1 package.json
-	json -e "this.dependencies['zoneid'] = undefined" \
-	    < package.json > package.json.1 && mv package.json.1 package.json
-	json -e "this.dependencies['zsock-async'] = undefined" \
-	    < package.json > package.json.1 && mv package.json.1 package.json
-	rm -f package.json.1
 
 .PHONY: test
 test: all
 	tools/catest -a
 
-src/mallocbomb/mallocbomb: src/mallocbomb/mallocbomb.c
+dev/test/mallocbomb/mallocbomb: dev/test/mallocbomb/mallocbomb.c
 
 DISTCLEAN_FILES += node_modules
 
 include ./Makefile.mg.targ
-include ./tools/mk/Makefile.node_deps.targ
-include ./tools/mk/Makefile.deps
-include ./tools/mk/Makefile.smf.targ
-include ./tools/mk/Makefile.targ
+include ./dev/tools/mk/Makefile.deps
+include ./dev/tools/mk/Makefile.smf.targ
+include ./dev/tools/mk/Makefile.targ
 
 ifneq ($(USE_LOCAL_NODE),true)
-    include ./tools/mk/Makefile.node_prebuilt.targ
+    include ./dev/tools/mk/Makefile.node_prebuilt.targ
 endif

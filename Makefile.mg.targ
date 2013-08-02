@@ -71,6 +71,7 @@ $(MG_IMAGEROOT)/boot/configure.sh:
 	    $(MG_PROTO)/root/opt/smartdc/boot/configure.sh
 	chmod 755 $(MG_IMAGEROOT)/boot/configure.sh
 
+# XXX dap
 $(MG_IMAGEROOT)/boot/scripts:
 	cp -r $(BUILD)/scripts $(MG_IMAGEROOT)/boot/scripts
 

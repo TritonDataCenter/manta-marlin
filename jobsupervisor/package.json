@@ -1,0 +1,31 @@
+{
+	"name": "marlin-jobsupervisor",
+	"description": "Manta compute engine -- jobsupervisor package",
+	"version": "0.0.1",
+	"author": "Joyent (joyent.com)",
+	"private": true,
+	"bin": {
+		"mlocate": "sbin/mlocate",
+		"mrsupsnoop": "sbin/mrsupsnoop"
+	},
+	"dependencies": {
+		"assert-plus": "0.1.2",
+		"bunyan": "0.20.0",
+		"carrier": "0.1.7",
+		"dtrace-provider": "0.2.8",
+		"extsprintf": "1.0.1",
+		"jsprim": "0.5.0",
+		"kang": "0.0.5",
+		"libmanta": "git+ssh://git@git.joyent.com:node-libmanta.git#master",
+		"manta": "git+ssh://git@github.com:joyent/node-manta.git#master",
+		"mkdirp": "0.3.1",
+		"moray": "git+ssh://git@git.joyent.com:node-moray.git#master",
+		"node-uuid": "1.4.0",
+		"panic": "0.2.1",
+		"restify": "2.3.5",
+		"retry": "0.6.0",
+		"semver": "1.1.4",
+		"vasync": "1.3.3",
+		"verror": "1.3.6"
+	}
+}
