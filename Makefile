@@ -109,7 +109,7 @@ CLEANFILES	+= $(EXECS)
 
 # XXX need to build the agent, jobsupervisor, and dev packages
 .PHONY: all
-all: $(SMF_MANIFESTS) deps $(EXECS)
+all: $(SMF_MANIFESTS) deps $(EXECS) $(PROTO_FILES)
 
 .PHONY: deps
 deps: | $(NPM_EXEC)
@@ -123,7 +123,7 @@ dev/test/mallocbomb/mallocbomb: dev/test/mallocbomb/mallocbomb.c
 
 DISTCLEAN_FILES += node_modules
 
-include ./Makefile.mg.targ
+#include ./Makefile.mg.targ
 include ./dev/tools/mk/Makefile.deps
 include ./dev/tools/mk/Makefile.smf.targ
 include ./dev/tools/mk/Makefile.targ
@@ -131,3 +131,59 @@ include ./dev/tools/mk/Makefile.targ
 ifneq ($(USE_LOCAL_NODE),true)
     include ./dev/tools/mk/Makefile.node_prebuilt.targ
 endif
+
+#
+# proto area construction
+#
+PROTO_ROOT=$(BUILD)/proto
+PROTO_SMARTDC_ROOT=$(PROTO_ROOT)/root/opt/smartdc
+PROTO_MARLIN_ROOT=$(PROTO_SMARTDC_ROOT)/marlin
+PROTO_BOOT_ROOT=$(PROTO_SMARTDC_ROOT)/boot
+
+MARLIN_AGENT  := $(shell cd agent  && find * -type f -not -name package.json)
+MARLIN_COMMON := $(shell cd common && find * -type f -not -name package.json)
+MARLIN_DEV    := $(shell cd dev && find * -type f -not -name package.json)
+MARLIN_JOBSUP := $(shell cd jobsupervisor  && find * -type f -not -name package.json)
+
+PROTO_MARLIN_AGENT = $(MARLIN_AGENT:%=$(PROTO_MARLIN_ROOT)/%)
+PROTO_MARLIN_COMMON = $(MARLIN_COMMON:%=$(PROTO_MARLIN_ROOT)/%)
+PROTO_MARLIN_DEV = $(MARLIN_DEV:%=$(PROTO_MARLIN_ROOT)/%)
+PROTO_MARLIN_JOBSUP = $(MARLIN_JOBSUP:%=$(PROTO_MARLIN_ROOT)/%)
+
+$(PROTO_MARLIN_AGENT): $(PROTO_MARLIN_ROOT)/%: agent/%
+	mkdir -p $(@D) && cp $^ $@
+
+$(PROTO_MARLIN_COMMON): $(PROTO_MARLIN_ROOT)/%: common/%
+	mkdir -p $(@D) && cp $^ $@
+
+$(PROTO_MARLIN_DEV): $(PROTO_MARLIN_ROOT)/%: dev/%
+	mkdir -p $(@D) && cp $^ $@
+
+$(PROTO_MARLIN_JOBSUP): $(PROTO_MARLIN_ROOT)/%: jobsupervisor/%
+	mkdir -p $(@D) && cp $^ $@
+
+PROTO_MARLIN_FILES  = \
+    $(PROTO_MARLIN_COMMON) \
+    $(PROTO_MARLIN_AGENT) \
+    $(PROTO_MARLIN_DEV) \
+    $(PROTO_MARLIN_JOBSUP)
+
+#
+# It's unfortunate that build/node and build/docs are referenced by directory
+# rather than by file, since that means we can't do incremental updates when
+# individual files change, but this is not a common case.
+#
+PROTO_MARLIN_BUILD  = \
+    $(PROTO_MARLIN_ROOT)/build/docs \
+    $(PROTO_MARLIN_ROOT)/build/node
+
+PROTO_MARLIN_FILES += $(PROTO_MARLIN_BUILD)
+$(PROTO_MARLIN_ROOT)/build/node: deps
+	mkdir -p $(@D) && cp -r build/node $@
+$(PROTO_MARLIN_ROOT)/build/docs: docs
+	mkdir -p $(@D) && cp -r build/docs $@
+
+PROTO_FILES = $(PROTO_MARLIN_FILES)
+
+.PHONY: proto
+proto: $(PROTO_FILES)
