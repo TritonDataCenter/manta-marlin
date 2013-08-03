@@ -141,16 +141,21 @@ PROTO_MARLIN_ROOT=$(PROTO_SMARTDC_ROOT)/marlin
 PROTO_BOOT_ROOT=$(PROTO_SMARTDC_ROOT)/boot
 
 MARLIN_AGENT  := $(shell cd agent  && find * -type f -not -name package.json)
+MARLIN_CLIENT := $(shell cd client && find * -type f -not -name package.json)
 MARLIN_COMMON := $(shell cd common && find * -type f -not -name package.json)
 MARLIN_DEV    := $(shell cd dev && find * -type f -not -name package.json)
 MARLIN_JOBSUP := $(shell cd jobsupervisor  && find * -type f -not -name package.json)
 
 PROTO_MARLIN_AGENT = $(MARLIN_AGENT:%=$(PROTO_MARLIN_ROOT)/%)
+PROTO_MARLIN_CLIENT = $(MARLIN_CLIENT:%=$(PROTO_MARLIN_ROOT)/%)
 PROTO_MARLIN_COMMON = $(MARLIN_COMMON:%=$(PROTO_MARLIN_ROOT)/%)
 PROTO_MARLIN_DEV = $(MARLIN_DEV:%=$(PROTO_MARLIN_ROOT)/%)
 PROTO_MARLIN_JOBSUP = $(MARLIN_JOBSUP:%=$(PROTO_MARLIN_ROOT)/%)
 
 $(PROTO_MARLIN_AGENT): $(PROTO_MARLIN_ROOT)/%: agent/%
+	mkdir -p $(@D) && cp $^ $@
+
+$(PROTO_MARLIN_CLIENT): $(PROTO_MARLIN_ROOT)/%: client/%
 	mkdir -p $(@D) && cp $^ $@
 
 $(PROTO_MARLIN_COMMON): $(PROTO_MARLIN_ROOT)/%: common/%
@@ -165,25 +170,41 @@ $(PROTO_MARLIN_JOBSUP): $(PROTO_MARLIN_ROOT)/%: jobsupervisor/%
 PROTO_MARLIN_FILES  = \
     $(PROTO_MARLIN_COMMON) \
     $(PROTO_MARLIN_AGENT) \
+    $(PROTO_MARLIN_CLIENT) \
     $(PROTO_MARLIN_DEV) \
     $(PROTO_MARLIN_JOBSUP)
 
 #
-# It's unfortunate that build/node and build/docs are referenced by directory
-# rather than by file, since that means we can't do incremental updates when
-# individual files change, but this is not a common case.
+# It's unfortunate that build/node, build/docs, and build/scripts are referenced
+# by directory rather than by file, since that means we can't do incremental
+# updates when individual files change, but that's not a common case since these
+# are pulled or built as a unit.
 #
+PROTO_MARLIN_FILES += $(PROTO_MARLIN_ROOT)/boot/scripts
+$(PROTO_MARLIN_ROOT)/boot/scripts: $(BUILD)/scripts
+	mkdir -p $(@D) && cp -r $^ $@
+$(BUILD)/scripts: scripts
+
 PROTO_MARLIN_BUILD  = \
-    $(PROTO_MARLIN_ROOT)/build/docs \
-    $(PROTO_MARLIN_ROOT)/build/node
+    $(PROTO_MARLIN_ROOT)/$(BUILD)/docs \
+    $(PROTO_MARLIN_ROOT)/$(BUILD)/node
 
 PROTO_MARLIN_FILES += $(PROTO_MARLIN_BUILD)
-$(PROTO_MARLIN_ROOT)/build/node: deps
-	mkdir -p $(@D) && cp -r build/node $@
-$(PROTO_MARLIN_ROOT)/build/docs: docs
-	mkdir -p $(@D) && cp -r build/docs $@
+PROTO_FILES += $(PROTO_MARLIN_FILES)
+$(PROTO_MARLIN_ROOT)/$(BUILD)/node: deps
+	mkdir -p $(@D) && cp -r $(BUILD)/node $@
+$(PROTO_MARLIN_ROOT)/$(BUILD)/docs: docs
+	mkdir -p $(@D) && cp -r $(BUILD)/docs $@
 
-PROTO_FILES = $(PROTO_MARLIN_FILES)
+PROTO_FILES += $(PROTO_SMARTDC_ROOT)/boot/configure.sh
+$(PROTO_SMARTDC_ROOT)/boot/configure.sh:
+	# XXX "marlin" here should be MG_NAME
+	mkdir -p $(@D) && ln -fs /opt/smartdc/marlin/boot/configure.sh $@
+
+#
+# XXX continuing to work here: need to add package.json, anything else missing
+# (compared to "diff" against old marlin repo's proto area), and "npm install"
+#
 
 .PHONY: proto
 proto: $(PROTO_FILES)
