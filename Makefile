@@ -122,7 +122,6 @@ dev/test/mallocbomb/mallocbomb: dev/test/mallocbomb/mallocbomb.c
 
 DISTCLEAN_FILES += node_modules
 
-#include ./Makefile.mg.targ
 include ./dev/tools/mk/Makefile.deps
 include ./dev/tools/mk/Makefile.smf.targ
 include ./dev/tools/mk/Makefile.targ
@@ -185,8 +184,8 @@ $(PROTO_MANIFESTS): $(PROTO_MARLIN_ROOT)/%: agent/%
 # updates when individual files change, but that's not a common case since these
 # are pulled or built as a unit.
 #
-PROTO_MARLIN_FILES += $(PROTO_MARLIN_ROOT)/boot/scripts
-$(PROTO_MARLIN_ROOT)/boot/scripts: $(BUILD)/scripts
+PROTO_MARLIN_FILES += $(PROTO_BOOT_ROOT)/scripts
+$(PROTO_BOOT_ROOT)/scripts: $(BUILD)/scripts
 	mkdir -p $(@D) && cp -r $^ $@
 $(BUILD)/scripts: scripts
 
@@ -203,10 +202,9 @@ $(BUILD)/node: deps
 $(PROTO_MARLIN_ROOT)/$(BUILD)/docs: docs
 	rm -rf "$@" && mkdir -p "$(@D)" && cp -r $(BUILD)/docs "$@"
 
-PROTO_FILES += $(PROTO_SMARTDC_ROOT)/boot/configure.sh
-$(PROTO_SMARTDC_ROOT)/boot/configure.sh:
-	# XXX "marlin" here should be MG_NAME
-	mkdir -p $(@D) && ln -fs /opt/smartdc/marlin/boot/configure.sh $@
+PROTO_FILES += $(PROTO_BOOT_ROOT)/configure.sh
+$(PROTO_BOOT_ROOT)/configure.sh:
+	mkdir -p $(@D) && ln -fs $(PROTO_BOOT_ROOT)/configure.sh $@
 
 #
 # Some tools were historically delivered in "tools", but really belong on
@@ -228,3 +226,57 @@ proto: $(PROTO_FILES) proto_deps
 .PHONY: proto_deps
 proto_deps: $(PROTO_FILES)
 	cd $(PROTO_MARLIN_ROOT) && $(NPM_ENV) $(NPM) --no-rebuild install
+
+#
+# Mountagain Gorilla targets
+#
+MG_NAME 		 = marlin
+MG_PROTO		 = $(PROTO_ROOT)
+MG_IMAGEROOT		 = $(PROTO_MARLIN_ROOT)
+MG_RELEASE_TARBALL	 = $(MG_NAME)-pkg-$(STAMP).tar.bz2
+PROTO_TARBALL 		 = $(BUILD)/$(MG_RELEASE_TARBALL)
+BITS_PROTO_TARBALL	 = $(BITS_DIR)/$(MG_NAME)/$(MG_RELEASE_TARBALL)
+
+MG_AGENT_TARBALL	 = $(MG_NAME)-$(STAMP).tar.gz
+AGENT_TARBALL	 	 = $(BUILD)/$(MG_AGENT_TARBALL)
+BITS_AGENT_TARBALL	 = $(BITS_DIR)/$(MG_NAME)/$(MG_AGENT_TARBALL)
+
+CLEAN_FILES		+= $(MG_PROTO) \
+			   $(BUILD)/$(MG_NAME)-pkg-*.tar.bz2 \
+			   $(BUILD)/$(MG_NAME)-*.tar.gz
+
+#
+# "release" target creates two tarballs: the first to be used as an input for
+# the jobworker zone, the second to be installed in each system's global zone
+# via apm.
+#
+.PHONY: release
+release: $(PROTO_TARBALL) $(AGENT_TARBALL)
+
+$(PROTO_TARBALL): $(PROTO_FILES)
+	$(TAR) -C $(MG_PROTO) -cjf $@ root site
+
+$(AGENT_TARBALL): $(PROTO_FILES)
+	$(TAR) -C $(MG_PROTO)/root/opt/smartdc -czf $@ $(MG_NAME)
+
+#
+# "publish" target copies the release tarball into BITS_DIR.
+#
+.PHONY: publish
+publish: check-bitsdir $(BITS_PROTO_TARBALL) $(BITS_AGENT_TARBALL)
+
+.PHONY: check-bitsdir
+check-bitsdir:
+	@if [[ -z "$(BITS_DIR)" ]]; then \
+		echo "error: 'BITS_DIR' must be set for 'publish' target"; \
+		exit 1; \
+	fi
+
+$(BITS_PROTO_TARBALL): $(PROTO_TARBALL) | $(dir $(BITS_PROTO_TARBALL))
+	cp $< $@
+
+$(BITS_AGENT_TARBALL): $(AGENT_TARBALL) | $(dir $(BITS_PROTO_TARBALL))
+	cp $< $@
+
+$(dir $(BITS_PROTO_TARBALL)):
+	mkdir -p $@
