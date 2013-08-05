@@ -63,14 +63,14 @@ var mod_vasync = require('vasync');
 var mod_verror = require('verror');
 
 var mod_manta = require('manta');
-var mod_mautil = require('../../../common/lib/util');
+var mod_mautil = require('../util');
 
 var EventEmitter = mod_events.EventEmitter;
 var Executor = require('./executor');
 var VError = mod_verror.VError;
 
 /* jsl:import ../../../common/lib/errors.js */
-require('../../../common/lib/errors');
+require('../errors');
 
 /*
  * Configuration

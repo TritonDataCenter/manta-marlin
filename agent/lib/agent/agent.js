@@ -200,12 +200,12 @@ var statvfs = require('statvfs');
 var VError = mod_verror.VError;
 
 var mod_adnscache = require('./adnscache');
-var mod_bus = require('../../../common/lib/bus');
+var mod_bus = require('../bus');
 var mod_libmanta = require('libmanta');
-var mod_mautil = require('../../../common/lib/util');
-var mod_meter = require('../../../common/lib/meter');
-var mod_provider = require('../../../common/lib/provider');
-var mod_schema = require('../../../common/lib/schema');
+var mod_mautil = require('../util');
+var mod_meter = require('../meter');
+var mod_provider = require('../provider');
+var mod_schema = require('../schema');
 var mod_agent_zone = require('./zone');
 var mod_agent_zonepool = require('./zone-pool');
 
@@ -216,7 +216,7 @@ var maProviderDefinition = require('./provider');
 var NANOSEC = 1e9;
 
 /* jsl:import ../../../common/lib/errors.js */
-require('../../../common/lib/errors');
+require('../errors');
 
 /*
  * Global agent state

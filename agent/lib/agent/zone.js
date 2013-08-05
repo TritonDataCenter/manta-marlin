@@ -69,7 +69,7 @@ var mod_verror = require('verror');
 var mod_zoneid = require('zoneid');
 var mod_zsockasync = require('zsock-async');
 
-var mod_mautil = require('../../../common/lib/util');
+var mod_mautil = require('../util');
 
 var sprintf = mod_extsprintf.sprintf;
 var VError = mod_verror.VError;

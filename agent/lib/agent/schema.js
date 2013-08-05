@@ -2,7 +2,7 @@
  * lib/agent/schema.js: agent configuration schema
  */
 
-var mod_schema = require('../../../common/lib/schema');
+var mod_schema = require('../schema');
 
 module.exports = {
     'type': 'object',
