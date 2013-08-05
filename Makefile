@@ -255,7 +255,7 @@ $(PROTO_MARLIN_ROOT)/$(BUILD)/docs: docs
 
 PROTO_FILES += $(PROTO_BOOT_ROOT)/configure.sh
 $(PROTO_BOOT_ROOT)/configure.sh:
-	mkdir -p $(@D) && ln -fs $(PROTO_BOOT_ROOT)/configure.sh $@
+	mkdir -p $(@D) && ln -fs /opt/smartdc/marlin/boot/configure.sh $@
 
 #
 # Some tools were historically delivered in "tools", but really belong on
