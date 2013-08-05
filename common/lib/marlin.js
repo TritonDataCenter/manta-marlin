@@ -85,72 +85,91 @@ function createClient(conf, callback)
 	mod_assert.ok(typeof (conf['log']),
 	    '"marlin.createClient: "log" required');
 
-	var log = conf['log'];
 	var filename = conf['config_filename'];
 	var moray;
 
 	if (conf['moray'])
 		moray = mod_jsprim.deepCopy(conf['moray']);
 
+	/*
+	 * See the comment around requires in "mrjob".
+	 */
 	if (!filename)
 		filename = mod_path.join(__dirname,
 		    '../../jobsupervisor/etc/config.coal.json');
 
 	mod_fs.readFile(filename, function (err, contents) {
-		if (err) {
-			callback(new VError(err, 'failed to read "%s"',
-			    filename));
+		if (!err || err['code'] != 'ENOENT') {
+			createFinish(conf, moray, callback,
+			    filename, err, contents);
 			return;
 		}
 
-		var json;
-		try {
-			json = JSON.parse(contents);
-		} catch (ex) {
-			callback(new VError(ex, 'failed to parse "%s"',
-			    filename));
+		if (!conf['config_filename'])
+			filename = mod_path.join(__dirname,
+			    '../etc/config.coal.json');
+		mod_fs.readFile(filename,
+		    createFinish.bind(null, conf, moray, callback, filename));
+	});
+}
+
+function createFinish(conf, moray, callback, filename, err, contents)
+{
+	var log = conf['log'];
+
+	if (err) {
+		callback(new VError(err, 'failed to read "%s"',
+		    filename));
+		return;
+	}
+
+	var json;
+	try {
+		json = JSON.parse(contents);
+	} catch (ex) {
+		callback(new VError(ex, 'failed to parse "%s"',
+		    filename));
+		return;
+	}
+
+	if (moray)
+		json['moray'] = moray;
+
+	var api = new MarlinApi({ 'conf': json, 'log': log });
+	var onerr = function (merr) {
+		callback(new VError(merr, 'failed to connect'));
+	};
+	api.on('error', onerr);
+	api.once('connect', function () {
+		api.removeListener('error', onerr);
+
+		if (!conf['setup_jobs']) {
+			callback(null, api);
 			return;
 		}
 
-		if (moray)
-			json['moray'] = moray;
+		mod_vasync.forEachParallel({
+		    'inputs': [ 'job', 'jobinput' ],
+		    'func': function makeBucket(name, subcallback) {
+			var bucket = api.ma_buckets[name];
+			var config = mod_schema.sBktConfigs[name];
+			api.ma_log.info('setting up %s bucket',
+			    name, bucket, config);
+			api.ma_client.putBucket(bucket,
+			    config, function (err2) {
+				if (err2 && err2['name'] ==
+				    'BucketVersionError') {
+					log.warn(err2, 'bucket ' +
+					    'schema out of date');
+					err = null;
+				}
 
-		var api = new MarlinApi({ 'conf': json, 'log': log });
-		var onerr = function (merr) {
-			callback(new VError(merr, 'failed to connect'));
-		};
-		api.on('error', onerr);
-		api.once('connect', function () {
-			api.removeListener('error', onerr);
-
-			if (!conf['setup_jobs']) {
-				callback(null, api);
-				return;
-			}
-
-			mod_vasync.forEachParallel({
-			    'inputs': [ 'job', 'jobinput' ],
-			    'func': function makeBucket(name, subcallback) {
-				var bucket = api.ma_buckets[name];
-				var config = mod_schema.sBktConfigs[name];
-				api.ma_log.info('setting up %s bucket',
-				    name, bucket, config);
-				api.ma_client.putBucket(bucket,
-				    config, function (err2) {
-					if (err2 && err2['name'] ==
-					    'BucketVersionError') {
-						log.warn(err2, 'bucket ' +
-						    'schema out of date');
-						err = null;
-					}
-
-					subcallback(err);
-				    });
-			    }
-			}, function (suberr) {
-				api.ma_log.info('done setting up buckets');
-				callback(suberr, suberr ? null : api);
-			});
+				subcallback(err);
+			    });
+		    }
+		}, function (suberr) {
+			api.ma_log.info('done setting up buckets');
+			callback(suberr, suberr ? null : api);
 		});
 	});
 }
