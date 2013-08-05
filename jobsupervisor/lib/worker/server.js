@@ -7,7 +7,7 @@ var mod_kang = require('kang');
 var mod_panic = require('panic');
 var mod_restify = require('restify');
 
-var mod_mautil = require('../../common/lib/util');
+var mod_mautil = require('../../../common/lib/util');
 var mod_worker = require('./worker');
 
 var mwLogLevel = process.env['LOG_LEVEL'] || 'info';

@@ -135,14 +135,15 @@ endif
 # proto area construction
 #
 PROTO_ROOT=$(BUILD)/proto
+PROTO_SITE_ROOT=$(PROTO_ROOT)/site
 PROTO_SMARTDC_ROOT=$(PROTO_ROOT)/root/opt/smartdc
 PROTO_MARLIN_ROOT=$(PROTO_SMARTDC_ROOT)/marlin
 PROTO_BOOT_ROOT=$(PROTO_SMARTDC_ROOT)/boot
 
-MARLIN_AGENT  := $(shell cd agent  && find * -type f -not -name package.json -not -path 'smf/manifests/*.xml' -not -name .*.swp)
+MARLIN_AGENT  := $(shell cd agent  && find * -type f -not -name package.json -not -path 'smf/manifests/*.xml' -not -name .*.swp -not -path 'smf/manifests/*.xml.in')
 MARLIN_CLIENT := $(shell cd client && find * -type f -not -name package.json -not -name .*.swp)
 MARLIN_COMMON := $(shell cd common && find * -type f -not -name package.json -not -name .*.swp)
-MARLIN_DEV    := $(shell cd dev && find * -type f -not -name .*.swp)
+MARLIN_DEV    := package.json
 MARLIN_JOBSUP := $(shell cd jobsupervisor  && find * -type f -not -name package.json -not -name .*.swp)
 
 PROTO_MARLIN_AGENT = $(MARLIN_AGENT:%=$(PROTO_MARLIN_ROOT)/%)
@@ -217,10 +218,13 @@ PROTO_MARLIN_FILES += $(PROTO_LINKS_AGENT_BIN)
 $(PROTO_MARLIN_ROOT)/tools/%: | agent/sbin/%
 	mkdir -p $(@D) && ln -fs ../sbin/$* $@
 
-#
-# XXX continuing to work here: need to add package.json, anything else missing
-# (compared to "diff" against old marlin repo's proto area), and "npm install"
-#
+PROTO_FILES += $(PROTO_SITE_ROOT)/.do-not-delete-me
+$(PROTO_SITE_ROOT)/.do-not-delete-me:
+	mkdir -p $(@D) && touch $@
 
 .PHONY: proto
-proto: $(PROTO_FILES)
+proto: $(PROTO_FILES) proto_deps
+
+.PHONY: proto_deps
+proto_deps: $(PROTO_FILES)
+	cd $(PROTO_MARLIN_ROOT) && $(NPM_ENV) $(NPM) --no-rebuild install

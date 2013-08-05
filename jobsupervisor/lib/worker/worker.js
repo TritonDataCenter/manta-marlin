@@ -190,11 +190,11 @@ var mod_uuid = require('node-uuid');
 var mod_vasync = require('vasync');
 var mod_verror = require('verror');
 
-var mod_bus = require('../../common/lib/bus');
+var mod_bus = require('../../../common/lib/bus');
 var mod_locator = require('./locator');
-var mod_schema = require('../../common/lib/schema');
-var mod_mautil = require('../../common/lib/util');
-var mod_provider = require('../../common/lib/provider');
+var mod_schema = require('../../../common/lib/schema');
+var mod_mautil = require('../../../common/lib/util');
+var mod_provider = require('../../../common/lib/provider');
 
 var VError = mod_verror.VError;
 var sprintf = mod_extsprintf.sprintf;
@@ -204,8 +204,8 @@ var Throttler = mod_mautil.Throttler;
 
 var wQueries = require('./queries');
 
-/* jsl:import ../../common/lib/errors.js */
-require('../../common/lib/errors');
+/* jsl:import ../../../common/lib/errors.js */
+require('../../../common/lib/errors');
 
 /* Public interface */
 exports.mwConfSchema = mwConfSchema;

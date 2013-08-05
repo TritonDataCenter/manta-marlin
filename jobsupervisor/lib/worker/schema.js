@@ -2,7 +2,7 @@
  * lib/worker/schema.js: worker configuration schema
  */
 
-var mod_schema = require('../../common/lib/schema');
+var mod_schema = require('../../../common/lib/schema');
 
 module.exports = {
     'type': 'object',

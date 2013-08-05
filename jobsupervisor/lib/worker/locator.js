@@ -13,13 +13,13 @@ var mod_libmanta = require('libmanta');
 var mod_uuid = require('node-uuid');
 var mod_vasync = require('vasync');
 
-var mod_mautil = require('../../common/lib/util');
+var mod_mautil = require('../../../common/lib/util');
 
 var sprintf = mod_extsprintf.sprintf;
 var CVError = mod_mautil.CVError;
 
-/* jsl:import ../../common/lib/errors.js */
-require('../../common/lib/errors');
+/* jsl:import ../../../common/lib/errors.js */
+require('../../../common/lib/errors');
 
 /* Public interface */
 exports.createLocator = createLocator;
