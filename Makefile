@@ -118,7 +118,7 @@ deps: | $(NPM_EXEC)
 test: all
 	tools/catest -a
 
-dev/test/mallocbomb/mallocbomb: dev/test/mallocbomb/mallocbomb.c
+dev/tests/mallocbomb/mallocbomb: dev/test/mallocbomb/mallocbomb.c
 
 DISTCLEAN_FILES += node_modules
 

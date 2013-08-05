@@ -93,7 +93,8 @@ function createClient(conf, callback)
 		moray = mod_jsprim.deepCopy(conf['moray']);
 
 	if (!filename)
-		filename = mod_path.join(__dirname, '../etc/config.coal.json');
+		filename = mod_path.join(__dirname,
+		    '../../jobsupervisor/etc/config.coal.json');
 
 	mod_fs.readFile(filename, function (err, contents) {
 		if (err) {
