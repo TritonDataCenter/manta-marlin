@@ -32,7 +32,8 @@ mru_prefix=$1
 #
 # Validate input
 #
-[[ -n "$mru_prefix" ]] || mru_prefix="$(dirname $0)/.."
+[[ -n "$mru_prefix" ]] || \
+    mru_prefix="$(dirname $0)/../../build/proto/root/opt/smartdc/marlin"
 [[ -d "$mru_prefix" ]] || usage "not a directory: $mru_prefix"
 
 cd $mru_prefix || fail "failed to cd to $mru_prefix"
