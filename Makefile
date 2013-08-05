@@ -184,8 +184,8 @@ $(PROTO_MANIFESTS): $(PROTO_MARLIN_ROOT)/%: agent/%
 # updates when individual files change, but that's not a common case since these
 # are pulled or built as a unit.
 #
-PROTO_MARLIN_FILES += $(PROTO_BOOT_ROOT)/scripts
-$(PROTO_BOOT_ROOT)/scripts: $(BUILD)/scripts
+PROTO_MARLIN_FILES += $(PROTO_MARLIN_ROOT)/boot/scripts
+$(PROTO_MARLIN_ROOT)/boot/scripts: $(BUILD)/scripts
 	mkdir -p $(@D) && cp -r $^ $@
 $(BUILD)/scripts: scripts
 
