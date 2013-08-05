@@ -1,5 +1,5 @@
 {
-	"name": "node-marlin",
+	"name": "marlin",
 	"description": "Client library and tools for Marlin",
 	"version": "0.1.0",
 	"author": "Joyent (joyent.com)",
