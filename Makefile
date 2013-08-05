@@ -253,10 +253,10 @@ CLEAN_FILES		+= $(MG_PROTO) \
 .PHONY: release
 release: $(PROTO_TARBALL) $(AGENT_TARBALL)
 
-$(PROTO_TARBALL): $(PROTO_FILES)
+$(PROTO_TARBALL): proto
 	$(TAR) -C $(MG_PROTO) -cjf $@ root site
 
-$(AGENT_TARBALL): $(PROTO_FILES)
+$(AGENT_TARBALL): proto
 	$(TAR) -C $(MG_PROTO)/root/opt/smartdc -czf $@ $(MG_NAME)
 
 #
