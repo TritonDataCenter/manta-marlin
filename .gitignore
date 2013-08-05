@@ -6,6 +6,6 @@ docs/*.html
 cscope.in.out
 cscope.po.out
 cscope.out
-agent/smf/marlin-agent.xml
-agent/smf/marlin-lackey.xml
+agent/smf/manifests/marlin-agent.xml
+agent/smf/manifests/marlin-lackey.xml
 dev/test/mallocbomb/mallocbomb

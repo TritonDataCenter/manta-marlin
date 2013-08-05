@@ -78,8 +78,8 @@ JSL_CONF_NODE	 = dev/tools/jsl.node.conf
 JSL_FILES_NODE   = $(JS_FILES)
 JSSTYLE_FILES	 = $(JS_FILES)
 SMF_MANIFESTS_IN = \
-    agent/smf/marlin-agent.xml.in \
-    agent/smf/marlin-lackey.xml.in
+    agent/smf/manifests/marlin-agent.xml.in \
+    agent/smf/manifests/marlin-lackey.xml.in
 
 #
 # v8plus uses the CTF tools as part of its build, but they can safely be
@@ -107,7 +107,6 @@ CFLAGS		+= -Wall -Werror
 EXECS   	 = dev/tests/mallocbomb/mallocbomb
 CLEANFILES	+= $(EXECS)
 
-# XXX need to build the agent, jobsupervisor, and dev packages
 .PHONY: all
 all: $(SMF_MANIFESTS) deps $(EXECS) $(PROTO_FILES)
 
@@ -140,11 +139,11 @@ PROTO_SMARTDC_ROOT=$(PROTO_ROOT)/root/opt/smartdc
 PROTO_MARLIN_ROOT=$(PROTO_SMARTDC_ROOT)/marlin
 PROTO_BOOT_ROOT=$(PROTO_SMARTDC_ROOT)/boot
 
-MARLIN_AGENT  := $(shell cd agent  && find * -type f -not -name package.json)
-MARLIN_CLIENT := $(shell cd client && find * -type f -not -name package.json)
-MARLIN_COMMON := $(shell cd common && find * -type f -not -name package.json)
-MARLIN_DEV    := $(shell cd dev && find * -type f -not -name package.json)
-MARLIN_JOBSUP := $(shell cd jobsupervisor  && find * -type f -not -name package.json)
+MARLIN_AGENT  := $(shell cd agent  && find * -type f -not -name package.json -not -path 'smf/manifests/*.xml' -not -name .*.swp)
+MARLIN_CLIENT := $(shell cd client && find * -type f -not -name package.json -not -name .*.swp)
+MARLIN_COMMON := $(shell cd common && find * -type f -not -name package.json -not -name .*.swp)
+MARLIN_DEV    := $(shell cd dev && find * -type f -not -name .*.swp)
+MARLIN_JOBSUP := $(shell cd jobsupervisor  && find * -type f -not -name package.json -not -name .*.swp)
 
 PROTO_MARLIN_AGENT = $(MARLIN_AGENT:%=$(PROTO_MARLIN_ROOT)/%)
 PROTO_MARLIN_CLIENT = $(MARLIN_CLIENT:%=$(PROTO_MARLIN_ROOT)/%)
@@ -174,6 +173,11 @@ PROTO_MARLIN_FILES  = \
     $(PROTO_MARLIN_DEV) \
     $(PROTO_MARLIN_JOBSUP)
 
+PROTO_MANIFESTS = $(SMF_MANIFESTS:agent/%=$(PROTO_MARLIN_ROOT)/%)
+PROTO_MARLIN_FILES += $(PROTO_MANIFESTS)
+$(PROTO_MANIFESTS): $(PROTO_MARLIN_ROOT)/%: agent/%
+	mkdir -p $(@D) && cp $^ $@
+
 #
 # It's unfortunate that build/node, build/docs, and build/scripts are referenced
 # by directory rather than by file, since that means we can't do incremental
@@ -191,15 +195,27 @@ PROTO_MARLIN_BUILD  = \
 
 PROTO_MARLIN_FILES += $(PROTO_MARLIN_BUILD)
 PROTO_FILES += $(PROTO_MARLIN_FILES)
-$(PROTO_MARLIN_ROOT)/$(BUILD)/node: deps
+$(PROTO_MARLIN_ROOT)/$(BUILD)/node: | $(BUILD)/node
 	mkdir -p $(@D) && cp -r $(BUILD)/node $@
+$(BUILD)/node: deps
+
 $(PROTO_MARLIN_ROOT)/$(BUILD)/docs: docs
-	mkdir -p $(@D) && cp -r $(BUILD)/docs $@
+	rm -rf "$@" && mkdir -p "$(@D)" && cp -r $(BUILD)/docs "$@"
 
 PROTO_FILES += $(PROTO_SMARTDC_ROOT)/boot/configure.sh
 $(PROTO_SMARTDC_ROOT)/boot/configure.sh:
 	# XXX "marlin" here should be MG_NAME
 	mkdir -p $(@D) && ln -fs /opt/smartdc/marlin/boot/configure.sh $@
+
+#
+# Some tools were historically delivered in "tools", but really belong on
+# "sbin".  We moved these to "sbin", but we add symlinks into "tools".
+#
+LINKS_AGENT_BIN = mragentconf mrdeploycompute mrzone mrzoneremove
+PROTO_LINKS_AGENT_BIN = $(LINKS_AGENT_BIN:%=$(PROTO_MARLIN_ROOT)/tools/%)
+PROTO_MARLIN_FILES += $(PROTO_LINKS_AGENT_BIN)
+$(PROTO_MARLIN_ROOT)/tools/%: | agent/sbin/%
+	mkdir -p $(@D) && ln -fs ../sbin/$* $@
 
 #
 # XXX continuing to work here: need to add package.json, anything else missing
