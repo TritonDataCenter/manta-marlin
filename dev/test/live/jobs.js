@@ -910,7 +910,7 @@ exports.jobMerrorOom = {
 	'assets': {
 	    '/%user%/stor/mallocbomb':
 	        mod_fs.readFileSync(mod_path.join(
-		    __dirname, '../../src/mallocbomb/mallocbomb'))
+		    __dirname, '../mallocbomb/mallocbomb'))
 	},
 	'phases': [ {
 	    'assets': [ '/%user%/stor/mallocbomb' ],
@@ -977,7 +977,7 @@ exports.jobMerrorLackeyOom = {
 	'assets': {
 	    '/%user%/stor/mallocbomb':
 	        mod_fs.readFileSync(mod_path.join(
-		    __dirname, '../../src/mallocbomb/mallocbomb'))
+		    __dirname, '../mallocbomb/mallocbomb'))
 	},
 	'phases': [ {
 	    'assets': [ '/%user%/stor/mallocbomb' ],

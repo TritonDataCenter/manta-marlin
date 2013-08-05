@@ -14,6 +14,48 @@
 #
 
 #
+# MARLIN BUILD SYSTEM
+#
+# The Marlin build system is substantially more complex than most Node module
+# repositories because it represents several distinct but tightly coupled
+# components with overlapping dependencies.  There are four logical groups of
+# code:
+#
+#     agent/		Marlin agent code
+#     jobsupervisor/	Marlin jobsupervisor service code
+#     client/		Marlin (moray) client code
+#     common/		Code used by all of the above
+#
+# We keep all these in the same repository because they are inherently tightly
+# coupled (e.g., they share internal structure definitions in common code), and
+# the git repository is a useful consistency abstraction.
+#
+# The main consumers of the Marlin client are muskie, mackerel, and developers
+# installing this package on OS X to use the debugging tools against remote
+# deployments.  In order to support these clients without pulling in the (many)
+# additional dependencies required to support the rest of Marlin, the
+# package.json at the root of this repository represents only the client package
+# and contains only the dependencies required to run the client library and
+# tools.
+#
+# The other two consumers are builds of the marlin agent and jobsupervisor
+# image.  To build these, we construct a proto area by merging the above four
+# directories and then build a tarball of that.  The agent and jobsupervisor
+# tarballs are logically different, but they're currently built from the exact
+# same proto area, which contains a single package.json that describes the union
+# of each components' dependencies.  These could be separated in the future for
+# cleanliness.
+#
+# Finally, developers also need to be able to run the tools and the test suite.
+# The tools work when run either directly out of the repo or from the proto
+# area, but the test suite must be run from the proto area, since the common
+# package.json contains test suite dependencies as well.
+#
+# Because of all this, the "all" target in this repo builds both the client
+# package at the root of this repository as well as the complete proto area.
+#
+
+#
 # While we only support developing on SmartOS, where we have sdcnode builds
 # available, it's convenient to be able to use tools like "mrjob" and the like
 # from Mac laptops without having to set up a complete dev environment.
@@ -28,7 +70,7 @@ endif
 # Tools
 #
 BASHSTYLE	 = $(NODE) dev/tools/bashstyle
-CATEST		 = tools/catest
+CATEST		 = dev/tools/catest
 CC      	 = gcc
 SMF_DTD		 = dev/tools/service_bundle.dtd.1
 
@@ -50,7 +92,7 @@ BASH_FILES	 = \
     agent/sbin/mrzones			\
     client/sbin/mrjobreport		\
     client/sbin/mrerrors		\
-    client/sbin/mrextractjob	\
+    client/sbin/mrextractjob		\
     dev/tools/catest			\
     dev/tools/mru			\
     jobsupervisor/boot/configure.sh
@@ -104,21 +146,29 @@ endif
 # Repo-specific targets
 #
 CFLAGS		+= -Wall -Werror
-EXECS   	 = dev/tests/mallocbomb/mallocbomb
+EXECS   	 = dev/test/mallocbomb/mallocbomb
 CLEANFILES	+= $(EXECS)
 
+#
+# The default ("all") target is used by developers to build the client package
+# at the root of the repo as well as the full proto area.
+#
 .PHONY: all
-all: $(SMF_MANIFESTS) deps $(EXECS) $(PROTO_FILES)
+all: deps proto
 
+#
+# The "deps" target builds the Node dependency and the installs the npm
+# dependencies of the *client* package.
+#
 .PHONY: deps
 deps: | $(NPM_EXEC)
 	$(NPM_ENV) $(NPM) --no-rebuild install
 
 .PHONY: test
 test: all
-	tools/catest -a
+	$(CATEST) -a
 
-dev/tests/mallocbomb/mallocbomb: dev/test/mallocbomb/mallocbomb.c
+dev/test/mallocbomb/mallocbomb: dev/test/mallocbomb/mallocbomb.c
 
 DISTCLEAN_FILES += node_modules
 
@@ -142,7 +192,8 @@ PROTO_BOOT_ROOT=$(PROTO_SMARTDC_ROOT)/boot
 MARLIN_AGENT  := $(shell cd agent  && find * -type f -not -name package.json -not -path 'smf/manifests/*.xml' -not -name .*.swp -not -path 'smf/manifests/*.xml.in')
 MARLIN_CLIENT := $(shell cd client && find * -type f -not -name package.json -not -name .*.swp)
 MARLIN_COMMON := $(shell cd common && find * -type f -not -name package.json -not -name .*.swp)
-MARLIN_DEV    := package.json
+MARLIN_DEV    := $(shell cd dev && find package.json test -type f -not -name .*.swp -not -name mallocbomb)
+MARLIN_DEV    += test/mallocbomb/mallocbomb
 MARLIN_JOBSUP := $(shell cd jobsupervisor  && find * -type f -not -name package.json -not -name .*.swp)
 
 PROTO_MARLIN_AGENT = $(MARLIN_AGENT:%=$(PROTO_MARLIN_ROOT)/%)

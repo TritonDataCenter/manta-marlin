@@ -11,7 +11,7 @@ shopt -s xpg_echo
 #
 cat_arg0=$(basename $0)			# canonical name of "catest"
 cat_outbase="catest.$$"			# output directory name
-cat_tstdir="test"			# top-level test directory
+cat_tstdir="proto/build/root/opt/smartdc/marlin/test"	# test directory
 
 #
 # Options and arguments

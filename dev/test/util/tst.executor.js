@@ -10,7 +10,7 @@ var mod_bunyan = require('bunyan');
 var mod_contract = require('illumos_contract');
 var mod_vasync = require('vasync');
 
-var mod_executor = require('../../lib/executor');
+var mod_executor = require('../../lib/agent/executor');
 
 var tmpdir = process.env['TMPDIR'] || '/tmp';
 var stdinfile = mod_path.join(tmpdir, 'tst.executor.js.stdin');

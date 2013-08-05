@@ -7,7 +7,7 @@ var mod_assert = require('assert');
 var mod_bunyan = require('bunyan');
 var mod_vasync = require('vasync');
 
-var mod_adnscache = require('../../lib/adnscache');
+var mod_adnscache = require('../../lib/agent/adnscache');
 
 var log, cache, ip, advanced;
 

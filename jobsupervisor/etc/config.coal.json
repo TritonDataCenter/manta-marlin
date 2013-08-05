@@ -1,5 +1,6 @@
 {
 	"instanceUuid": "worker-000",
+	"mantaComputeId": "worker-000",
 	"port": 8081,
 
 	"manta": {
