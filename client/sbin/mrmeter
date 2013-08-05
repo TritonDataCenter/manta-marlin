@@ -17,7 +17,12 @@ var mod_jsprim = require('jsprim');
 var mod_tab = require('tab');
 var mod_verror = require('verror');
 
-var mod_marlin = require('../../common/lib/marlin');
+/* See mrjob. */
+var mod_marlin;
+try { mod_marlin = require('../../common/lib/marlin'); }
+catch (ex) {
+	mod_marlin = require('../lib/marlin');
+}
 
 var EventEmitter = mod_events.EventEmitter;
 var sprintf = mod_extsprintf.sprintf;
