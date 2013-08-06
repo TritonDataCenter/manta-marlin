@@ -1,0 +1,46 @@
+#!/usr/bin/env node
+
+/*
+ * mlocate: given some manta keys, locate their copies on the storage tier
+ */
+
+var mod_bunyan = require('bunyan');
+
+var mod_locator = require('../lib/worker/locator');
+var mod_util = require('../../common/lib/util');
+var mod_worker = require('../lib/worker/worker');
+
+function main()
+{
+	var log, conf, locator;
+
+	if (process.argv.length < 4) {
+		console.error('usage: %s %s conffile key [key ...]',
+		    process.argv[0], process.argv[1]);
+		process.exit(2);
+	}
+
+	log = new mod_bunyan({
+	    'name': 'mlocate',
+	    'level': process.env['LOG_LEVEL'] || 'info'
+	});
+	conf = mod_util.readConf(log, mod_worker.mwConfSchema, process.argv[2]);
+	locator = mod_locator.createLocator(conf, { 'log': log });
+
+	locator.on('ready', function () {
+		locator.locate(process.argv.slice(3), function (err, results) {
+			if (err) {
+				console.error(err.message);
+				process.exit(1);
+				return;
+			}
+
+			console.log(JSON.stringify(results, null, 4));
+
+			if (locator.cleanup)
+				locator.cleanup();
+		});
+	});
+}
+
+main();

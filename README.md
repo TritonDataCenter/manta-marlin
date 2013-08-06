@@ -24,7 +24,11 @@ bits to build on OS X.  To use these tools:
     $ git clone git@git.joyent.com:marlin.git
     ...
     $ cd marlin
-    $ make
+    $ make deps
+
+or just:
+
+    $ npm install git+ssh://git@git.joyent.com:marlin.git
 
 At this point, you'll have several tools available inside the "sbin" directory:
 
@@ -86,6 +90,7 @@ to the new user's profile script:
     $ export MANTA_URL=https://manta.bh1.joyent.us
     $ export MANTA_USER=poseidon
     $ export MANTA_KEY_ID=ff:4a:ad:ac:92:86:ec:d2:5a:9d:88:c8:e8:12:8d:15
+    $ export MANTA_TLS_INSECURE=1
 
 These are all specific to the install.  Don't just copy the values here.  To get
 the MANTA\_KEY\_ID for poseidon, use:
@@ -97,7 +102,7 @@ the MANTA\_KEY\_ID for poseidon, use:
 
 To run the test suite, you must also copy the ssh key of the "poseidon" user to
 to your dev zone.  By default, the tests expect it in
-"$HOME/.ssh/id\_rsa{,.pub}".  However, you can also set the MANTA_KEY
+"$HOME/.ssh/id\_rsa{,.pub}".  However, you can also set the MANTA\_KEY
 environment variable if it located somewhere else.  You can get the poseidon key
 from the "ops" Manta zone.  If your dev zone is on the same box as the ops zone,
 you can do this with:
@@ -106,7 +111,7 @@ you can do this with:
          /zones/$YOUR_DEV_ZONE_UUID/root/$YOUR_LOGIN_NAME/.ssh
 
 Also, if you find the tests are failing in COAL due to retries in Marlin you
-can set the MARLIN_TESTS_STRICT environment variable to false, like so:
+can set the MARLIN\_TESTS\_STRICT environment variable to false, like so:
 
     $ export MARLIN_TESTS_STRICT=false
 
@@ -132,7 +137,7 @@ This part's easy:
     ...
     check ok
 
-Whenever you start working on Marlin, use `. env.sh` to load PATH and other
+Whenever you start working on Marlin, use `. dev/env.sh` to load PATH and other
 environment variables to include both the Marlin tools (mrjob and the like) and
 the Manta tools (mls, mput, etc.)
 
@@ -146,21 +151,23 @@ same system, modify the port number (since the default is a privileged port),
 **disable the worker whose configuration you copied**, and then run:
 
     $ cd marlin
-    $ . env.sh
+    $ . dev/env.sh
     $ make
-    $ node lib/worker/server.js | tee ../worker.out | bunyan -o short
+    $ node build/proto/root/opt/smartdc/marlin/lib/worker/server.js \
+          ../config.json | tee ../worker.out | bunyan -o short
 
-With this approach, you can stop and start the worker as you make changes.
+With this approach, you can apply changes by stopping the worker, running "make
+proto", and starting the worker again.
 
 The agent must be run inside the global zone, since it uses other zones to
 actually execute tasks.  To run your own agent, you'll want to run `tools/mru`
 from inside the global zone, as in
 `/zones/$your_dev_zone/root/home/$your_user/marlin/tools/mru`.  This script will
 reconfigure the marlin-agent SMF service running in the global zone to execute
-the code in your workspace
-(`/zones/$your_dev_zone/root/home/$your_user/marlin`).  This way, you can make
-changes in your workspace and simply `svcadm restart marlin-agent` to test them
-out.
+the code in the proto area of your workspace
+(`/zones/$your_dev_zone/root/home/$your_user/marlin/build/proto/root`).  This
+way, you can make changes in your workspace, run "make proto", and simply
+`svcadm restart marlin-agent` to test them out.
 
 ## Development tools
 
@@ -209,7 +216,7 @@ described above.  To run the test suite, just run:
 
 You can run individual tests manually with just:
 
-    $ node test/...
+    $ node proto/root/opt/smartdc/marlin/test/...
 
 Many of them emit bunyan output, so you may want to pipe that to bunyan(1).
 
@@ -230,8 +237,8 @@ since it assumes all tasks will be executed by the local agent.
 To run individual tests, you have to set up the environment with:
 
     # cd /zones/$your_zone/root/home/$your_user/marlin
-    # . env.sh
-    # . tools/catest_init.sh
+    # . dev/env.sh
+    # . dev/tools/catest_init.sh
     # catest_init_global
 
 Then you can run individual tests just like inside a zone:

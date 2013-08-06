@@ -1,0 +1,369 @@
+#!/usr/bin/env node
+
+/*
+ * mrmeter: Summarize Marlin metering logs.  See usage below for details.
+ * This program is basically a command-line wrapper around the Marlin client
+ * library function for summarizing metering records.
+ */
+
+var mod_assert = require('assert');
+var mod_events = require('events');
+var mod_fs = require('fs');
+var mod_path = require('path');
+
+var mod_extsprintf = require('extsprintf');
+var mod_getopt = require('posix-getopt');
+var mod_jsprim = require('jsprim');
+var mod_tab = require('tab');
+var mod_verror = require('verror');
+
+/* See mrjob. */
+var mod_marlin;
+try { mod_marlin = require('../../common/lib/marlin'); }
+catch (ex) {
+	mod_marlin = require('../lib/marlin');
+}
+
+var EventEmitter = mod_events.EventEmitter;
+var sprintf = mod_extsprintf.sprintf;
+var VError = mod_verror.VError;
+
+var mmArg0 = mod_path.basename(__filename);
+
+/* Valid aggregation keys and their field widths (in columns). */
+var mmValidAggrKeys = {
+    'owner': 36,
+    'jobid': 36,
+    'phase': 5,
+    'taskid': 36,
+    'hour': 13,
+    'minute': 16
+};
+
+/* Usage documentation. */
+var mmUsageMessage = [
+    'usage: $CMD [-Cdj] [-s start_time] [-e end_time] [-k field[,...] ...] ',
+    '       $CMS [-r resource[,...] ...] [logfile]',
+    '    or $CMD -h | --help'
+].join('\n').replace(/\$CMD/g, mmArg0).replace(
+    /\$CMS/, mmArg0.replace(/./g, ' '));
+
+var mmUsageExtended = [
+    '',
+    'Summarize Marlin metering records from the named logfile or stdin.',
+    'Available options include:',
+    '',
+    '    -C              Ignore TaskCheckpoint records.  By default, the ',
+    '                    report is based on incremental deltas in both ',
+    '                    TaskCheckpoint and TaskDone records.  With -C, the ',
+    '                    checkpoint records are ignored, and only the ',
+    '                    cumulative data in the TaskDone records is reported.',
+    '                    The tradeoffs are subtle but important; see the ',
+    '                    Marlin client library documentation for details.',
+    '',
+    '    -d              Report additional debug statistics.',
+    '',
+    '    -j              Emit output as a full JSON summary.  The default is ',
+    '                    tabular, human-readable output.',
+    '',
+    '    -k fields       Break out resources used by the given key, which may ',
+    '                    be a comma-separated list of:',
+    '',
+    '                        ' + Object.keys(mmValidAggrKeys).join(', '),
+    '',
+    '                    The default is "jobid".',
+    '',
+    '    -r resources    Summarize only usage of the specified resources.',
+    '                    Each resource is identified by a hierarchical name, ',
+    '                    and multiple resources may be specified with multiple',
+    '                    -r flags or using a comma-separated list to a single ',
+    '                    -r flag (or both).  Top-level resources currently ',
+    '                    include "time", "cpu", "memory", "vfs", "zfs", and ',
+    '                    "vnic0".  The default is "time".',
+    '',
+    '    -s start_time   Only include log records at or after the given time.',
+    '',
+    '    -e end_time     Only include log records at or before the given time.',
+    '',
+    'Example 1: Summarize elapsed execution time (in milliseconds) by jobid',
+    '',
+    '    $ $CMD $(svcs -L marlin-agent)',
+    '    JOBID                                     TIME',
+    '    0110ce2f-a968-4adf-92a4-e947072ff377      7738',
+    '    035182c6-3eed-4297-8528-14197432a560     12168',
+    '    04163600-50d2-48d7-ac13-bc1fe34f4885     10569',
+    '',
+    '    This example is equivalent to:',
+    '',
+    '        $CMD -k jobid -r time $(svcs -L marlin-agent)',
+    '',
+    'Example 2: Summarize elapsed execution time (in milliseconds) by jobid ',
+    'and minute',
+    '',
+    '    # $CMD -k jobid,minute $(svcs -L marlin-agent)',
+    '    JOBID                                MINUTE                TIME',
+    '    0110ce2f-a968-4adf-92a4-e947072ff377 2013-04-02T16:16      3542',
+    '    0110ce2f-a968-4adf-92a4-e947072ff377 2013-04-02T16:17      4196',
+    '    035182c6-3eed-4297-8528-14197432a560 2013-04-02T00:16     12168',
+    '',
+    'Example 3: Summarize VFS read operations by hour (all jobs)',
+    '',
+    '    $ $CMD -k hour -r vfs.reads $(svcs -L marlin-agent)',
+    '    HOUR          VFS.READS',
+    '    2013-04-02T00     19657',
+    '    2013-04-02T01     30220',
+    '    2013-04-02T02     23356',
+    '    2013-04-02T03     27088',
+    '    2013-04-02T04     26298',
+    '',
+    'Example 4: Summarize all "zfs" stats by minute',
+    '',
+    '    $ $CMD -k minute -r zfs $(svcs -L marlin-agent)',
+    '    MINUTE           ZFS.NREAD ZFS.NWRITTEN ZFS.READS  ZFS.WRITES',
+    '    2013-04-02T00:16  62080000      1257472       893          25',
+    '    2013-04-02T00:17     67584            0        16           0',
+    '    2013-04-02T01:10   5341696            0       125           0'
+].join('\n').replace(/\$CMD/g, mmArg0);
+
+function main()
+{
+	var parser, options, option, filename, stream;
+
+	parser = new mod_getopt.BasicParser('Cde:h(help)jk:r:s:', process.argv);
+	options = {
+	    'summaryType': 'deltas',
+	    'debug': false,
+	    'aggrKey': null,
+	    'startTime': null,
+	    'endTime': null,
+	    'resources': null,
+	    'output': 'table'
+	};
+
+	while ((option = parser.getopt()) !== undefined) {
+		switch (option.option) {
+		case 'C':
+			options['summaryType'] = 'cumulative';
+			break;
+
+		case 'd':
+			options['debug'] = true;
+			break;
+
+		case 'h':
+			console.error(mmUsageMessage);
+			console.error(mmUsageExtended);
+			process.exit(2);
+			break;
+
+		case 'j':
+			options['output'] = 'json';
+			break;
+
+		case 'k':
+			options['aggrKey'] = mergeFields(
+			    options['aggrKey'], option.optarg, mmValidAggrKeys);
+			if (!options['aggrKey'])
+				usage('invalid argument for -k: "%s"',
+				    option.optarg);
+			break;
+
+		case 'r':
+			options['resources'] = mergeFields(
+			    options['resources'], option.optarg, null);
+			if (!options['resources'])
+				usage('invalid argument for -r: "%s"',
+				    option.optarg);
+			break;
+
+		case 's':
+		case 'e':
+			var t = mod_jsprim.parseDateTime(option.optarg);
+			if (t === null)
+				usage('invalid format for -%s', option.option);
+
+			t = mod_jsprim.iso8601(t);
+			if (option.option == 's')
+				options['startTime'] = t;
+			else
+				options['endTime'] = t;
+
+			break;
+
+		default:
+			/* error message already emitted by getopt */
+			mod_assert.equal('?', option.option);
+			usage();
+			break;
+		}
+	}
+
+	if (options['aggrKey'] === null)
+		options['aggrKey'] = [ 'jobid' ];
+	if (options['resources'] === null)
+		options['resources'] = [ 'time' ];
+
+	if (parser.optind() >= process.argv.length) {
+		stream = process.stdin;
+		mrmeter(options, stream);
+		return;
+	}
+
+	filename = process.argv[parser.optind()];
+	stream = mod_fs.createReadStream(filename);
+	var onOpenErr = function (err) {
+		fatal(new VError(err, 'open "%s"', filename));
+	};
+	stream.on('error', onOpenErr);
+	stream.on('open', function () {
+		stream.removeListener('error', onOpenErr);
+		stream.pause();
+		mrmeter(options, stream);
+	});
+}
+
+function mrmeter(options, stream)
+{
+	options['stream'] = stream;
+	var reader = new mod_marlin.MarlinMeterReader(options);
+	reader.on('warn', warn);
+	reader.on('fatal', fatal);
+	reader.on('end', function () { mrmeterReport(options, reader); });
+}
+
+function mrmeterReport(options, reader)
+{
+	if (options['debug'])
+		printTable(process.stderr, reader.stats());
+
+	if (options['output'] == 'json') {
+		process.stdout.write(JSON.stringify(
+		    reader.reportHierarchical()) + '\n');
+		return;
+	}
+
+	/*
+	 * Build up the list of columns: the first N are the aggrKey columns,
+	 * and the rest are data columns described in the report.
+	 */
+	var data, columns, rows;
+	var i, j;
+
+	data = reader.reportFlattenedFully();
+	columns = [];
+	options['aggrKey'].forEach(function (k) {
+		columns.push({
+		    'label': k.toUpperCase(),
+		    'width': mmValidAggrKeys[k]
+		});
+	});
+
+	data['datacolumns'].forEach(function (c) {
+		columns.push({
+		    'label': c.toUpperCase(),
+		    'align': 'right',
+		    'width': c == 'time' ? 9 : c.length
+		});
+	});
+
+	/*
+	 * Convert two-tuple numbers to actual numbers for display, sort the
+	 * rows, and write out the table.
+	 */
+	rows = data['flattened'];
+	for (i = 0; i < rows.length; i++) {
+		for (j = 0; j < rows[i].length; j++) {
+			if (Array.isArray(rows[i][j])) {
+				rows[i][j] = rows[i][j][0] * 1e3 +
+				    Math.round(rows[i][j][1] / 1e6);
+			}
+		}
+	}
+
+	rows.sort(function (r1, r2) {
+		for (var k = 0; k < r1.length; k++) {
+			if (r1[k] < r2[k])
+				return (-1);
+			else if (r1[k] > r2[k])
+				return (1);
+		}
+
+		return (0);
+	});
+
+	process.on('uncaughtException', function (err) {
+		if (err['syscall'] == 'write' && err['code'] == 'EPIPE')
+			process.exit(0);
+		throw (err);
+	});
+
+	mod_tab.emitTable({
+	    'columns': columns,
+	    'rows': data['flattened']
+	});
+}
+
+function printTable(stream, kvpairs)
+{
+	var maxlen = 0;
+	var k, fmt;
+
+	for (k in kvpairs)
+		maxlen = Math.max(maxlen, k.length + 1);
+
+	fmt = '%-' + maxlen + 's %s\n';
+
+	for (k in kvpairs)
+		stream.write(sprintf(fmt, k + ':', kvpairs[k]));
+}
+
+
+/*
+ * The following functions should be moved to a general-purpose CLI library (as
+ * if Node doesn't have enough of those).
+ */
+function usage(message)
+{
+	if (arguments.length > 0) {
+		var str = sprintf.apply(null,
+		    Array.prototype.slice.call(arguments));
+		console.error('%s: %s', mmArg0, str);
+	}
+
+	console.error(mmUsageMessage);
+	console.error('\nUse --help for more information.');
+	process.exit(2);
+}
+
+function warn(err)
+{
+	console.error('%s: %s', mmArg0, err.message);
+}
+
+function fatal(err)
+{
+	warn(err);
+	process.exit(1);
+}
+
+function mergeFields(fields, str, allowed)
+{
+	var rv, args, i;
+
+	rv = fields === null ? [] : fields;
+	/* JSSTYLED */
+	args = str.split(/[,\s+]/);
+	for (i = 0; i < args.length; i++) {
+		if (args[i].length === 0)
+			continue;
+
+		if (allowed && !allowed[args[i]])
+			return (null);
+
+		rv.push(args[i]);
+	}
+
+	return (rv);
+}
+
+main();
