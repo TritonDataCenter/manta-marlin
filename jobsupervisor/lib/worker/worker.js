@@ -211,9 +211,6 @@ require('../errors');
 exports.mwConfSchema = mwConfSchema;
 exports.mwWorker = Worker;
 
-/* Static configuration */
-var mwTmpfileRoot = '/var/tmp/marlin';
-
 /*
  * Maintains state for a single job.  The logic for this class lives in the
  * worker class.  Arguments include:
@@ -388,7 +385,6 @@ function Worker(args)
 	this.w_max_pending_auths = conf['tunables']['maxPendingAuths'];
 	this.w_max_pending_deletes = conf['tunables']['maxPendingDeletes'];
 	this.w_time_tick = conf['tunables']['timeTick'];
-	this.w_tmproot = mwTmpfileRoot + '-' + this.w_uuid;
 	this.w_names = {};
 	this.w_storage_map = {};
 
@@ -415,6 +411,10 @@ function Worker(args)
 	    },
 	    'limit': conf['tunables']['maxRecordsPerQuery'],
 	    'timePoll': conf['tunables']['timePoll']
+	};
+
+	this.w_update_options = {
+	    'limit': conf['tunables']['maxRecordsPerUpdate']
 	};
 
 	this.w_locator = mod_locator.createLocator(args['conf'], {
@@ -541,7 +541,6 @@ Worker.prototype.start = function ()
 	this.w_dtrace.fire('worker-startup',
 	    function () { return ([ worker.w_uuid ]); });
 
-	this.initTmp();
 	this.initMoray();
 	this.initRedis();
 
@@ -570,23 +569,6 @@ Worker.prototype.start = function ()
 
 		process.nextTick(worker.w_ticker);
 		worker.w_log.info('worker started');
-	});
-};
-
-Worker.prototype.initTmp = function ()
-{
-	var worker = this;
-	var files;
-
-	mod_assert.ok(mod_jsprim.startsWith(this.w_tmproot, '/var/tmp/marlin'));
-
-	this.w_log.info('initializing "%s"', this.w_tmproot);
-	mod_mkdirp.sync(this.w_tmproot);
-
-	files = mod_fs.readdirSync(this.w_tmproot);
-	files.forEach(function (file) {
-		worker.w_log.info('removing "%s"', file);
-		mod_fs.unlinkSync(mod_path.join(worker.w_tmproot, file));
 	});
 };
 
@@ -1151,6 +1133,7 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 	var nunpropagated = 0;
 	var ndeletes = 0;
 	var njoboutputs = 0;
+	var updatei = -1;
 
 	job.j_log.debug('committing task "%s"', record['key']);
 
@@ -1223,14 +1206,23 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 			phase.p_nretryneeded++;
 			nretries = 1;
 			record['value']['wantRetry'] = true;
+			/*
+			 * We should never have more than one error per task.
+			 * We set the limit to a few more so that we can check
+			 * whether something went wrong.
+			 */
+			updatei = allchanges.length;
 			allchanges.push([ 'update', this.w_buckets['error'],
 			    sprintf('(taskId=%s)', record['value']['taskId']),
-			    { 'retried': true, 'timeCommitted': now } ]);
+			    { 'retried': true, 'timeCommitted': now },
+			    { 'limit': 5 }]);
 		} else {
 			nerrors = 1;
+			updatei = allchanges.length;
 			allchanges.push([ 'update', this.w_buckets['error'],
 			    sprintf('(taskId=%s)', record['value']['taskId']),
-			    { 'retried': false, 'timeCommitted': now } ]);
+			    { 'retried': false, 'timeCommitted': now },
+			    { 'limit': 5 } ]);
 		}
 	}
 
@@ -1324,7 +1316,7 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 		 */
 		return (new Error('conflict while committing task'));
 	    }
-	}, function (err) {
+	}, function (err, meta) {
 		if (!err) {
 			job.j_job['stats']['nJobOutputs'] += njoboutputs;
 			job.j_job['stats'][whichstat]++;
@@ -1345,6 +1337,17 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 			if (nretries > 0) {
 				phase.p_nretryneeded--;
 				mod_assert.ok(phase.p_nretryneeded > 0);
+			}
+
+			if (updatei != -1) {
+				if (meta.etags[i].count !== 0 &&
+				    meta.etags[i].count != 1) {
+					job.j_log.error({
+					    'requests': allchanges,
+					    'result': meta
+					}, 'unexpectedly updated too many ' +
+					    'error records');
+				}
 			}
 		}
 
@@ -2541,8 +2544,11 @@ Worker.prototype.jobTick = function (job)
 
 	mod_assert.equal(job.j_state, 'running');
 
-	if (!job.j_input_fully_read && !job.j_mark_inputs.tooRecent())
-		this.jobMarkInputs(job);
+	if (!job.j_input_fully_read && !job.j_mark_inputs.tooRecent()) {
+		job.j_mark_inputs.start();
+		this.jobMarkAllInputs(job,
+		    function () { job.j_mark_inputs.done(); });
+	}
 
 	if (this.jobDone(job)) {
 		job.j_save.markDirty();
@@ -2579,7 +2585,7 @@ Worker.prototype.jobInputEnded = function (job)
 	this.w_dtrace.fire('job-input-done',
 	    function () { return ([ job.j_id, job.j_job ]); });
 	job.j_last_input = undefined;
-	this.jobMarkInputs(job, function () {
+	this.jobMarkAllInputs(job, function () {
 		worker.w_bus.fence(sid, function () {
 			job.j_log.info('finished reading job inputs');
 			job.j_input_fully_read = true;
@@ -2591,30 +2597,38 @@ Worker.prototype.jobInputEnded = function (job)
 	});
 };
 
-Worker.prototype.jobMarkInputs = function (job, forcecb)
+/*
+ * Updates jobinput objects to have domain = us.  We do this in batches to avoid
+ * arbitrary-size server-side operations, so we keep running the query until we
+ * get fewer than the "limit" number of records updated.
+ */
+Worker.prototype.jobMarkAllInputs = function (job, callback)
 {
-	var worker, bucket, filter, changes;
+	var worker, bucket, filter, changes, request;
 
 	worker = this;
 	bucket = this.w_buckets['jobinput'];
 	filter = sprintf('(&(jobId=%s)(!(domain=*)))', job.j_id);
 	changes = { 'domain': job.j_job['worker'] };
+	request = [ 'update', bucket, filter, changes, this.w_update_options ];
 
+	job.j_log.debug('marking inputs');
 	this.w_dtrace.fire('job-mark-inputs-start',
 	    function () { return ([ job.j_id ]); });
 
-	job.j_log.debug('marking inputs');
-	if (!forcecb)
-		job.j_mark_inputs.start();
-	this.w_bus.batch([
-	    [ 'update', bucket, filter, changes ] ], {}, function () {
+	this.w_bus.batch([ request ], {}, function (err, meta) {
 		worker.w_dtrace.fire('job-mark-inputs-done',
 		    function () { return ([ job.j_id ]); });
-		job.j_log.debug('marked inputs');
-		if (!forcecb)
-			job.j_mark_inputs.done();
-		else
-			forcecb();
+		job.j_log.debug({ 'err', err, 'result': meta },
+		    'marked inputs');
+
+		if (meta &&
+		    meta.etags[0]['count'] >= this.w_update_options['limit']) {
+			job.j_log.warn('mark inputs: update overflow');
+			worker.jobMarkAllInputs(job, callback);
+		} else {
+			callback(err, meta);
+		}
 	});
 };
 

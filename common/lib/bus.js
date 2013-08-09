@@ -335,7 +335,7 @@ MorayBus.prototype.pollOne = function (subscrip, nowdate)
  * "records" is specified as an array of arrays of one of these forms:
  *
  *     [ 'put', bucket, key, value, [options] ]
- *     [ 'update', bucket, filter, fields ]
+ *     [ 'update', bucket, filter, fields, [options] ]
  *
  * For 'put', the per-record "options" object may contain an etag on which to
  * predicate the write.
@@ -853,7 +853,7 @@ function MorayBusTransaction(records, options, callback)
 			    'ident': rec[1] + '/' + rec[2]
 			};
 		} else {
-			mod_assert.ok(rec.length == 4);
+			mod_assert.ok(rec.length == 4 || rec.length == 5);
 			mod_assert.equal(rec[0], 'update',
 			    'only "put" or "update" are supported in batch');
 			mod_assert.equal(typeof (rec[1]), 'string',
@@ -862,11 +862,17 @@ function MorayBusTransaction(records, options, callback)
 			    'record filter must be a string');
 			mod_assert.equal(typeof (rec[3]), 'object',
 			    'record itself must be an object');
+			if (rec[0] == 'update')
+				mod_assert.ok(rec.length == 5 &&
+				    typeof (rec[4]) == 'object' &&
+				    rec[4].hasOwnProperty('limit'),
+				    '"limit" must be specified for updates');
 			txn.tx_records[i] = {
 			    'operation': 'update',
 			    'bucket': rec[1],
 			    'filter': rec[2],
-			    'fields': rec[3]
+			    'fields': rec[3],
+			    'options': rec[4] || {}
 			};
 		}
 	});
