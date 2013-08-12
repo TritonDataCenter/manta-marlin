@@ -257,6 +257,17 @@ function JobState(args)
 	 * (or is writing) some inputs before the workerid was assigned.
 	 */
 	this.j_mark_inputs = new Throttler(tunables['timeMarkInputs']);
+
+	/*
+	 * Agent health management state: server-side updates to abandon tasks
+	 * for this job are serialized using these structures.
+	 * j_abandons_{pending,wanted} protect task abandon operations that
+	 * affect a specific set of agent generations, while
+	 * j_abandonall_pending protects operations that affect all tasks.
+	 */
+	this.j_abandons_pending = {};	/* agent instance -> timestamp */
+	this.j_abandons_wanted = {};	/* agent instance -> timestamp */
+	this.j_abandonall_pending = {};	/* agent instance -> timestamp */
 }
 
 JobState.prototype.debugState = function ()
@@ -319,11 +330,7 @@ function JobTask(jobid, pi, taskid)
 }
 
 /*
- * Agent health management: the worker is responsible for monitoring agent
- * health and handling tasks that have been assigned to agents which have either
- * restarted or just gone out to lunch.  In both cases, we'll use per-job
- * server-side updates to set state=done and result=fail, which will trigger
- * other queries to find these tasks and handle them just like any other errors.
+ * See "Agent health management" below.
  */
 function AgentState(record)
 {
@@ -1340,8 +1347,8 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 			}
 
 			if (updatei != -1) {
-				if (meta.etags[i].count !== 0 &&
-				    meta.etags[i].count != 1) {
+				if (meta.etags[updatei]['count'] !== 0 &&
+				    meta.etags[updatei]['count'] != 1) {
 					job.j_log.error({
 					    'requests': allchanges,
 					    'result': meta
@@ -1915,6 +1922,136 @@ Worker.prototype.onRecordHealth = function (record, barrier)
 		this.onWorkerHealth(record, barrier);
 };
 
+Worker.prototype.onWorkerHealth = function (record, barrier)
+{
+	var instance, ws, oldrec, now;
+
+	instance = record['value']['instance'];
+	if (instance == this.w_uuid)
+		return;
+
+	if (!this.w_allworkers.hasOwnProperty(instance)) {
+		this.w_log.info('worker "%s": discovered', instance);
+		this.w_allworkers[instance] = new WorkerState(record);
+		return;
+	}
+
+	ws = this.w_allworkers[instance];
+	oldrec = ws.ws_record;
+	now = Date.now();
+	if (oldrec['_mtime'] != record['_mtime']) {
+		/* This worker is alive, since the health record was updated. */
+		if (ws.ws_timedout) {
+			this.w_log.info('worker "%s": came back', instance);
+			ws.ws_timedout = false;
+		}
+		ws.ws_last = now;
+		ws.ws_record = record;
+	} else if (now - ws.ws_last >
+	    this.w_conf['tunables']['timeWorkerAbandon']) {
+		/*
+		 * It's been too long since this health record has been updated.
+		 * We (and the other workers still running) will attempt to pick
+		 * up this worker's load.  Each time through, we pick up one of
+		 * the domains he's still operating in attempt to spread out the
+		 * load.  We use the barrier to avoid queueing multiple attempts
+		 * to takeover the same domain.
+		 */
+		if (!ws.ws_timedout) {
+			this.w_log.info('worker "%s": timed out', instance);
+			this.w_dtrace.fire('worker-timeout',
+			    function () { return ([ instance ]); });
+			ws.ws_timedout = true;
+		}
+
+		if (ws.ws_operating.length > 0)
+			this.domainTakeover(mod_jsprim.randElt(ws.ws_operating),
+			    barrier, instance);
+	}
+};
+
+Worker.prototype.onMantaStorage = function (newrec)
+{
+	var v = newrec['value'];
+	this.w_storage_map[v['manta_storage_id']] = v;
+};
+
+Worker.prototype.eachRunningJob = function (func)
+{
+	mod_jsprim.forEachKey(this.w_jobs, function (_, job) {
+		if (job.j_dropped ||
+		    job.j_state == 'unassigned' || job.j_state == 'finishing')
+			return;
+
+		func(job);
+	});
+};
+
+
+/*
+ * Agent health management
+ *
+ * It's the job supervisor's responsibility to monitor agent health and retry
+ * tasks when an agent crashes or disappears for an extended period.  In the
+ * current design, agents don't try to resume tasks they were executing before a
+ * crash, so the supervisor must explicitly abandon such tasks and retry them as
+ * new tasks.  Similarly when an agent disappears for an extended period (as in
+ * the case of a network partition or hang), the supervisor can decide to
+ * abandon and retry tasks assigned to that agent.
+ *
+ * Monitoring is driven by periodic queries of the "health" bucket.  (We don't
+ * use explicit timeouts because we don't want to inadvertently mark agents as
+ * failed when we've lost connectivity to Moray.)  When we read each agent's
+ * health record, we enter onAgentHealth(), which decides whether the agent is
+ * alive, has timed out (as in the case of a partition or hang), or has
+ * restarted.  onAgentHealth() may invoke agentStarted() or agentTimeout(),
+ * which eventually invokes agentAbandonTasks() to mark the Moray records for
+ * these tasks as abandoned, completed, and failed.  After that, the usual task
+ * commit and retry mechanism processes the tasks.
+ *
+ * The details of this process are non-trivial for a number of reasons.  First,
+ * these operations could require updating an arbitrary number of records.  We
+ * use a server-side "update" mechanism, but it's still pretty expensive, and
+ * must for practical purposes be limited to operate on at most a fixed number
+ * of records at a time.  But the agent's state can change while we're issuing
+ * these updates.  Moreover, we abandon tasks on a per-job basis.  This is
+ * required in some cases, as when we initially assign a job to ourselves, since
+ * we don't know that we didn't miss an agent restart while we ourselves were
+ * offline.  We also use the per-job approach in all cases to avoid the
+ * headaches associated with modifying other supervisors' records, and because
+ * it keeps the individual queries smaller.
+ *
+ * To summarize, the call chain basically looks like this:
+ *
+ *                    onAgentHealth(): read health record
+ *          +------------------------+--------------------------+
+ *          |                                                   |
+ *  agentTimeout(): agent has                        agentStarted(): agent
+ *  timed out; for all jobs...                       has restarted; for all
+ *          |                                        jobs ...   |
+ *          |                                                   |
+ *          |                                                   |
+ *  agentAbandonAll():                          agentAbandonStale():
+ *  abandon all tasks for this                  abandon tasks for previous
+ *  agent and job.                              agent generations
+ *          |                                                   |
+ *          | (loop while agent         (loop until no matching |
+ *          |  is timed out)             tasks left)            |
+ *          +------------------------+--------------------------+
+ *                                   |
+ *                  agentAbandonTasks(): marks a fixed-size set
+ *                  of matching task records as abandoned
+ *
+ * Both agentAbandonAll() and agentAbandonStale() deal with concurrent
+ * invocations for the same job (in different ways) in order to handle weird
+ * state transitions (e.g., multiple agent restarts, the second detected while
+ * we're still trying to abandon tasks from the first one; a timeout followed by
+ * a restart while we're still abandoning tasks; a restart followed by a
+ * timeout).
+ *
+ * When we assign ourselves a job, we also invoke agentAbandonStale() for that
+ * job to deal with the case of agent restarts while we were offline.
+ */
 Worker.prototype.onAgentHealth = function (newrec)
 {
 	var instance, agent, oldrec, now, tunables;
@@ -1986,128 +2123,164 @@ Worker.prototype.onAgentHealth = function (newrec)
 	this.agentTimeout(instance);
 };
 
-Worker.prototype.onWorkerHealth = function (record, barrier)
-{
-	var instance, ws, oldrec, now;
-
-	instance = record['value']['instance'];
-	if (instance == this.w_uuid)
-		return;
-
-	if (!this.w_allworkers.hasOwnProperty(instance)) {
-		this.w_log.info('worker "%s": discovered', instance);
-		this.w_allworkers[instance] = new WorkerState(record);
-		return;
-	}
-
-	ws = this.w_allworkers[instance];
-	oldrec = ws.ws_record;
-	now = Date.now();
-	if (oldrec['_mtime'] != record['_mtime']) {
-		/* This worker is alive, since the health record was updated. */
-		if (ws.ws_timedout) {
-			this.w_log.info('worker "%s": came back', instance);
-			ws.ws_timedout = false;
-		}
-		ws.ws_last = now;
-		ws.ws_record = record;
-	} else if (now - ws.ws_last >
-	    this.w_conf['tunables']['timeWorkerAbandon']) {
-		/*
-		 * It's been too long since this health record has been updated.
-		 * We (and the other workers still running) will attempt to pick
-		 * up this worker's load.  Each time through, we pick up one of
-		 * the domains he's still operating in attempt to spread out the
-		 * load.  We use the barrier to avoid queueing multiple attempts
-		 * to takeover the same domain.
-		 */
-		if (!ws.ws_timedout) {
-			this.w_log.info('worker "%s": timed out', instance);
-			this.w_dtrace.fire('worker-timeout',
-			    function () { return ([ instance ]); });
-			ws.ws_timedout = true;
-		}
-
-		if (ws.ws_operating.length > 0)
-			this.domainTakeover(mod_jsprim.randElt(ws.ws_operating),
-			    barrier, instance);
-	}
-};
-
-Worker.prototype.onMantaStorage = function (newrec)
-{
-	var v = newrec['value'];
-	this.w_storage_map[v['manta_storage_id']] = v;
-};
-
-Worker.prototype.eachRunningJob = function (func)
-{
-	mod_jsprim.forEachKey(this.w_jobs, function (_, job) {
-		if (job.j_dropped ||
-		    job.j_state == 'unassigned' || job.j_state == 'finishing')
-			return;
-
-		func(job);
-	});
-};
-
 /*
- * Invoked when we detect that an agent has restarted to finish off any tasks
- * from a previous instance of that agent.  We also invoke this when we discover
- * a new agent in case, as it's always safe to do this.
+ * Invoked when we detect that an agent has restarted to abandon any tasks from
+ * a previous instance of that agent.  This is always safe, since we abandon
+ * tasks not from the current generation (which we will have just read), so
+ * we shouldn't affect anything that just happened.
  */
 Worker.prototype.agentStarted = function (instance)
 {
 	var worker = this;
-	var agent = this.w_agents[instance];
-	var generation = agent.a_record['value']['generation'];
-	var filter = sprintf('(!(agentGeneration=%s))', generation);
 	var timestamp = mod_jsprim.iso8601(new Date());
 
-	/*
-	 * We don't technically need to do this on a per-job basis, but it keeps
-	 * the queries themselves small and avoids the headaches of dealing with
-	 * workers stomping on each others' jobs.
-	 */
-	this.w_log.info('agent "%s": failing stale tasks for all jobs',
-	    instance, filter);
+	this.w_log.info('agent "%s": abandoning stale tasks for all my jobs',
+	    instance);
 	this.eachRunningJob(function (job) {
-		worker.agentFailTasks(instance, job, timestamp, filter);
+		worker.agentAbandonStale(instance, job, timestamp);
 	});
 };
 
 /*
- * Invoked when we decide that an agent has been AWOL for too long to wait for.
- * We abort any tasks that this agent was responsible for.  This sounds like
- * what we do on agent restart (see agentStarted), but the difference is that we
- * abort all unfinished tasks, not just ones that we *know* the agent isn't
- * working on.  As a result, the filter's a little different, and it's
- * inadvisable to invoke this unless we're fairly sure the agent has gone away.
+ * Abandons all tasks for the given job that are older than the current agent
+ * generation.  This works using batches of server-side updates and keeps going
+ * until we have gotten all the records.  Callers ensure that new tasks are not
+ * being issued for this job with an older generation so that this will always
+ * converge.  For each batch of server-side updates, we use the latest
+ * generation we've read, handling multiple agent restarts in a short period.
+ *
+ * This function is invoked both when an agent restarts and when we assign
+ * ourselves a job.  For simplicity, we always update the records on a per-job
+ * basis, which keeps the queries themselves smaller, avoids the headaches
+ * associated with supervisors stomping each others' jobs, and is much easier to
+ * reason about.
+ */
+Worker.prototype.agentAbandonStale = function (instance, job, timestamp)
+{
+	var worker, agent, generation, filter, limit;
+
+	if (job.j_abandons_pending.hasOwnProperty(instance)) {
+		job.j_log.info('agent "%s": pending request to abandon stale ' +
+		    'tasks (enqueued new request)');
+		job.j_abandons_wanted[instance] = timestamp;
+		return;
+	}
+
+	job.j_abandons_pending[instance] = timestamp;
+	delete (job.j_abandons_wanted[instance]);
+
+	worker = this;
+	agent = this.w_agents[instance];
+	generation = agent.a_record['value']['generation'];
+	filter = sprintf('(!(agentGeneration=%s))', generation);
+	job.j_log.info('agent "%s": abandoning stale tasks', instance);
+	limit = this.agentAbandonTasks(instance, job, timestamp, filter,
+	    function (err, count) {
+		delete (job.j_abandons_pending[instance]);
+
+		/*
+		 * If this failed, or we hit our self-imposed limit, or there's
+		 * been another request in the meantime (usually signifying a
+		 * generation change), take another lap with the latest
+		 * generation and filter.
+		 */
+		if (err || count >= limit)
+			job.j_abandons_wanted[instance] = timestamp;
+
+		if (job.j_abandons_wanted.hasOwnProperty(instance))
+			worker.agentAbandonStale(instance, job,
+			    job.j_abandons_wanted[instance]);
+	    });
+};
+
+/*
+ * Invoked periodically while an agent is AWOL to abandon tasks that this agent
+ * was responsible for.  This is similar to what we do when an agent restarts
+ * (see agentStarted), but in this case we abort *all* tasks instead of just
+ * ones from a previous generation.  As a result, it's inadvisable to invoke
+ * this unless we're fairly sure the agent is gone.
+ *
+ * This function abandons tasks on a per-job basis, and each time this function
+ * is invoked, we kick off an abandon request for each job that doesn't already
+ * have one outstanding.  If that request completes having only abandoned some
+ * of the tasks (e.g., because we hit the self-imposed per-query limit), another
+ * request will be made immediately as long as the agent is still timed out.
  */
 Worker.prototype.agentTimeout = function (instance)
 {
 	var worker = this;
 	var timestamp = mod_jsprim.iso8601(new Date());
 
-	/*
-	 * See agentStarted for why we do this per-job instead of globally.
-	 */
-	this.w_log.info('agent "%s": failing unfinished tasks for all jobs',
+	mod_assert.ok(this.w_agents[instance].a_timedout);
+	this.w_log.info('agent "%s": abandoning all tasks for all my jobs',
 	    instance);
 	this.eachRunningJob(function (job) {
-		worker.agentFailTasks(instance, job, timestamp, '');
+		worker.agentAbandonAll(instance, job, timestamp);
 	});
 };
 
-Worker.prototype.agentFailTasks = function (instance, job, timestamp, extra)
+/*
+ * Abandons all tasks for the given agent and job.  This is done in batches
+ * using server-side updates.  If the agent stops becoming timed out at any
+ * point, we'll stop making requests.
+ */
+Worker.prototype.agentAbandonAll = function (instance, job, timestamp)
+{
+	var worker, agent, limit;
+
+	if (job.j_abandonall_pending.hasOwnProperty(instance)) {
+		/*
+		 * Unlike agentAbandonStale(), where a subsequent request is
+		 * semantically meaningful because the agent generation has
+		 * changed, a subsequent request here doesn't mean we need to
+		 * issue another update.  Once the pending request finishes, if
+		 * the agent is still timed out, another update will be
+		 * triggered.  If not, then another update isn't necessary.
+		 */
+		job.j_log.info('agent "%s": pending request to abandon all ' +
+		    'tasks (ignored new request)', instance);
+		return;
+	}
+
+	job.j_abandonall_pending[instance] = timestamp;
+	worker = this;
+	agent = this.w_agents[instance];
+	job.j_log.info('agent "%s": abandoning unfinished tasks', instance);
+	limit = this.agentAbandonTasks(instance, job, timestamp, '',
+	    function (err, count) {
+		delete (job.j_abandonall_pending[instance]);
+
+		/*
+		 * If we failed or hit our self-imposed limit, we'll
+		 * take another lap immediately unless the agent is no
+		 * longer timed out.
+		 */
+		if (agent.a_timedout && (err || count >= limit))
+			worker.agentAbandonAll(instance, job, timestamp);
+	    });
+};
+
+/*
+ * Common function to abandon some number of uncompleted tasks assigned to agent
+ * "instance" for job "job" that also match the optional filter "extra".
+ * Invokes "callback" upon completion.  This operation makes a single
+ * server-side update with a limit, so it may update any number of tasks, and
+ * not necessarily all of them.  This function returns the limit used for the
+ * request.  "callback" is invoked with an error and the number of records
+ * updated so that callers can implement differing policies about what to do
+ * based on the number of records updated.
+ */
+Worker.prototype.agentAbandonTasks = function (instance, job, timestamp, extra,
+    callback)
 {
 	var worker = this;
-	var bucket, filter, changes;
+	var bucket, filter, changes, limit, request;
 
 	/*
-	 * All we actually need to do is set state=done and result=fail on each
-	 * of these.  After that it will be picked up by the same query that
-	 * handles failures recorded by the agent.
+	 * All we actually need to do to cause these tasks to be committed and
+	 * retried is to set state=done, result=fail, and timeAbandoned.  After
+	 * that it will be picked up by the same query that handles failures
+	 * recorded by the agent.
 	 */
 	bucket = this.w_buckets['task'];
 	filter = sprintf('(&(jobId=%s)(!(state=done))(mantaComputeId=%s)%s)',
@@ -2119,13 +2292,26 @@ Worker.prototype.agentFailTasks = function (instance, job, timestamp, extra)
 	    'timeAbandoned': timestamp
 	};
 
-	this.w_log.debug('agent "%s": job "%s": failing tasks',
+	limit = this.w_update_options['limit'];
+	mod_assert.equal(typeof (limit), 'number');
+	request = [ 'update', bucket, filter, changes, this.w_update_options ];
+	this.w_log.info('agent "%s": job "%s": abandoning tasks',
 	    instance, job.j_id, extra);
-	worker.w_bus.batch([
-	    [ 'update', bucket, filter, changes ] ], {}, function () {
-		worker.w_log.debug('agent "%s": job "%s": done failing tasks',
-		    instance, job.j_id, extra);
-	    });
+	this.w_bus.batch([ request ], {}, function (err, meta) {
+		if (err) {
+			worker.w_log.warn(err, 'agent "%s": job "%s": ' +
+			    'failed to abandon tasks', instance, job.j_id,
+			    extra);
+			callback(err);
+		} else {
+			var count = meta.etags[0]['count'];
+			worker.w_log.info('agent "%s": job "%s": ' +
+			    'abandoned %d tasks', instance, job.j_id, count,
+			    extra);
+			callback(null, count);
+		}
+	});
+	return (limit);
 };
 
 /*
@@ -2331,12 +2517,10 @@ Worker.prototype.jobAssigned = function (job)
 	 * fact that we don't start picking up jobs until we've gotten each
 	 * agents' last health report.
 	 */
-	job.j_log.info('failing stale tasks on all agents');
+	job.j_log.info('abandoning stale tasks on all agents');
 	var timestamp = mod_jsprim.iso8601(new Date());
 	mod_jsprim.forEachKey(this.w_agents, function (instance, agent) {
-		var filter = sprintf('(!(agentGeneration=%s))',
-		    agent.a_record['value']['generation']);
-		worker.agentFailTasks(instance, job, timestamp, filter);
+		worker.agentAbandonStale(instance, job, timestamp);
 	});
 };
 
@@ -2619,7 +2803,7 @@ Worker.prototype.jobMarkAllInputs = function (job, callback)
 	this.w_bus.batch([ request ], {}, function (err, meta) {
 		worker.w_dtrace.fire('job-mark-inputs-done',
 		    function () { return ([ job.j_id ]); });
-		job.j_log.debug({ 'err', err, 'result': meta },
+		job.j_log.debug({ 'err': err, 'result': meta },
 		    'marked inputs');
 
 		if (meta &&
@@ -2915,7 +3099,7 @@ Worker.prototype.taskCreate = function (job, pi, now)
 Worker.prototype.taskPostDispatchCheck = function (task)
 {
 	var taskvalue, instance, agent;
-	var job, filter, timestamp;
+	var job, timestamp;
 
 	taskvalue = task.t_value;
 	instance = taskvalue['mantaComputeId'];
@@ -2930,11 +3114,8 @@ Worker.prototype.taskPostDispatchCheck = function (task)
 	mod_assert.ok(job !== undefined);
 	job.j_log.info('issued task "%s" with already stale generation',
 	    task.t_id);
-
-	filter = sprintf('(!(agentGeneration=%s))',
-	    agent.a_record['value']['generation']);
 	timestamp = mod_jsprim.iso8601(new Date());
-	this.agentFailTasks(instance, job, timestamp, filter);
+	this.agentAbandonStale(instance, job, timestamp);
 };
 
 /*
