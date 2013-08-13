@@ -297,6 +297,8 @@ function JobPhase(phase)
 	this.p_nuncommitted = undefined;	/* nr of uncommitted tasks */
 	this.p_nunpropagated = undefined;	/* nr of unpropagated outputs */
 	this.p_nretryneeded = undefined;	/* nr of tasks needing retry */
+	this.p_nunmarked = undefined;		/* nr of tasks needing */
+						/* taskoutputs marked */
 
 	if (this.p_type != 'reduce')
 		return;
@@ -730,6 +732,7 @@ Worker.prototype.domainStart = function (domainid)
 		    wQueries.wqJobsInputEnded,
 		    wQueries.wqJobInputs,
 		    wQueries.wqJobTasksDone,
+		    wQueries.wqJobTasksNeedingOutputsMarked,
 		    wQueries.wqJobTasksNeedingDelete,
 		    wQueries.wqJobTaskInputsNeedingDelete,
 		    wQueries.wqJobTasksNeedingRetry,
@@ -1117,6 +1120,9 @@ Worker.prototype.onRecordTask = function (record, barrier)
 			job.j_log.error('onRecord: unexpected task', record);
 	} else if (record['value']['timeCommitted'] === undefined) {
 		this.onRecordTaskCommit(record, barrier, job, phase, now);
+	} else if (record['value']['timeOutputsMarkStart'] !== undefined &&
+	    record['value']['timeOutputsMarkDone'] === undefined) {
+		this.onRecordTaskMarkOutputs(record, barrier, job, phase, now);
 	} else if (record['value']['wantRetry'] &&
 	    record['value']['timeRetried'] === undefined) {
 		this.onRecordTaskRetry(record, barrier, job, phase, now);
@@ -1132,8 +1138,7 @@ Worker.prototype.onRecordTask = function (record, barrier)
 Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
     now)
 {
-	var worker = this;
-	var tochanges, allchanges, uuid, errvalue;
+	var allchanges, uuid, errvalue;
 	var whichstat, reducer;
 	var nretries = 0;
 	var nerrors = 0;
@@ -1144,27 +1149,22 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 
 	job.j_log.debug('committing task "%s"', record['key']);
 
-	tochanges = {};
-	tochanges['timeCommitted'] = now;
 	record['value']['timeCommitted'] = now;
 
 	allchanges = [];
 
 	if (record['value']['result'] == 'ok') {
 		whichstat = 'nTasksCommittedOk';
+		record['value']['timeOutputsMarkStart'] = now;
 
 		if (record['value']['phaseNum'] == job.j_phases.length - 1) {
 			njoboutputs = record['value']['nOutputs'];
-			tochanges['valid'] = true;
-			tochanges['timePropagated'] = now;
 		} else {
 			nunpropagated = record['value']['nOutputs'];
 			phase.p_nunpropagated += nunpropagated;
 		}
 	} else {
 		whichstat = 'nTasksCommittedFail';
-
-		tochanges['timePropagated'] = now;
 
 		/*
 		 * On a normal, non-retryable failure, the agent issues an
@@ -1287,8 +1287,6 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 
 	allchanges.push([ 'put', record['bucket'], record['key'],
 	    record['value'], { 'etag': record['_etag'] } ]);
-	allchanges.push([ 'update', this.w_buckets['taskoutput'],
-	      sprintf('(taskId=%s)', record['key']), tochanges ]);
 
 	if (phase.p_type == 'reduce') {
 		reducer = phase.p_reducers[record['value']['rIdx']];
@@ -1329,8 +1327,8 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 			job.j_job['stats'][whichstat]++;
 			job.j_job['stats']['nErrors'] += nerrors;
 			job.j_job['stats']['nRetries'] += nretries;
+			phase.p_nunmarked++;
 			phase.p_nuncommitted--;
-			worker.jobPropagateEnd(job, null);
 		} else {
 			job.j_log.warn(err, 'unwinding state changes after ' +
 			    'error committing task');
@@ -1346,19 +1344,89 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 				mod_assert.ok(phase.p_nretryneeded > 0);
 			}
 
-			if (updatei != -1) {
-				if (meta.etags[updatei]['count'] !== 0 &&
-				    meta.etags[updatei]['count'] != 1) {
-					job.j_log.error({
-					    'requests': allchanges,
-					    'result': meta
-					}, 'unexpectedly updated too many ' +
-					    'error records');
-				}
+		}
+
+		if (updatei != -1) {
+			if (meta.etags[updatei]['count'] !== 0 &&
+			    meta.etags[updatei]['count'] != 1) {
+				job.j_log.error({
+				    'requests': allchanges,
+				    'result': meta
+				}, 'unexpectedly updated too many ' +
+				    'error records');
 			}
 		}
 
 		barrier.done('task ' + record['key']);
+	});
+};
+
+Worker.prototype.onRecordTaskMarkOutputs = function (record, barrier, job,
+    phase, now)
+{
+	var filter, changes, limit, update, worker;
+
+	barrier.start(record['key']);
+
+	/*
+	 * Set timeCommitted on all of the taskoutputs for this task.  If we're
+	 * not going to propagate them (because either the task failed or
+	 * because this is the final phase), also set timePropagated here.
+	 */
+	filter = sprintf('taskId=%s)', record['key']);
+	changes = { 'timeCommitted': now };
+
+	if (record['value']['result'] == 'ok') {
+		if (record['value']['phaseNum'] == job.j_phases.length - 1) {
+			changes['valid'] = true;
+			changes['timePropagated'] = now;
+		}
+	} else {
+		changes['timePropagated'] = now;
+	}
+
+	job.j_log.debug('task "%s": marking outputs', record['key'], changes);
+	limit = this.w_update_options['limit'];
+	mod_assert.equal(typeof (limit), 'number');
+	update = [ 'update', this.w_buckets['taskoutput'], filter, changes,
+	    this.w_update_options ];
+	worker = this;
+	this.w_bus.batch([ update ], function (err, meta) {
+		if (err) {
+			job.j_log.warn(err,
+			    'task "%s": failed to mark outputs', record['key']);
+			return;
+		}
+
+		mod_assert.equal(typeof (meta.etags[0]['count']), 'number');
+		if (meta.etags[0]['count'] >= limit) {
+			job.j_log.info('task "%s": marked %d outputs (need ' +
+			    'another lap)', record['key'],
+			    meta.etags[0]['count']);
+			barrier.done(record['key']);
+			return;
+		}
+
+		/*
+		 * We could use a PUT here, but this avoids the possibility of
+		 * an EtagConflict since there's no possibility of a legitimate
+		 * conflict here.
+		 */
+		worker.w_bus.batch([[ 'update', record['bucket'], filter, {
+		    'timeOutputsMarkDone': mod_jsprim.iso8601(Date.now())
+		}, { 'limit': 1 } ]], {}, function (err2) {
+			if (err2) {
+				job.j_log.warn(err2,
+				    'task "%s": failed to mark outputs',
+				    record['key']);
+			} else {
+				job.j_log.debug('task "%s": marked all outputs',
+				    record['key']);
+				phase.p_nunmarked--;
+				worker.jobPropagateEnd(job, null);
+			}
+			barrier.done(record['key']);
+		});
 	});
 };
 
@@ -2387,13 +2455,13 @@ Worker.prototype.jobAssigned = function (job)
 
 	/*
 	 * In order to know when the job is finished, we need to know how many
-	 * uncommitted tasks, tasks needing retry, and committed, unpropagated
-	 * taskoutputs there are.  Since we're the only component that writes
-	 * new tasks and commits taskoutputs, these numbers cannot go up except
-	 * by our own action, and if both of these numbers are zero, then there
-	 * cannot be any outstanding work.  We need this same information on a
-	 * per-phase basis in order to know when individual reducers' inputs are
-	 * done.
+	 * uncommitted tasks, tasks needing outputs marked, tasks needing retry,
+	 * and committed, unpropagated taskoutputs there are.  Since we're the
+	 * only component that writes new tasks and commits taskoutputs, these
+	 * numbers cannot go up except by our own action, and if both of these
+	 * numbers are zero, then there cannot be any outstanding work.  We need
+	 * this same information on a per-phase basis in order to know when
+	 * individual reducers' inputs are done.
 	 */
 	job.j_phases.forEach(function (_, i) {
 		queryconf = wQueries.wqCountJobTasksUncommitted;
@@ -2404,6 +2472,16 @@ Worker.prototype.jobAssigned = function (job)
 			barrier.done('phase ' + i + ' tasks');
 			mod_assert.equal(typeof (c), 'number');
 			job.j_phases[i].p_nuncommitted = c;
+		    });
+
+		queryconf = wQueries.wqCountJobTasksNeedingOutputsMarked;
+		query = queryconf['query'].bind(null, i, job.j_id);
+		barrier.start('phase ' + i + ' tasks needing outputs');
+		worker.w_bus.count(worker.w_buckets[queryconf['bucket']],
+		    query, worker.w_bus_options, function (c) {
+			barrier.done('phase ' + i + ' tasks needing outputs');
+			mod_assert.equal(typeof (c), 'number');
+			job.j_phases[i].p_nunmarked = c;
 		    });
 
 		queryconf = wQueries.wqCountJobTasksNeedingRetry;
@@ -2967,6 +3045,7 @@ Worker.prototype.jobDone = function (job)
 	for (pi = 0; pi < job.j_phases.length; pi++) {
 		if (job.j_phases[pi].p_ndispatches > 0 ||
 		    job.j_phases[pi].p_nuncommitted > 0 ||
+		    job.j_phases[pi].p_nunmarked > 0 ||
 		    job.j_phases[pi].p_nunpropagated > 0 ||
 		    job.j_phases[pi].p_nretryneeded > 0)
 			return (false);
@@ -3793,6 +3872,7 @@ Worker.prototype.jobPropagateEnd = function (job, now)
 
 		if (phase.p_ndispatches > 0 ||
 		    phase.p_nuncommitted > 0 ||
+		    phase.p_nunmarked > 0 ||
 		    phase.p_nunpropagated > 0 ||
 		    phase.p_nretryneeded > 0)
 			/* Tasks still running. */

@@ -141,6 +141,15 @@ exports.wqJobTasksDone = {
     }
 };
 
+exports.wqJobTasksNeedingOutputsMarked = {
+    'name': 'tasks needing outputs marked',
+    'bucket': 'task',
+    'query': function (conf, domainid) {
+	return (sprintf('(&(domain=%s)(timeCommitted=*)(!(timeCancelled=*))' +
+	    '(timeOutputsMarkStart=*)(!(timeOutputsMarkDone=*)))', domainid));
+    }
+};
+
 exports.wqJobTasksNeedingDelete = {
     'name': 'tasks needing delete',
     'bucket': 'task',

@@ -435,6 +435,17 @@ var sMorayTask = {
 		'timeCommitted': sDateTime,	/* time worker committed */
 
 		/*
+		 * Tasks can have very large numbers of outputs, so we mark
+		 * those outputs for propagation asynchronously.
+		 * timeOutputsMarkStart is usually set to timeCommitted at
+		 * commit-time.  The supervisor marks outputs outputs in batches
+		 * until there are none left, after which point it sets
+		 * timeOutputsMarkDone.
+		 */
+		'timeOutputsMarkStart': sDateTime,
+		'timeOutputsMarkDone': sDateTime,
+
+		/*
 		 * There are two cases where task processing may stop without
 		 * going through the above path: tasks may be taken over by the
 		 * worker with an error, or they may be cancelled.
@@ -775,6 +786,8 @@ sBktConfigs['task'] = {
 	'timeDone':		{ 'type': 'string' },
 	'timeRetried':		{ 'type': 'string' },
 	'timeInputRemoved':	{ 'type': 'string' },
+	'timeOutputsMarkStart': { 'type': 'string' },
+	'timeOutputsMarkDone':	{ 'type': 'string' },
 
 	/* for debugging only */
 	'nattempts':		{ 'type': 'number' },
