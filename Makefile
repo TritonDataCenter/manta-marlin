@@ -169,6 +169,7 @@ test: all
 	$(CATEST) -a
 
 dev/test/mallocbomb/mallocbomb: dev/test/mallocbomb/mallocbomb.c
+CLEAN_FILES += dev/test/mallocbomb/mallocbomb
 
 DISTCLEAN_FILES += node_modules
 
