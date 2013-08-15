@@ -438,12 +438,23 @@ var sMorayTask = {
 		 * Tasks can have very large numbers of outputs, so we mark
 		 * those outputs for propagation asynchronously.
 		 * timeOutputsMarkStart is usually set to timeCommitted at
-		 * commit-time.  The supervisor marks outputs outputs in batches
-		 * until there are none left, after which point it sets
+		 * commit-time.  The supervisor marks outputs in batches until
+		 * there are none left, after which point it sets
 		 * timeOutputsMarkDone.
 		 */
 		'timeOutputsMarkStart': sDateTime,
 		'timeOutputsMarkDone': sDateTime,
+
+		/*
+		 * Similarly, reduce tasks can have very large numbers of
+		 * inputs, so we mark those for cleanup asynchronously.
+		 * timeInputsMarkCleanupStart is usually set to
+		 * timeOutputsMarkDone.  The supervisor marks inputs in batches
+		 * until there are none left, after which point it sets
+		 * timeInputsMarkDone.
+		 */
+		'timeInputsCleanupMarkStart': sDateTime, /* reduce only */
+		'timeInputsCleanupMarkDone': sDateTime,  /* reduce only */
 
 		/*
 		 * There are two cases where task processing may stop without
@@ -788,6 +799,8 @@ sBktConfigs['task'] = {
 	'timeInputRemoved':	{ 'type': 'string' },
 	'timeOutputsMarkStart': { 'type': 'string' },
 	'timeOutputsMarkDone':	{ 'type': 'string' },
+	'timeInputsMarkCleanupStart': { 'type': 'string' },
+	'timeInputsMarkCleanupDone':  { 'type': 'string' },
 
 	/* for debugging only */
 	'nattempts':		{ 'type': 'number' },

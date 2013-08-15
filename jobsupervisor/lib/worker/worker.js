@@ -297,8 +297,11 @@ function JobPhase(phase)
 	this.p_nuncommitted = undefined;	/* nr of uncommitted tasks */
 	this.p_nunpropagated = undefined;	/* nr of unpropagated outputs */
 	this.p_nretryneeded = undefined;	/* nr of tasks needing retry */
-	this.p_nunmarked = undefined;		/* nr of tasks needing */
+	this.p_nunmarked_propagate = undefined;	/* nr of tasks needing */
 						/* taskoutputs marked */
+	this.p_nunmarked_cleanup = undefined;	/* nr of tasks needing */
+						/* taskinputs marked for */
+						/* cleanup */
 
 	if (this.p_type != 'reduce')
 		return;
@@ -471,6 +474,8 @@ function Worker(args)
 	    this.onRecordTaskCommit.bind(this);
 	this.w_task_handlers[wQueries.wqJobTasksNeedingOutputsMarked['name']] =
 	    this.onRecordTaskMarkOutputs.bind(this);
+	this.w_task_handlers[wQueries.wqJobTasksNeedingInputsMarked['name']] =
+	    this.onRecordTaskMarkInputs.bind(this);
 	this.w_task_handlers[wQueries.wqJobTasksNeedingDelete['name']] =
 	    function (record, barrier, job, phase, now) {
 		worker.taskRecordCleanup(record, barrier, job, job.j_job, now);
@@ -747,6 +752,7 @@ Worker.prototype.domainStart = function (domainid)
 		    wQueries.wqJobInputs,
 		    wQueries.wqJobTasksDone,
 		    wQueries.wqJobTasksNeedingOutputsMarked,
+		    wQueries.wqJobTasksNeedingInputsMarked,
 		    wQueries.wqJobTasksNeedingDelete,
 		    wQueries.wqJobTaskInputsNeedingDelete,
 		    wQueries.wqJobTasksNeedingRetry,
@@ -1159,7 +1165,6 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 	var whichstat, reducer;
 	var nretries = 0;
 	var nerrors = 0;
-	var ndeletes = 0;
 	var updatei = -1;
 
 	job.j_log.debug('committing task "%s"', record['key']);
@@ -1241,58 +1246,6 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 		}
 	}
 
-	/*
-	 * Now's the time to schedule cleanup of anonymous intermediate objects
-	 * created by this job.  By "anonymous", we mean objects that the user
-	 * has not explicitly given a name to.  (Named objects are not
-	 * automatically removed.)  By "intermediate", we mean objects created
-	 * by this job that are not final output objects, which we identify as
-	 * the inputs to all non-phase-0 tasks.  These may be specified in the
-	 * task itself (for map tasks), or they may be specified by a number of
-	 * taskinput records (for reduce tasks).
-	 *
-	 * If this task failed and was retried, there's nothing to do here,
-	 * since we're not ready to remove the input objects yet.
-	 *
-	 * Otherwise, if this is a map task, we mark wantInputRemoved=true when
-	 * we save it here.  If this is a reduce task, we do a server-side mass
-	 * update to set wantInputRemoved=true on the taskinput records.  We
-	 * have separate queries that scan for such records, delete the
-	 * corresponding object if it's not anonymous, and then set
-	 * timeInputRemoved.  (This has to be two steps for the taskinput case
-	 * because we don't have those records at the moment.  Separating these
-	 * two steps for the task case allows us to write this commit and
-	 * process other commits without blocking on the delete to actually
-	 * happen.)
-	 */
-	if (record['value']['phaseNum'] > 0 &&
-	    (record['value']['result'] == 'ok' ||
-	    !record['value']['wantRetry'])) {
-		if (phase.p_type == 'reduce') {
-			if (record['value']['nInputs'] !== undefined) {
-				ndeletes = record['value']['nInputs'];
-			} else {
-				/*
-				 * If we didn't end input yet, we don't know
-				 * exactly how many taskinput records there are.
-				 * There's at least r_nissued, and at most
-				 * r_ninput, and the difference are in flight.
-				 */
-				reducer = phase.p_reducers[
-				    record['value']['rIdx']];
-				ndeletes = reducer.r_nissued;
-			}
-			allchanges.push([ 'update', this.w_buckets['taskinput'],
-			    sprintf('(taskId=%s)', record['value']['taskId']),
-			    { 'wantInputRemoved': true } ]);
-		} else {
-			ndeletes = 1;
-			record['value']['wantInputRemoved'] = true;
-		}
-
-		job.j_ndeletes += ndeletes;
-	}
-
 	allchanges.push([ 'put', record['bucket'], record['key'],
 	    record['value'], { 'etag': record['_etag'] } ]);
 
@@ -1334,14 +1287,11 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 			job.j_job['stats'][whichstat]++;
 			job.j_job['stats']['nErrors'] += nerrors;
 			job.j_job['stats']['nRetries'] += nretries;
-			phase.p_nunmarked++;
+			phase.p_nunmarked_propagate++;
 			phase.p_nuncommitted--;
 		} else {
 			job.j_log.warn(err, 'unwinding state changes after ' +
 			    'error committing task');
-
-			job.j_ndeletes -= ndeletes;
-			mod_assert.ok(job.j_ndeletes >= 0);
 
 			if (nretries > 0) {
 				phase.p_nretryneeded--;
@@ -1376,7 +1326,7 @@ Worker.prototype.onRecordTaskMarkOutputs = function (record, barrier, job,
 	 * not going to propagate them (because either the task failed or
 	 * because this is the final phase), also set timePropagated here.
 	 */
-	filter = sprintf('(taskId=%s)', record['key']);
+	filter = sprintf('(&(taskId=%s)(!(timeCommitted=*)))', record['key']);
 	changes = { 'timeCommitted': now };
 
 	if (record['value']['result'] == 'ok') {
@@ -1395,7 +1345,7 @@ Worker.prototype.onRecordTaskMarkOutputs = function (record, barrier, job,
 	    this.w_update_options ];
 	worker = this;
 	this.w_bus.batch([ update ], {}, function (err, meta) {
-		var nupdated;
+		var nupdated, taskchanges;
 
 		if (err) {
 			job.j_log.warn(err,
@@ -1425,9 +1375,51 @@ Worker.prototype.onRecordTaskMarkOutputs = function (record, barrier, job,
 		 */
 		job.j_log.debug('task "%s": updating task after marking ' +
 		    '%d outputs', record['key'], nupdated);
-		worker.w_bus.batch([[ 'update', record['bucket'], filter, {
+		taskchanges = {
 		    'timeOutputsMarkDone': mod_jsprim.iso8601(Date.now())
-		}, { 'limit': 1 } ]], {}, function (err2) {
+		};
+
+		/*
+		 * Now's the time to schedule cleanup of anonymous intermediate
+		 * objects created by this job.  By "anonymous", we mean objects
+		 * that the user has not explicitly given a name to.  (Named
+		 * objects are not automatically removed.)  By "intermediate",
+		 * we mean objects created by this job that are not final output
+		 * objects, which we identify as the inputs to all non-phase-0
+		 * tasks.  These may be specified in the task itself (for map
+		 * tasks), or they may be specified by a number of taskinput
+		 * records (for reduce tasks).
+		 *
+		 * If this task failed and was retried, there's nothing to do
+		 * here, since we're not ready to remove the input objects yet.
+		 *
+		 * Otherwise, if this is a map task, we mark
+		 * wantInputRemoved=true when we save it here.  If this is a
+		 * reduce task, we set timeInputsMarkCleanupStart, which will
+		 * later cause us to do server-side batch updates to set
+		 * wantInputRemoved=true on the taskinput records.  We have
+		 * separate queries that scan for such records, delete the
+		 * corresponding object if it's not anonymous, and then set
+		 * timeInputRemoved.
+		 */
+		var ndeletes = 0, ncleanup = 0;
+
+		if (record['value']['phaseNum'] > 0 &&
+		    (record['value']['result'] == 'ok' ||
+		    !record['value']['wantRetry'])) {
+			if (phase.p_type == 'reduce') {
+				ncleanup = 1;
+				taskchanges['timeInputsMarkCleanupStart'] =
+				    taskchanges['timeOutputsMarkDone'];
+			} else {
+				ndeletes = 1;
+				taskchanges['wantInputRemoved'] = true;
+			}
+		}
+
+		worker.w_bus.batch([[ 'update', record['bucket'],
+		    sprintf('(taskId=%s)', record['key']), taskchanges,
+		    { 'limit': 1 } ]], {}, function (err2) {
 			if (err2) {
 				job.j_log.warn(err2,
 				    'task "%s": failed to mark outputs',
@@ -1435,9 +1427,82 @@ Worker.prototype.onRecordTaskMarkOutputs = function (record, barrier, job,
 			} else {
 				job.j_log.debug('task "%s": marked all outputs',
 				    record['key']);
-				phase.p_nunmarked--;
+				job.j_ndeletes += ndeletes;
+				phase.p_nunmarked_cleanup += ncleanup;
+				phase.p_nunmarked_propagate--;
 				worker.jobPropagateEnd(job, null);
 			}
+
+			barrier.done(record['key']);
+		});
+	});
+};
+
+Worker.prototype.onRecordTaskMarkInputs = function (record, barrier, job,
+    phase, now)
+{
+	var filter, changes, limit, update, worker;
+
+	barrier.start(record['key']);
+
+	/*
+	 * Set wantInputRemoved on all of the taskinputs for this task.
+	 */
+	filter = sprintf('(&(taskId=%s)(!(wantInputRemoved=*)))',
+	    record['key']);
+	changes = { 'wantInputRemoved': true };
+	job.j_log.debug('task "%s": marking inputs for cleanup', record['key']);
+	limit = this.w_update_options['limit'];
+	mod_assert.equal(typeof (limit), 'number');
+	update = [ 'update', this.w_buckets['taskinput'], filter, changes,
+	    this.w_update_options ];
+	worker = this;
+	this.w_bus.batch([ update ], {}, function (err, meta) {
+		var nupdated, taskchanges;
+
+		if (err) {
+			job.j_log.warn(err,
+			    'task "%s": failed to mark inputs for cleanup',
+			    record['key']);
+			barrier.done(record['key']);
+			return;
+		}
+
+		nupdated = meta.etags[0]['count'];
+		mod_assert.equal(typeof (nupdated), 'number');
+		job.j_ndeletes += nupdated;
+		if (nupdated >= limit) {
+			job.j_log.info('task "%s": marked %d inputs for ' +
+			    'cleanup (need another lap)', record['key'],
+			    nupdated);
+			barrier.done(record['key']);
+			return;
+		}
+
+		/*
+		 * We could use a PUT here, but this avoids the possibility of
+		 * an EtagConflict since there's no possibility of a legitimate
+		 * conflict here.
+		 */
+		job.j_log.debug('task "%s": updating task after marking ' +
+		    '%d inputs for cleanup', record['key'], nupdated);
+		taskchanges = {
+		    'timeInputsMarkCleanupDone': mod_jsprim.iso8601(Date.now())
+		};
+
+		worker.w_bus.batch([[ 'update', record['bucket'],
+		    sprintf('(taskId=%s)', record['key']), taskchanges,
+		    { 'limit': 1 } ]], {}, function (err2) {
+			if (err2) {
+				job.j_log.warn(err2, 'task "%s": failed to ' +
+				    'mark inputs for cleanup', record['key']);
+			} else {
+				job.j_log.debug('task "%s": marked all ' +
+				    'inputs for cleanup', record['key']);
+				phase.p_nunmarked_cleanup--;
+				worker.jobPropagateEnd(job, null);
+			}
+
 			barrier.done(record['key']);
 		});
 	});
@@ -2495,7 +2560,18 @@ Worker.prototype.jobAssigned = function (job)
 			barrier.done('phase ' + i + ' tasks needing outputs');
 			mod_assert.equal(typeof (c), 'number');
 			job.j_log.info('tasks needing outputs', c);
-			job.j_phases[i].p_nunmarked = c;
+			job.j_phases[i].p_nunmarked_propagate = c;
+		    });
+
+		queryconf = wQueries.wqCountJobTasksNeedingInputsMarked;
+		query = queryconf['query'].bind(null, i, job.j_id);
+		barrier.start('phase ' + i + ' tasks needing inputs');
+		worker.w_bus.count(worker.w_buckets[queryconf['bucket']],
+		    query, worker.w_bus_options, function (c) {
+			barrier.done('phase ' + i + ' tasks needing inputs');
+			mod_assert.equal(typeof (c), 'number');
+			job.j_log.info('tasks needing inputs', c);
+			job.j_phases[i].p_nunmarked_cleanup = c;
 		    });
 
 		queryconf = wQueries.wqCountJobTasksNeedingRetry;
@@ -3059,7 +3135,8 @@ Worker.prototype.jobDone = function (job)
 	for (pi = 0; pi < job.j_phases.length; pi++) {
 		if (job.j_phases[pi].p_ndispatches > 0 ||
 		    job.j_phases[pi].p_nuncommitted > 0 ||
-		    job.j_phases[pi].p_nunmarked > 0 ||
+		    job.j_phases[pi].p_nunmarked_propagate > 0 ||
+		    job.j_phases[pi].p_nunmarked_cleanup > 0 ||
 		    job.j_phases[pi].p_nunpropagated > 0 ||
 		    job.j_phases[pi].p_nretryneeded > 0)
 			return (false);
@@ -3894,7 +3971,8 @@ Worker.prototype.jobPropagateEnd = function (job, now)
 
 		if (phase.p_ndispatches > 0 ||
 		    phase.p_nuncommitted > 0 ||
-		    phase.p_nunmarked > 0 ||
+		    phase.p_nunmarked_propagate > 0 ||
+		    phase.p_nunmarked_cleanup > 0 ||
 		    phase.p_nunpropagated > 0 ||
 		    phase.p_nretryneeded > 0)
 			/* Tasks still running. */

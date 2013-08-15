@@ -150,6 +150,16 @@ exports.wqJobTasksNeedingOutputsMarked = {
     }
 };
 
+exports.wqJobTasksNeedingInputsMarked = {
+    'name': 'tasks needing inputs marked for cleanup',
+    'bucket': 'task',
+    'query': function (conf, domainid) {
+	return (sprintf('(&(domain=%s)(timeCommitted=*)(!(timeCancelled=*))' +
+	    '(timeInputsMarkCleanupStart=*)(!(timeInputsMarkCleanupDone=*)))',
+	    domainid));
+    }
+};
+
 exports.wqJobTasksNeedingDelete = {
     'name': 'tasks needing delete',
     'bucket': 'task',
@@ -233,6 +243,17 @@ exports.wqCountJobTasksNeedingOutputsMarked = {
 	return (sprintf('(&(jobId=%s)(phaseNum=%d)(timeCommitted=*)' +
 	    '(!(timeCancelled=*))(timeOutputsMarkStart=*)' +
 	    '(!(timeOutputsMarkDone=*)))', jobid, phasei));
+    }
+};
+
+exports.wqCountJobTasksNeedingInputsMarked = {
+    'name': 'count tasks needing inputs marked',
+    'bucket': 'task',
+    'countonly': true,
+    'query': function (phasei, jobid) {
+	return (sprintf('(&(jobId=%s)(phaseNum=%d)(timeCommitted=*)' +
+	    '(!(timeCancelled=*))(timeInputsMarkCleanupStart=*)' +
+	    '(!(timeInputsMarkCleanupDone=*)))', jobid, phasei));
     }
 };
 
