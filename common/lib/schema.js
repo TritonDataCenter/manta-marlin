@@ -763,7 +763,7 @@ sBktConfigs['taskoutput'] = {
  */
 sBktConfigs['task'] = {
     'options': {
-	'version': 4
+	'version': 5
     },
     'index': {
 	'taskId':		{ 'type': 'string', 'unique': true },

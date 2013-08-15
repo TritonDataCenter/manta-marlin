@@ -175,9 +175,9 @@ exports.wqJobTasksNeedingRetry = {
     'bucket': 'task',
     'query': function (conf, domainid) {
 	/* workaround MANTA-1065 */
-	return (sprintf('(&(domain=%s)(!(timeRetried=*))' +
-	    '(!(timeCancelled=*))(|(wantRetry=true)(wantRetry=TRUE)))',
-	    domainid));
+	return (sprintf('(&(domain=%s)(timeOutputsMarkDone=*)' +
+	    '(!(timeRetried=*))(!(timeCancelled=*))' +
+	    '(|(wantRetry=true)(wantRetry=TRUE)))', domainid));
     }
 };
 
@@ -219,9 +219,20 @@ exports.wqCountJobTasksNeedingRetry = {
     'bucket': 'task',
     'countonly': true,
     'query': function (phasei, jobid) {
- 	return (sprintf('(&(jobId=%s)(phaseNum=%d)' +
+ 	return (sprintf('(&(jobId=%s)(phaseNum=%d)(timeOutputsMarkDone=*)' +
 	    '(|(wantRetry=true)(wantRetry=TRUE))' + /* workaround MANTA-1065 */
 	    '(!(timeRetried=*)))', jobid, phasei));
+    }
+};
+
+exports.wqCountJobTasksNeedingOutputsMarked = {
+    'name': 'count tasks needing outputs marked',
+    'bucket': 'task',
+    'countonly': true,
+    'query': function (phasei, jobid) {
+	return (sprintf('(&(jobId=%s)(phaseNum=%d)(timeCommitted=*)' +
+	    '(!(timeCancelled=*))(timeOutputsMarkStart=*)' +
+	    '(!(timeOutputsMarkDone=*)))', jobid, phasei));
     }
 };
 

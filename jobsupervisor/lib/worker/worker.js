@@ -465,6 +465,20 @@ function Worker(args)
 	    'taskoutput': this.onRecordTaskOutput.bind(this)
 	};
 
+	/* XXX do this with other records as well? */
+	this.w_task_handlers = {};
+	this.w_task_handlers[wQueries.wqJobTasksDone['name']] =
+	    this.onRecordTaskCommit.bind(this);
+	this.w_task_handlers[wQueries.wqJobTasksNeedingOutputsMarked['name']] =
+	    this.onRecordTaskMarkOutputs.bind(this);
+	this.w_task_handlers[wQueries.wqJobTasksNeedingDelete['name']] =
+	    function (record, barrier, job, phase, now) {
+		worker.taskRecordCleanup(record, barrier, job, job.j_job, now);
+	    };
+	this.w_task_handlers[wQueries.wqJobTasksNeedingRetry['name']] =
+	    this.onRecordTaskRetry.bind(this);
+	this.w_subscrip_handlers = {};
+
 	/* global dynamic state */
 	this.w_jobs = {};			/* all jobs, by jobId */
 	this.w_agents = {};			/* known agents */
@@ -748,11 +762,16 @@ Worker.prototype.domainStart = function (domainid)
 			var options = queryconf['options'] ?
 			    queryconf['options'](worker.w_conf) :
 			    worker.w_bus_options;
-			worker.w_ourdomains[domainid][queryconf['name']] =
+			var sid =
 			    worker.w_bus.subscribe(
 			    worker.w_buckets[queryconf['bucket']],
 			    queryconf['query'].bind(null, worker.w_conf,
 			    domainid), options, worker.onRecord.bind(worker));
+			worker.w_ourdomains[domainid][queryconf['name']] = sid;
+			if (worker.w_task_handlers.hasOwnProperty(
+			    queryconf['name']))
+				worker.w_subscrip_handlers[sid] =
+				    worker.w_task_handlers[queryconf['name']];
 		});
 	    });
 };
@@ -773,9 +792,11 @@ Worker.prototype.domainStop = function (domainid)
 	this.w_log.info('domain "%s": stopping processing', domainid);
 
 	var worker = this;
-	var k;
+	var k, s;
 	for (k in this.w_ourdomains[domainid]) {
-		this.w_bus.unsubscribe(this.w_ourdomains[domainid][k]);
+		s = this.w_ourdomains[domainid][k];
+		this.w_bus.unsubscribe(s);
+		delete (this.w_subscrip_handlers[s]);
 	}
 
 	delete (this.w_ourdomains[domainid]);
@@ -939,7 +960,7 @@ Worker.prototype.heartbeat = function ()
 	});
 };
 
-Worker.prototype.onRecord = function (record, barrier)
+Worker.prototype.onRecord = function (record, barrier, sid)
 {
 	var schema, error, handler;
 
@@ -958,7 +979,7 @@ Worker.prototype.onRecord = function (record, barrier)
 
 	handler = this.w_record_handlers[this.w_names[record['bucket']]];
 	mod_assert.ok(handler !== undefined);
-	handler(record, barrier);
+	handler(record, barrier, sid);
 };
 
 /*
@@ -1104,35 +1125,31 @@ Worker.prototype.onRecordJobInput = function (record, barrier)
 	this.dispStart(dispatch);
 };
 
-Worker.prototype.onRecordTask = function (record, barrier)
+Worker.prototype.onRecordTask = function (record, barrier, sid)
 {
-	var job, phase, now;
+	var job, handler, phase, now;
 
 	if ((job = this.jobForRecord(record)) === null)
 		return;
-
-	phase = job.j_phases[record['value']['phaseNum']];
-	now = mod_jsprim.iso8601(Date.now());
 
 	if (record['value']['state'] != 'done') {
 		if (!this.w_logthrottle.throttle(sprintf(
 		    'record %s/%s', record['bucket'], record['key'])))
 			job.j_log.error('onRecord: unexpected task', record);
-	} else if (record['value']['timeCommitted'] === undefined) {
-		this.onRecordTaskCommit(record, barrier, job, phase, now);
-	} else if (record['value']['timeOutputsMarkStart'] !== undefined &&
-	    record['value']['timeOutputsMarkDone'] === undefined) {
-		this.onRecordTaskMarkOutputs(record, barrier, job, phase, now);
-	} else if (record['value']['wantRetry'] &&
-	    record['value']['timeRetried'] === undefined) {
-		this.onRecordTaskRetry(record, barrier, job, phase, now);
-	} else if (record['value']['wantInputRemoved'] &&
-	    record['value']['timeInputRemoved'] === undefined) {
-		this.taskRecordCleanup(record, barrier, job, job.j_job, now);
-	} else if (!this.w_logthrottle.throttle(sprintf(
-	    'record %s/%s', record['bucket'], record['key']))) {
-		job.j_log.error('onRecord: unexpected task', record);
+		return;
 	}
+
+	if (!this.w_subscrip_handlers.hasOwnProperty(sid)) {
+		if (!this.w_logthrottle.throttle(sprintf('sid %s', sid)))
+			this.w_log.error('onRecord: no handler for sid', sid,
+			    this.w_subscrip_handlers);
+		return;
+	}
+
+	handler = this.w_subscrip_handlers[sid];
+	phase = job.j_phases[record['value']['phaseNum']];
+	now = mod_jsprim.iso8601(Date.now());
+	handler(record, barrier, job, phase, now);
 };
 
 Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
@@ -1142,27 +1159,18 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 	var whichstat, reducer;
 	var nretries = 0;
 	var nerrors = 0;
-	var nunpropagated = 0;
 	var ndeletes = 0;
-	var njoboutputs = 0;
 	var updatei = -1;
 
 	job.j_log.debug('committing task "%s"', record['key']);
 
 	record['value']['timeCommitted'] = now;
+	record['value']['timeOutputsMarkStart'] = now;
 
 	allchanges = [];
 
 	if (record['value']['result'] == 'ok') {
 		whichstat = 'nTasksCommittedOk';
-		record['value']['timeOutputsMarkStart'] = now;
-
-		if (record['value']['phaseNum'] == job.j_phases.length - 1) {
-			njoboutputs = record['value']['nOutputs'];
-		} else {
-			nunpropagated = record['value']['nOutputs'];
-			phase.p_nunpropagated += nunpropagated;
-		}
 	} else {
 		whichstat = 'nTasksCommittedFail';
 
@@ -1323,7 +1331,6 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 	    }
 	}, function (err, meta) {
 		if (!err) {
-			job.j_job['stats']['nJobOutputs'] += njoboutputs;
 			job.j_job['stats'][whichstat]++;
 			job.j_job['stats']['nErrors'] += nerrors;
 			job.j_job['stats']['nRetries'] += nretries;
@@ -1336,14 +1343,10 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 			job.j_ndeletes -= ndeletes;
 			mod_assert.ok(job.j_ndeletes >= 0);
 
-			phase.p_nunpropagated -= nunpropagated;
-			mod_assert.ok(phase.p_nunpropagated >= 0);
-
 			if (nretries > 0) {
 				phase.p_nretryneeded--;
 				mod_assert.ok(phase.p_nretryneeded > 0);
 			}
-
 		}
 
 		if (updatei != -1) {
@@ -1373,7 +1376,7 @@ Worker.prototype.onRecordTaskMarkOutputs = function (record, barrier, job,
 	 * not going to propagate them (because either the task failed or
 	 * because this is the final phase), also set timePropagated here.
 	 */
-	filter = sprintf('taskId=%s)', record['key']);
+	filter = sprintf('(taskId=%s)', record['key']);
 	changes = { 'timeCommitted': now };
 
 	if (record['value']['result'] == 'ok') {
@@ -1391,18 +1394,26 @@ Worker.prototype.onRecordTaskMarkOutputs = function (record, barrier, job,
 	update = [ 'update', this.w_buckets['taskoutput'], filter, changes,
 	    this.w_update_options ];
 	worker = this;
-	this.w_bus.batch([ update ], function (err, meta) {
+	this.w_bus.batch([ update ], {}, function (err, meta) {
+		var nupdated;
+
 		if (err) {
 			job.j_log.warn(err,
 			    'task "%s": failed to mark outputs', record['key']);
+			barrier.done(record['key']);
 			return;
 		}
 
-		mod_assert.equal(typeof (meta.etags[0]['count']), 'number');
-		if (meta.etags[0]['count'] >= limit) {
+		nupdated = meta.etags[0]['count'];
+		mod_assert.equal(typeof (nupdated), 'number');
+		if (changes['timePropagated'] === undefined)
+			phase.p_nunpropagated += nupdated;
+		else if (changes['valid'])
+			job.j_job['stats']['nJobOutputs'] += nupdated;
+
+		if (nupdated >= limit) {
 			job.j_log.info('task "%s": marked %d outputs (need ' +
-			    'another lap)', record['key'],
-			    meta.etags[0]['count']);
+			    'another lap)', record['key'], nupdated);
 			barrier.done(record['key']);
 			return;
 		}
@@ -1412,6 +1423,8 @@ Worker.prototype.onRecordTaskMarkOutputs = function (record, barrier, job,
 		 * an EtagConflict since there's no possibility of a legitimate
 		 * conflict here.
 		 */
+		job.j_log.debug('task "%s": updating task after marking ' +
+		    '%d outputs', record['key'], nupdated);
 		worker.w_bus.batch([[ 'update', record['bucket'], filter, {
 		    'timeOutputsMarkDone': mod_jsprim.iso8601(Date.now())
 		}, { 'limit': 1 } ]], {}, function (err2) {
@@ -2481,6 +2494,7 @@ Worker.prototype.jobAssigned = function (job)
 		    query, worker.w_bus_options, function (c) {
 			barrier.done('phase ' + i + ' tasks needing outputs');
 			mod_assert.equal(typeof (c), 'number');
+			job.j_log.info('tasks needing outputs', c);
 			job.j_phases[i].p_nunmarked = c;
 		    });
 
@@ -2884,8 +2898,8 @@ Worker.prototype.jobMarkAllInputs = function (job, callback)
 		job.j_log.debug({ 'err': err, 'result': meta },
 		    'marked inputs');
 
-		if (meta &&
-		    meta.etags[0]['count'] >= this.w_update_options['limit']) {
+		if (meta && meta.etags[0]['count'] >=
+		    worker.w_update_options['limit']) {
 			job.j_log.warn('mark inputs: update overflow');
 			worker.jobMarkAllInputs(job, callback);
 		} else {
@@ -3580,12 +3594,20 @@ Worker.prototype.dispMap = function (dispatch)
 		dispatch.d_barrier.done(dispatch.d_id);
 		dispatch.d_job.j_phases[dispatch.d_pi].p_ndispatches--;
 
-		if (dispatch.d_pi > 0 && !isretry)
-			phase.p_nunpropagated--;
+		if (!err) {
+			if (dispatch.d_pi > 0 && !isretry)
+				phase.p_nunpropagated--;
 
-		worker.jobPropagateEnd(dispatch.d_job, null);
-		worker.jobTick(dispatch.d_job);
-		worker.taskPostDispatchCheck(task);
+			worker.jobPropagateEnd(dispatch.d_job, null);
+			worker.jobTick(dispatch.d_job);
+			worker.taskPostDispatchCheck(task);
+		} else {
+			phase = dispatch.d_job.j_phases[dispatch.d_pi];
+			dispatch.d_job.j_job['stats']['nTasksDispatched']--;
+			phase.p_nuncommitted--;
+			if (isretry)
+				phase.p_nretryneeded++;
+		}
 	});
 };
 
