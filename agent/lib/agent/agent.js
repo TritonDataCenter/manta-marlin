@@ -1722,6 +1722,7 @@ mAgent.prototype.taskDirty = function (task, related, barrier)
 		return (mod_bus.mergeRecords([
 			'nInputs',
 			'timeCancelled',
+			'timeDispatchDone',
 			'timeInputDone'
 		    ], [
 			'machine',

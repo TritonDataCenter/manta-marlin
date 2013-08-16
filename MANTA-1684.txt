@@ -71,7 +71,23 @@ Summary of changes:
       Each time through the loop for this query, do update up to N taskinputs.
       When we finish marking all the inputs for cleanup, set timeCleanupDone.
 
-(5) Cancellation (jobSave, jobCancelRecords):
+(6) Retrying reduce tasks (onTaskRetryReduce) (done):
+
+    - In the context of the barrier, set timeRetryStarted, retryTaskId,
+      retryMantaComputeId, retryAgentGeneration, and write the new task with a
+      field indicating that it's not yet ready (e.g., "retryInProgress": true).
+    - Add a new query for timeRetryStarted && !timeRetryDone.  Each time through
+      the loop for this query, update up to N taskinputs.  When it's 0, update
+      the existing task to set timeRetryDone, and update the new task to state
+      "dispatched".
+    - Have the taskCommit query *exclude* tasks with retryInProgress set.  This
+      way, the retried task essentially cannot fail until the first one has been
+      completely retried, but abandonment and early failure by the agent will
+      still do the right thing.
+    - wqJobTasksReduce probably needs to have !(timeRetryStarted), or else use
+      existing field timeRetried to refer to timeRetryStarted.
+
+(7) Cancellation (jobSave, jobCancelRecords):
 
   This one currently needs to be transactional because we're going to drop this
   job as soon as this request completes, and we're not going to look for new job
@@ -100,19 +116,3 @@ Summary of changes:
   "dispatched" tasks need to be updated anyway, so this would only really help
   "accepted" tasks, which agents need to do something for anyway, so it's not
   much help.
-
-(6) Retrying reduce tasks (onTaskRetryReduce):
-
-    - In the context of the barrier, set timeRetryStarted, retryTaskId,
-      retryMantaComputeId, retryAgentGeneration, and write the new task with a
-      field indicating that it's not yet ready (e.g., "retryInProgress": true).
-    - Add a new query for timeRetryStarted && !timeRetryDone.  Each time through
-      the loop for this query, update up to N taskinputs.  When it's 0, update
-      the existing task to set timeRetryDone, and update the new task to state
-      "dispatched".
-    - Have the taskCommit query *exclude* tasks with retryInProgress set.  This
-      way, the retried task essentially cannot fail until the first one has been
-      completely retried, but abandonment and early failure by the agent will
-      still do the right thing.
-    - wqJobTasksReduce probably needs to have !(timeRetryStarted), or else use
-      existing field timeRetried to refer to timeRetryStarted.

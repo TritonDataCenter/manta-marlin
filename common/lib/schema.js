@@ -411,6 +411,16 @@ var sMorayTask = {
 		'timeDispatched': sDateTimeRequired,	/* time created */
 
 		/*
+		 * For map and first-attempt reduce tasks, timeDispatchDone ==
+		 * timeDispatched.  If this reduce task is a retry of another
+		 * task, timeDispatchDone is unset until that other task has
+		 * finished being retried.  We use this to avoid committing a
+		 * reduce task before its predecessor has finished being
+		 * retried.
+		 */
+		'timeDispatchDone': sString,
+
+		/*
 		 * The agent records when it accepts the task, which just
 		 * indicates that it has read it.  Cancelled and aborted tasks
 		 * may never become accepted.
@@ -453,8 +463,19 @@ var sMorayTask = {
 		 * until there are none left, after which point it sets
 		 * timeInputsMarkDone.
 		 */
-		'timeInputsCleanupMarkStart': sDateTime, /* reduce only */
-		'timeInputsCleanupMarkDone': sDateTime,  /* reduce only */
+		'timeInputsMarkCleanupStart': sDateTime, /* reduce only */
+		'timeInputsMarkCleanupDone': sDateTime,  /* reduce only */
+
+		/*
+		 * Similarly, we asynchronously mark taskinputs needing retry.
+		 * In order to do this, we need to keep track of the retry task
+		 * for this task.
+		 */
+		'timeInputsMarkRetryStart': sDateTime, /* reduce only */
+		'timeInputsMarkRetryDone': sDateTime,
+		'retryTaskId': sString,
+		'retryMantaComputeId': sString,
+		'retryAgentGeneration': sString,
 
 		/*
 		 * There are two cases where task processing may stop without
@@ -789,6 +810,7 @@ sBktConfigs['task'] = {
 	'state':		{ 'type': 'string' },
 	'wantRetry':		{ 'type': 'string' },
 	'wantInputRemoved':	{ 'type': 'string' },
+	'timeDispatchDone':	{ 'type': 'string' },
 	'timeAbandoned':	{ 'type': 'string' },
 	'timeCancelled':	{ 'type': 'string' },
 	'timeInputDone':	{ 'type': 'string' },
@@ -801,6 +823,8 @@ sBktConfigs['task'] = {
 	'timeOutputsMarkDone':	{ 'type': 'string' },
 	'timeInputsMarkCleanupStart': { 'type': 'string' },
 	'timeInputsMarkCleanupDone':  { 'type': 'string' },
+	'timeInputsMarkRetryStart':   { 'type': 'string' },
+	'timeInputsMarkRetryDone':    { 'type': 'string' },
 
 	/* for debugging only */
 	'nattempts':		{ 'type': 'number' },

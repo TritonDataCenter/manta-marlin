@@ -302,6 +302,10 @@ function JobPhase(phase)
 	this.p_nunmarked_cleanup = undefined;	/* nr of tasks needing */
 						/* taskinputs marked for */
 						/* cleanup */
+	this.p_nunmarked_retry = undefined;	/* nr of tasks needing */
+						/* taskinputs marked for */
+						/* retry */
+
 
 	if (this.p_type != 'reduce')
 		return;
@@ -475,7 +479,9 @@ function Worker(args)
 	this.w_task_handlers[wQueries.wqJobTasksNeedingOutputsMarked['name']] =
 	    this.onRecordTaskMarkOutputs.bind(this);
 	this.w_task_handlers[wQueries.wqJobTasksNeedingInputsMarked['name']] =
-	    this.onRecordTaskMarkInputs.bind(this);
+	    this.onRecordTaskMarkInputsCleanup.bind(this);
+	this.w_task_handlers[wQueries.wqJobTasksNeedingInputsRetried['name']] =
+	    this.onRecordTaskMarkInputsRetry.bind(this);
 	this.w_task_handlers[wQueries.wqJobTasksNeedingDelete['name']] =
 	    function (record, barrier, job, phase, now) {
 		worker.taskRecordCleanup(record, barrier, job, job.j_job, now);
@@ -753,6 +759,7 @@ Worker.prototype.domainStart = function (domainid)
 		    wQueries.wqJobTasksDone,
 		    wQueries.wqJobTasksNeedingOutputsMarked,
 		    wQueries.wqJobTasksNeedingInputsMarked,
+		    wQueries.wqJobTasksNeedingInputsRetried,
 		    wQueries.wqJobTasksNeedingDelete,
 		    wQueries.wqJobTaskInputsNeedingDelete,
 		    wQueries.wqJobTasksNeedingRetry,
@@ -1438,7 +1445,7 @@ Worker.prototype.onRecordTaskMarkOutputs = function (record, barrier, job,
 	});
 };
 
-Worker.prototype.onRecordTaskMarkInputs = function (record, barrier, job,
+Worker.prototype.onRecordTaskMarkInputsCleanup = function (record, barrier, job,
     phase, now)
 {
 	var filter, changes, limit, update, worker;
@@ -1539,6 +1546,11 @@ Worker.prototype.taskRetryReduce = function (record, barrier, job, phase, now)
 	}
 
 	record['value']['timeRetried'] = now;
+	record['value']['timeInputsMarkRetryStart'] = now;
+	record['value']['retryTaskId'] = value['taskId'];
+	record['value']['retryMantaComputeId'] = value['mantaComputeId'];
+	record['value']['retryAgentGeneration'] = value['agentGeneration'];
+	phase.p_nunmarked_retry++;
 
 	this.w_dtrace.fire('task-dispatched', function () {
 	    return ([ task.t_value['jobId'], task.t_id, value ]);
@@ -1556,15 +1568,6 @@ Worker.prototype.taskRetryReduce = function (record, barrier, job, phase, now)
 	    record['key'],
 	    record['value'],
 	    { 'etag': record['_etag'] }
-	], [
-	    'update',
-	    this.w_buckets['taskinput'],
-	    sprintf('(taskId=%s)', record['key']),
-	    {
-		'retryTaskId': value['taskId'],
-		'retryMantaComputeId': value['mantaComputeId'],
-		'retryAgentGeneration': value['agentGeneration']
-	    }
 	] ], {
 	    'retryConflict': function () {
 		/*
@@ -1613,6 +1616,86 @@ Worker.prototype.taskRetryReduce = function (record, barrier, job, phase, now)
 		phase.p_nretryneeded--;
 		worker.jobPropagateEnd(job, null);
 		worker.jobTick(job);
+	});
+};
+
+Worker.prototype.onRecordTaskMarkInputsRetry = function (record, barrier, job,
+    phase, now)
+{
+	var filter, changes, limit, update, worker;
+
+	barrier.start(record['key']);
+
+	/*
+	 * Set retryTaskId, retryMantaComputeId, and retryAgentGeneration on all
+	 * of the taskinputs for this task.
+	 */
+	filter = sprintf('(&(taskId=%s)(!(retryTaskId=*)))', record['key']);
+	changes = {
+	    'retryTaskId': record['value']['retryTaskId'],
+	    'retryMantaComputeId': record['value']['retryMantaComputeId'],
+	    'retryAgentGeneration': record['value']['retryAgentGeneration']
+	};
+	job.j_log.debug('task "%s": marking inputs for retry', record['key']);
+	limit = this.w_update_options['limit'];
+	mod_assert.equal(typeof (limit), 'number');
+	update = [ 'update', this.w_buckets['taskinput'], filter, changes,
+	    this.w_update_options ];
+	worker = this;
+	this.w_bus.batch([ update ], {}, function (err, meta) {
+		var nupdated, taskchanges, retrytaskchanges;
+
+		if (err) {
+			job.j_log.warn(err,
+			    'task "%s": failed to mark inputs for retry',
+			    record['key']);
+			barrier.done(record['key']);
+			return;
+		}
+
+		nupdated = meta.etags[0]['count'];
+		mod_assert.equal(typeof (nupdated), 'number');
+		if (nupdated >= limit) {
+			job.j_log.info('task "%s": marked %d inputs for ' +
+			    'retry (need another lap)', record['key'],
+			    nupdated);
+			barrier.done(record['key']);
+			return;
+		}
+
+		/*
+		 * We could use a PUT here, but this avoids the possibility of
+		 * an EtagConflict since there's no possibility of a legitimate
+		 * conflict here.
+		 */
+		job.j_log.info('task "%s": updating task after marking ' +
+		    '%d inputs for retry', record['key'], nupdated);
+		taskchanges = {
+		    'timeInputsMarkRetryDone': mod_jsprim.iso8601(Date.now())
+		};
+		retrytaskchanges = {
+		    'timeDispatchDone': taskchanges['timeInputsMarkRetryDone']
+		};
+		worker.w_bus.batch([
+		    [ 'update', record['bucket'],
+		       sprintf('(taskId=%s)', record['key']), taskchanges,
+		       { 'limit': 1 } ],
+		    [ 'update', record['bucket'],
+		       sprintf('(taskId=%s)', record['value']['retryTaskId']),
+		       retrytaskchanges, { 'limit': 1 } ]
+		], {}, function (err2) {
+			if (err2) {
+				job.j_log.warn(err2, 'task "%s": failed to ' +
+				    'mark inputs for retry', record['key']);
+			} else {
+				job.j_log.info('task "%s": marked all ' +
+				    'inputs for retry', record['key']);
+				phase.p_nunmarked_retry--;
+				worker.jobPropagateEnd(job, null);
+			}
+
+			barrier.done(record['key']);
+		});
 	});
 };
 
@@ -2307,7 +2390,7 @@ Worker.prototype.agentAbandonStale = function (instance, job, timestamp)
 
 	if (job.j_abandons_pending.hasOwnProperty(instance)) {
 		job.j_log.info('agent "%s": pending request to abandon stale ' +
-		    'tasks (enqueued new request)');
+		    'tasks (enqueued new request)', instance);
 		job.j_abandons_wanted[instance] = timestamp;
 		return;
 	}
@@ -2570,8 +2653,20 @@ Worker.prototype.jobAssigned = function (job)
 		    query, worker.w_bus_options, function (c) {
 			barrier.done('phase ' + i + ' tasks needing inputs');
 			mod_assert.equal(typeof (c), 'number');
-			job.j_log.info('tasks needing inputs', c);
+			job.j_log.info('tasks needing inputs removed', c);
 			job.j_phases[i].p_nunmarked_cleanup = c;
+		    });
+
+		queryconf = wQueries.wqCountJobTasksNeedingInputsRetried;
+		query = queryconf['query'].bind(null, i, job.j_id);
+		barrier.start('phase ' + i + ' tasks needing ins retried');
+		worker.w_bus.count(worker.w_buckets[queryconf['bucket']],
+		    query, worker.w_bus_options, function (c) {
+			barrier.done(
+			    'phase ' + i + ' tasks needing ins retried');
+			mod_assert.equal(typeof (c), 'number');
+			job.j_log.info('tasks needing inputs retried', c);
+			job.j_phases[i].p_nunmarked_retry = c;
 		    });
 
 		queryconf = wQueries.wqCountJobTasksNeedingRetry;
@@ -2810,6 +2905,7 @@ Worker.prototype.jobLoaded = function (job)
 			value['agentGeneration'] = worker.w_agents[
 			    instance].a_record['value']['generation'];
 			value['nattempts'] = 1;
+			value['timeDispatchDone'] = value['timeDispatched'];
 
 			worker.w_dtrace.fire('task-dispatched', function () {
 			    return ([ task.t_value['jobId'], task.t_id,
@@ -3137,6 +3233,7 @@ Worker.prototype.jobDone = function (job)
 		    job.j_phases[pi].p_nuncommitted > 0 ||
 		    job.j_phases[pi].p_nunmarked_propagate > 0 ||
 		    job.j_phases[pi].p_nunmarked_cleanup > 0 ||
+		    job.j_phases[pi].p_nunmarked_retry > 0 ||
 		    job.j_phases[pi].p_nunpropagated > 0 ||
 		    job.j_phases[pi].p_nretryneeded > 0)
 			return (false);
@@ -3609,6 +3706,7 @@ Worker.prototype.dispMap = function (dispatch)
 	value['agentGeneration'] = this.w_agents[instance].
 	    a_record['value']['generation'];
 	value['zonename'] = zonename;
+	value['timeDispatchDone'] = value['timeDispatched'];
 
 	if (dispatch.d_origin['bucket'] == this.w_buckets['jobinput']) {
 		value['prevRecordType'] = 'jobinput';
@@ -3663,7 +3761,8 @@ Worker.prototype.dispMap = function (dispatch)
 		 * can happen there: the "write" that set wantRetry = true is
 		 * still pending.
 		 */
-		mod_assert.ok(isretry);
+		if (!isretry)
+			return (new Error('unexpected conflict retrying map'));
 		return (new Error('conflict while retrying map task ' +
 		    '(will try again)'));
 	    }
@@ -3973,6 +4072,7 @@ Worker.prototype.jobPropagateEnd = function (job, now)
 		    phase.p_nuncommitted > 0 ||
 		    phase.p_nunmarked_propagate > 0 ||
 		    phase.p_nunmarked_cleanup > 0 ||
+		    phase.p_nunmarked_retry > 0 ||
 		    phase.p_nunpropagated > 0 ||
 		    phase.p_nretryneeded > 0)
 			/* Tasks still running. */
@@ -4054,10 +4154,14 @@ Worker.prototype.reduceEndInput = function (job, i, now)
 				 * now be "accepted" instead of "dispatched".
 				 * (It's also possible to write "timeCancelled",
 				 * but that should result in a failure here
-				 * anyway.)
+				 * anyway.)  "timeDispatchDone" is logically
+				 * written by us elsewhere, but using a
+				 * server-side update, so it's effectively
+				 * external to this update.
 				 */
 				return (mod_bus.mergeRecords([ 'timeAccepted',
-				    'state' ], ['timeInputDone', 'nInputs' ],
+				    'state', 'timeDispatchDone' ],
+				    [ 'timeInputDone', 'nInputs' ],
 				    oldrec['value'], newrec['value']));
 			}
 		    }, function (err, etags) {

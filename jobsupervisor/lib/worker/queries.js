@@ -136,8 +136,9 @@ exports.wqJobTasksDone = {
     'name': 'done tasks',
     'bucket': 'task',
     'query': function (conf, domainid) {
+	/* workaround MANTA-1065 */
 	return (sprintf('(&(domain=%s)(state=done)(!(timeCommitted=*))' +
-	    '(!(timeCancelled=*)))', domainid));
+	    '(!(timeCancelled=*))(timeDispatchDone=*))', domainid));
     }
 };
 
@@ -156,6 +157,16 @@ exports.wqJobTasksNeedingInputsMarked = {
     'query': function (conf, domainid) {
 	return (sprintf('(&(domain=%s)(timeCommitted=*)(!(timeCancelled=*))' +
 	    '(timeInputsMarkCleanupStart=*)(!(timeInputsMarkCleanupDone=*)))',
+	    domainid));
+    }
+};
+
+exports.wqJobTasksNeedingInputsRetried = {
+    'name': 'tasks needing inputs marked for retry',
+    'bucket': 'task',
+    'query': function (conf, domainid) {
+	return (sprintf('(&(domain=%s)(timeCommitted=*)(!(timeCancelled=*))' +
+	    '(timeInputsMarkRetryStart=*)(!(timeInputsMarkRetryDone=*)))',
 	    domainid));
     }
 };
@@ -219,6 +230,11 @@ exports.wqCountJobTasksUncommitted = {
     'bucket': 'task',
     'countonly': true,
     'query': function (phasei, jobid) {
+	/*
+	 * This "count" query goes with JobTasksDone above, but does NOT exclude
+	 * !timeDispatchDone the way that one does because that's a transient
+	 * state that still represents outstanding work.
+	 */
 	return (sprintf('(&(jobId=%s)(phaseNum=%d)(!(timeCommitted=*)))',
 	    jobid, phasei));
     }
@@ -254,6 +270,17 @@ exports.wqCountJobTasksNeedingInputsMarked = {
 	return (sprintf('(&(jobId=%s)(phaseNum=%d)(timeCommitted=*)' +
 	    '(!(timeCancelled=*))(timeInputsMarkCleanupStart=*)' +
 	    '(!(timeInputsMarkCleanupDone=*)))', jobid, phasei));
+    }
+};
+
+exports.wqCountJobTasksNeedingInputsRetried = {
+    'name': 'count tasks needing inputs marked for retry',
+    'bucket': 'task',
+    'countonly': true,
+    'query': function (phasei, jobid) {
+	return (sprintf('(&(jobId=%s)(phaseNum=%d)(timeCommitted=*)' +
+	    '(!(timeCancelled=*))(timeInputsMarkRetryStart=*)' +
+	    '(!(timeInputsMarkRetryDone=*)))', jobid, phasei));
     }
 };
 
