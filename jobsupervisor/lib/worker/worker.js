@@ -124,21 +124,6 @@
  * o To list errors, query moray for error objects for job $jobid.
  *
  *
- * JOB CANCELLATION
- *
- * If a job is cancelled while it's still executing:
- *
- * (1) Muskie receives the job cancellation request and updates the "job" record
- *     to set cancelled = true.
- *
- * (2) The worker sees that cancelled = true and state != "done" and writes a
- *     transaction that sets the job's state = "done" as well as cancelled =
- *     "true" for all of the job's tasks with state != "done".  These are done
- *     in a transaction, and the latter is a server-side mass update.
- *
- * (3) The agents process task cancellation as described below.
- *
- *
  * TASK CANCELLATION
  *
  * Individual tasks may be cancelled, either because of a job cancellation or
@@ -538,6 +523,7 @@ function Worker(args)
 	 * onRecordForUnknownJob for details.
 	 */
 	this.w_jobs_cached = {};		/* cache of finished jobs */
+	this.w_jobs_cancelling = {};		/* jobid => callback array */
 }
 
 Worker.prototype.debugState = function ()
@@ -1021,7 +1007,7 @@ Worker.prototype.onRecordJob = function (record, barrier)
 		return;
 	}
 
-	if ((job = this.jobForRecord(record)) === null)
+	if ((job = this.jobForRecord(record, true)) === null)
 		return;
 
 	/*
@@ -1030,7 +1016,7 @@ Worker.prototype.onRecordJob = function (record, barrier)
 	 * require our attention and we never write records for which we haven't
 	 * made as much forward progress as we can.
 	 */
-	if (job.j_etag == record['_etag'])
+	if (job.j_cancelled === undefined && job.j_etag == record['_etag'])
 		job.j_log.warn('onRecord: found record with up-to-date etag',
 		    record);
 
@@ -1044,21 +1030,17 @@ Worker.prototype.onRecordJob = function (record, barrier)
 		return;
 	}
 
-	if (record['value']['timeCancelled'] !== undefined &&
-	    record['value']['state'] != 'done') {
-		job.j_log.info('job cancelled');
-		job.j_cancelled = record['value']['timeCancelled'];
+	if (record['value']['timeCancelled'] !== undefined) {
+		if (job.j_cancelled === undefined) {
+			job.j_log.info('detected job cancelled');
+			job.j_cancelled = record['value']['timeCancelled'];
+			job.j_job['timeCancelled'] = job.j_cancelled;
+		}
 
 		job.j_etag = record['_etag'];
-		job.j_job['state'] = 'done';
-		job.j_job['timeCancelled'] = job.j_cancelled;
-		job.j_job['timeDone'] = mod_jsprim.iso8601(Date.now());
-
-		job.j_save_barrier = barrier;
-		job.j_save.markDirty();
-		barrier.start('save job ' + job.j_id);
-
-		this.jobTransition(job, 'running', 'finishing');
+		barrier.start(record['key']);
+		this.jobCancelRecords(job.j_id, job.j_cancelled,
+		    function () { barrier.done(record['key']); });
 		return;
 	}
 
@@ -1087,6 +1069,97 @@ Worker.prototype.onRecordJob = function (record, barrier)
 	job.j_save.markDirty();
 	barrier.start('save job ' + job.j_id);
 	this.jobInputEnded(job);
+};
+
+/*
+ * Invoked when we find a cancelled job to mark corresponding records cancelled,
+ * including tasks, taskinputs, taskoutputs, and jobinputs.  While we can ensure
+ * that no new tasks and taskinputs are issued after we detect for the first
+ * time that the job is cancelled, agents can continue issuing taskoutputs until
+ * all tasks are actually completed, and muskie can continue issuing jobinputs
+ * until all ongoing requests complete.  We won't mark the job "done" until all
+ * tasks are completed, at which point no new taskoutputs should be issued, but
+ * if for some reason we find a straggling taskoutput or jobinput after we've
+ * marked the job "done", we'll go through this loop again.
+ */
+Worker.prototype.jobCancelRecords = function (jobid, timestamp, callback)
+{
+	var limit, options, requests, filter, changes;
+	var worker = this;
+
+	if (this.w_jobs_cancelling.hasOwnProperty(jobid)) {
+		if (callback)
+			this.w_jobs_cancelling[jobid].push(callback);
+		this.w_log.debug('job "%s": request to cancel already pending',
+		    jobid);
+		return;
+	}
+
+	this.w_jobs_cancelling[jobid] = [];
+	if (callback)
+		this.w_jobs_cancelling[jobid].push(callback);
+
+	if (timestamp === undefined)
+		timestamp = mod_jsprim.iso8601(Date.now());
+
+	this.w_log.info('job "%s": cancelling records', jobid);
+	limit = this.w_conf['tunables']['maxRecordsPerCancel'];
+	mod_assert.equal(typeof (limit), 'number');
+	options = { 'limit': limit };
+	requests = [];
+
+	/*
+	 * Cancel any tasks we might possibly want to operate on in order to
+	 * stop execution.  We're still going to process these through the task
+	 * commit path (so that we can wait until they all complete), but we
+	 * won't write out new ones.
+	 */
+	requests.push([ 'update', this.w_buckets['task'],
+	    sprintf('(&(jobId=%s)(!(timeCancelled=*)))',
+	        jobid), { 'timeCancelled': timestamp }, options ]);
+
+	/*
+	 * We're going to stop issuing new tasks, so we want to stop polling on
+	 * jobinputs and taskoutputs altogether.  We also want to stop
+	 * processing retries, so we stop processing taskinputs altogether.
+	 * This has the unfortunate side effect of stopping processing cleanups,
+	 * too, but that problem is more complicated anyway.
+	 */
+	filter = sprintf('(&(jobId=%s)(!(timeJobCancelled=*)))', jobid);
+	changes = { 'timeJobCancelled': timestamp };
+	requests.push([ 'update', this.w_buckets['jobinput'],
+	    filter, changes, options ]);
+	requests.push([ 'update', this.w_buckets['taskoutput'],
+	    filter, changes, options ]);
+	requests.push([ 'update', this.w_buckets['taskinput'],
+	    filter, changes, options ]);
+
+	this.w_bus.batch(requests, {}, function (err, meta) {
+		var needlap, callbacks;
+
+		if (err) {
+			worker.w_log.warn(err,
+			    'job "%s": failed to cancel requests', jobid);
+		} else {
+			needlap = false;
+			meta.etags.forEach(function (r) {
+				if (r['count'] >= limit) {
+					worker.w_log.info('job "%s": cancel: ' +
+					    'bucket "%s": need another lap',
+					    jobid, r['bucket']);
+					needlap = true;
+				}
+			});
+
+			if (!needlap)
+				worker.w_log.info('job "%s": cancel: ' +
+				    'all records updated', jobid);
+		}
+
+		callbacks = worker.w_jobs_cancelling[jobid];
+		delete (worker.w_jobs_cancelling[jobid]);
+		callbacks.forEach(function (cb) { cb(err, needlap); });
+	});
 };
 
 Worker.prototype.onRecordJobInput = function (record, barrier)
@@ -1142,7 +1215,7 @@ Worker.prototype.onRecordTask = function (record, barrier, sid)
 {
 	var job, handler, phase, now;
 
-	if ((job = this.jobForRecord(record)) === null)
+	if ((job = this.jobForRecord(record, true)) === null)
 		return;
 
 	if (record['value']['state'] != 'done') {
@@ -1197,8 +1270,9 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 			record['value']['nextRecordType'] = 'error';
 			record['value']['nextRecordId'] = uuid;
 			record['value']['wantRetry'] =
-			    record['value']['nattempts'] === undefined ||
-			    record['value']['nattempts'] <= this.w_max_retries;
+			    job.j_cancelled === undefined &&
+			    (record['value']['nattempts'] === undefined ||
+			    record['value']['nattempts'] <= this.w_max_retries);
 
 			if (record['value']['wantRetry']) {
 				phase.p_nretryneeded++;
@@ -1228,6 +1302,7 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 			    function () { return ([ job.j_id, errvalue ]); });
 		} else if (record['value']['errorCode'] &&
 		    record['value']['errorCode'] == EM_TASKKILLED &&
+		    job.j_cancelled === undefined &&
 		    (record['value']['nattempts'] === undefined ||
 		    record['value']['nattempts'] <= this.w_max_retries)) {
 			phase.p_nretryneeded++;
@@ -1268,26 +1343,15 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 
 	barrier.start('task ' + record['key']);
 	this.w_bus.batch(allchanges, {
-	    'retryConflict': function () {
-		/*
-		 * See the comment in taskRetryReduce.  The bus may think
-		 * there's a possibility for a conflict here if we issue this
-		 * write while the initial task dispatch write is still pending.
-		 * The conflict cannot actually happen, since the etag we're
-		 * using here is newer in that case, but the bus has no way to
-		 * know that and blows up if it sees us making a dependent write
-		 * without handling this error.  (This is hard to see, since it
-		 * requires the agent making at least two round-trips before our
-		 * write completes, but it has been seen in production.)
-		 *
-		 * In order to handle other errors, we avoid committing changes
-		 * to the job stats above until after we know the write
-		 * completes.  We can't avoid changes to the various per-job and
-		 * per-phase counters because these need to keep track of the
-		 * fact that there's work outstanding or we might end the job
-		 * early, so we make those changes and unwind them upon failure.
-		 */
-		return (new Error('conflict while committing task'));
+	    'retryConflict': function (oldrec, newrec) {
+		if (oldrec['value']['timeCancelled'] !== undefined &&
+		    newrec['value']['timeCancelled'] === undefined) {
+			newrec['value']['timeCancelled'] =
+			    oldrec['value']['timeCancelled'];
+			return (newrec['value']);
+		}
+
+		return (new Error('unexpected etag conflict committing task'));
 	    }
 	}, function (err, meta) {
 		if (!err) {
@@ -1296,6 +1360,17 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 			job.j_job['stats']['nRetries'] += nretries;
 			phase.p_nunmarked_propagate++;
 			phase.p_nuncommitted--;
+
+			if (updatei != -1) {
+				if (meta.etags[updatei]['count'] !== 0 &&
+				    meta.etags[updatei]['count'] != 1) {
+					job.j_log.error({
+					    'requests': allchanges,
+					    'result': meta
+					}, 'unexpectedly updated too many ' +
+					    'error records');
+				}
+			}
 		} else {
 			job.j_log.warn(err, 'unwinding state changes after ' +
 			    'error committing task');
@@ -1303,17 +1378,6 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 			if (nretries > 0) {
 				phase.p_nretryneeded--;
 				mod_assert.ok(phase.p_nretryneeded > 0);
-			}
-		}
-
-		if (updatei != -1) {
-			if (meta.etags[updatei]['count'] !== 0 &&
-			    meta.etags[updatei]['count'] != 1) {
-				job.j_log.error({
-				    'requests': allchanges,
-				    'result': meta
-				}, 'unexpectedly updated too many ' +
-				    'error records');
 			}
 		}
 
@@ -1325,6 +1389,11 @@ Worker.prototype.onRecordTaskMarkOutputs = function (record, barrier, job,
     phase, now)
 {
 	var filter, changes, limit, update, worker;
+
+	/* Drop records for cancelled jobs. */
+	job = this.jobForRecord(record);
+	if (job === null)
+		return;
 
 	barrier.start(record['key']);
 
@@ -1517,6 +1586,11 @@ Worker.prototype.onRecordTaskMarkInputsCleanup = function (record, barrier, job,
 
 Worker.prototype.onRecordTaskRetry = function (record, barrier, job, phase, now)
 {
+	/* Drop records for cancelled jobs. */
+	job = this.jobForRecord(record);
+	if (job === null)
+		return;
+
 	if (record['value']['input'] === undefined)
 		this.taskRetryReduce(record, barrier, job, phase, now);
 	else
@@ -1623,6 +1697,11 @@ Worker.prototype.onRecordTaskMarkInputsRetry = function (record, barrier, job,
     phase, now)
 {
 	var filter, changes, limit, update, worker;
+
+	/* Drop records for cancelled jobs. */
+	job = this.jobForRecord(record);
+	if (job === null)
+		return;
 
 	barrier.start(record['key']);
 
@@ -1756,7 +1835,7 @@ Worker.prototype.onRecordTaskInput = function (record, barrier)
 			this.w_log.warn('cleaning up taskinput record ' +
 			    '%s for removed job', record['key']);
 		} else {
-			job = this.jobForRecord(record);
+			job = this.jobForRecord(record, true);
 			if (job === null)
 				return;
 			jobrec = job.j_job;
@@ -1765,6 +1844,9 @@ Worker.prototype.onRecordTaskInput = function (record, barrier)
 		this.taskRecordCleanup(record, barrier, job, jobrec, now);
 		return;
 	}
+
+	if (this.jobForRecord(record) === null)
+		return;
 
 	record['value']['timeRetried'] = now;
 	value = {
@@ -1870,7 +1952,7 @@ Worker.prototype.onRecordTaskOutput = function (record, barrier)
 	this.dispStart(dispatch);
 };
 
-Worker.prototype.jobForRecord = function (record)
+Worker.prototype.jobForRecord = function (record, allowcancelled)
 {
 	if (!this.w_jobs.hasOwnProperty(record['value']['jobId']))
 		return (this.onRecordForUnknownJob(record));
@@ -1883,6 +1965,9 @@ Worker.prototype.jobForRecord = function (record)
 		return (null);
 	}
 
+	if (job.j_cancelled && !allowcancelled)
+		return (this.onRecordForCancelledJob(job, record));
+
 	if (job.j_state != 'running') {
 		if (!this.w_logthrottle.throttle(
 		    'job ' + job.j_id + ' initializing'))
@@ -1893,6 +1978,18 @@ Worker.prototype.jobForRecord = function (record)
 
 	mod_assert.equal(job.j_state, 'running');
 	return (job);
+};
+
+Worker.prototype.onRecordForCancelledJob = function (job, record)
+{
+	var jobid = record['value']['jobId'];
+	if (!this.w_logthrottle.throttle(
+	    sprintf('%s for cancelled job %s', record['bucket'], jobid)))
+		this.w_log.warn('onRecord: dropping record ' +
+		    'for cancelled job', record);
+
+	this.jobCancelRecords(jobid, job.j_cancelled);
+	return (null);
 };
 
 Worker.prototype.onRecordForUnknownJob = function (record)
@@ -1923,8 +2020,6 @@ Worker.prototype.onRecordForUnknownJob = function (record)
 	    record['bucket'] == this.w_buckets['taskinput'] ||
 	    record['bucket'] == this.w_buckets['taskoutput']) {
 		if (!this.w_jobs_cached.hasOwnProperty(jobid)) {
-			this.w_log.warn('onRecord: dropping record for ' +
-			    'unknown job (fetching record)', record);
 			jc = new JobCacheState();
 			jc.jc_checking = true;
 			this.w_jobs_cached[jobid] = jc;
@@ -1961,39 +2056,6 @@ Worker.prototype.onRecordForUnknownJob = function (record)
 	}
 
 	return (null);
-};
-
-Worker.prototype.jobCancelRecords = function (jobid)
-{
-	var worker = this;
-	var jc, batch;
-
-	jc = this.w_jobs_cached[jobid];
-	mod_assert.ok(!jc.jc_checking);
-	mod_assert.ok(jc.jc_timecancelled);
-	if (jc.jc_throttle.tooRecent())
-		return;
-
-	batch = [ [ 'update', this.w_buckets['task'],
-	    sprintf('(&(jobId=%s)(!(timeCancelled=*)))', jobid),
-	    { 'timeCancelled': jc.jc_timecancelled } ] ];
-	[ 'jobinput', 'taskinput', 'taskoutput' ].forEach(function (b) {
-		batch.push([ 'update', worker.w_buckets[b],
-		    sprintf('(&(jobId=%s)(!(timeCancelled=*)))', jobid),
-		    { 'timeJobCancelled': jc.jc_timecancelled } ]);
-	});
-
-	this.w_log.info('job "%s": cancelling job records', jobid);
-	jc.jc_throttle.start();
-	this.w_bus.batch(batch, {}, function (err) {
-		jc.jc_throttle.done();
-		if (err)
-			worker.w_log.warn(err,
-			    'job "%s": failed to cancel records', jobid);
-		else
-			worker.w_log.info(
-			    'job "%s": cancelled job records', jobid);
-	});
 };
 
 /*
@@ -3147,37 +3209,6 @@ Worker.prototype.jobSave = function (job)
 	    { 'etag': job.j_etag }
 	] ];
 
-	/*
-	 * If we're cancelling this job, make sure to also cancel the other
-	 * associated job records.
-	 */
-	if (job.j_state == 'finishing' && job.j_job['state'] == 'done' &&
-	    job.j_job['timeCancelled'] !== undefined) {
-		/*
-		 * Tasks are cancelled directly to stop execution.  We write
-		 * this on all tasks, committed, done, or not, because we're
-		 * going to stop processing any updates and we don't want to
-		 * keep finding them.
-		 */
-		records.push([ 'update', this.w_buckets['task'],
-		    sprintf('(&(jobId=%s))', job.j_id),
-		    { 'timeCancelled': job.j_job['timeCancelled'] } ]);
-
-		/*
-		 * We mark timeJobCancelled on jobinputs, taskoutputs, and
-		 * taskinputs so that our polling doesn't keep finding them.
-		 */
-		records.push([ 'update', this.w_buckets['jobinput'],
-		    sprintf('(&(jobId=%s))', job.j_id),
-		    { 'timeJobCancelled': job.j_job['timeCancelled'] } ]);
-		records.push([ 'update', this.w_buckets['taskoutput'],
-		    sprintf('(&(jobId=%s))', job.j_id),
-		    { 'timeJobCancelled': job.j_job['timeCancelled'] } ]);
-		records.push([ 'update', this.w_buckets['taskinput'],
-		    sprintf('(&(jobId=%s))', job.j_id),
-		    { 'timeJobCancelled': job.j_job['timeCancelled'] } ]);
-	}
-
 	this.w_bus.batch(records, options, function (err) {
 		job.j_save_throttle.done();
 
@@ -3222,7 +3253,7 @@ Worker.prototype.jobDone = function (job)
 	if (job.j_state != 'running' && job.j_state != 'finishing')
 		return (false);
 
-	if (!job.j_input_fully_read)
+	if (job.j_cancelled === undefined && !job.j_input_fully_read)
 		return (false);
 
 	if (job.j_nlocates > 0 || job.j_nauths > 0 || job.j_ndeletes > 0)
@@ -3230,12 +3261,15 @@ Worker.prototype.jobDone = function (job)
 
 	for (pi = 0; pi < job.j_phases.length; pi++) {
 		if (job.j_phases[pi].p_ndispatches > 0 ||
-		    job.j_phases[pi].p_nuncommitted > 0 ||
-		    job.j_phases[pi].p_nunmarked_propagate > 0 ||
+		    job.j_phases[pi].p_nuncommitted > 0)
+			return (false);
+
+		if (job.j_cancelled === undefined &&
+		    (job.j_phases[pi].p_nunmarked_propagate > 0 ||
 		    job.j_phases[pi].p_nunmarked_cleanup > 0 ||
 		    job.j_phases[pi].p_nunmarked_retry > 0 ||
 		    job.j_phases[pi].p_nunpropagated > 0 ||
-		    job.j_phases[pi].p_nretryneeded > 0)
+		    job.j_phases[pi].p_nretryneeded > 0))
 			return (false);
 	}
 
@@ -3636,6 +3670,15 @@ Worker.prototype.dispLocateResponse = function (dispatches, err, locations)
 
 Worker.prototype.dispDispatch = function (dispatch)
 {
+	if (dispatch.d_error === undefined &&
+	    dispatch.d_job.j_cancelled !== undefined) {
+		dispatch.d_error = {
+		    'code': EM_JOBCANCELLED,
+		    'message': 'job was cancelled'
+		};
+	}
+
+
 	if (dispatch.d_error !== undefined)
 		this.dispError(dispatch);
 	else if (dispatch.d_job.j_phases[dispatch.d_pi].p_type == 'reduce')
@@ -3754,17 +3797,24 @@ Worker.prototype.dispMap = function (dispatch)
 	    origin_value,
 	    { 'etag': dispatch.d_origin['_etag'] }
 	] ], {
-	    'retryConflict': function () {
+	    'retryConflict': function (oldrec) {
 		/*
 		 * See the retryConflict function in taskRetryReduce.  The only
 		 * legitimate way this can happen here is for the same reason it
 		 * can happen there: the "write" that set wantRetry = true is
 		 * still pending.
 		 */
-		if (!isretry)
-			return (new Error('unexpected conflict retrying map'));
-		return (new Error('conflict while retrying map task ' +
-		    '(will try again)'));
+		if (!isretry) {
+			if (oldrec['value']['timeCancelled'] !== undefined)
+				return (new Error('skipped map dispatch ' +
+				    'because origin cancelled'));
+			else
+				return (new Error(
+				    'unexpected conflict dispatching map'));
+		} else {
+			return (new Error('conflict while retrying map task ' +
+			    '(will try again)'));
+		}
 	    }
 	}, function (err) {
 		dispatch.d_barrier.done(dispatch.d_id);

@@ -248,7 +248,7 @@ PROTO_MARLIN_FILES += $(PROTO_MARLIN_BUILD)
 PROTO_FILES += $(PROTO_MARLIN_FILES)
 $(PROTO_MARLIN_ROOT)/$(BUILD)/node: | $(BUILD)/node
 	mkdir -p $(@D) && cp -r $(BUILD)/node $@
-$(BUILD)/node: deps
+$(BUILD)/node: $(NODE_EXEC)
 
 $(PROTO_MARLIN_ROOT)/$(BUILD)/docs: docs
 	rm -rf "$@" && mkdir -p "$(@D)" && cp -r $(BUILD)/docs "$@"
@@ -273,6 +273,9 @@ $(PROTO_SITE_ROOT)/.do-not-delete-me:
 
 .PHONY: proto
 proto: $(PROTO_FILES) proto_deps
+
+.PHONY: proto_files
+proto_files: $(PROTO_FILES)
 
 .PHONY: proto_deps
 proto_deps: $(PROTO_FILES)

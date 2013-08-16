@@ -1326,7 +1326,28 @@ exports.jobMcancel = {
 		});
 	}, 10 * 1000);
     },
-    'errors': []
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'input': '/%user%/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
+	'code': EM_JOBCANCELLED,
+	'message': 'job was cancelled'
+    }, {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/%user%/stor/obj2"',
+	'input': '/%user%/stor/obj2',
+	'p0input': '/%user%/stor/obj2',
+	'code': EM_JOBCANCELLED,
+	'message': 'job was cancelled'
+    }, {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/%user%/stor/obj3"',
+	'input': '/%user%/stor/obj3',
+	'p0input': '/%user%/stor/obj3',
+	'code': EM_JOBCANCELLED,
+	'message': 'job was cancelled'
+    } ]
 };
 
 exports.jobMmeterCheckpoints = {
@@ -2189,10 +2210,8 @@ function jobTestVerifyResultSync(verify)
 	mod_assert.equal(stats['nErrors'], verify['errors'].length);
 	mod_assert.equal(stats['nInputsRead'], verify['inputs'].length);
 	mod_assert.equal(stats['nJobOutputs'], verify['outputs'].length);
-
-	if (job['timeCancelled'] === undefined)
-		mod_assert.equal(stats['nTasksDispatched'],
-		    stats['nTasksCommittedOk'] + stats['nTasksCommittedFail']);
+	mod_assert.equal(stats['nTasksDispatched'],
+	    stats['nTasksCommittedOk'] + stats['nTasksCommittedFail']);
 
 	/*
 	 * For every failed task, there should be either a retry or an error.

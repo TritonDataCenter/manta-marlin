@@ -138,7 +138,7 @@ exports.wqJobTasksDone = {
     'query': function (conf, domainid) {
 	/* workaround MANTA-1065 */
 	return (sprintf('(&(domain=%s)(state=done)(!(timeCommitted=*))' +
-	    '(!(timeCancelled=*))(timeDispatchDone=*))', domainid));
+	    '(timeDispatchDone=*))', domainid));
     }
 };
 
@@ -247,7 +247,7 @@ exports.wqCountJobTasksNeedingRetry = {
     'query': function (phasei, jobid) {
  	return (sprintf('(&(jobId=%s)(phaseNum=%d)(timeOutputsMarkDone=*)' +
 	    '(|(wantRetry=true)(wantRetry=TRUE))' + /* workaround MANTA-1065 */
-	    '(!(timeRetried=*)))', jobid, phasei));
+	    '(!(timeCancelled=*))(!(timeRetried=*)))', jobid, phasei));
     }
 };
 
@@ -290,7 +290,7 @@ exports.wqCountJobTaskOutputsUnpropagated = {
     'countonly': true,
     'query': function (phasei, jobid) {
 	return (sprintf('(&(jobId=%s)(phaseNum=%d)(timeCommitted=*)' +
-	    '(!(timePropagated=*)))', jobid, phasei));
+	    '(!(timeJobCancelled=*))(!(timePropagated=*)))', jobid, phasei));
     }
 };
 

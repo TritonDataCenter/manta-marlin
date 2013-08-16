@@ -61,6 +61,7 @@
 		"maxPendingPuts": 100,
 		"maxRecordsPerQuery": 1000,
 		"maxRecordsPerUpdate": 500,
+		"maxRecordsPerCancel": 250,
 		"maxTaskRetries": 2,
 		"timeAgentPoll": 5000,
 		"timeAgentTimeout": 60000,

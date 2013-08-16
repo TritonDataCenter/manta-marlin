@@ -862,8 +862,7 @@ function MorayBusTransaction(records, options, callback)
 			    'record filter must be a string');
 			mod_assert.equal(typeof (rec[3]), 'object',
 			    'record itself must be an object');
-			/* XXX reenable this assertion */
-			if (rec[0] == 'update' && false)
+			if (rec[0] == 'update')
 				mod_assert.ok(rec.length == 5 &&
 				    typeof (rec[4]) == 'object' &&
 				    rec[4].hasOwnProperty('limit'),
