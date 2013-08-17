@@ -242,6 +242,8 @@ function JobState(args)
 	 * (or is writing) some inputs before the workerid was assigned.
 	 */
 	this.j_mark_inputs = new Throttler(tunables['timeMarkInputs']);
+	this.j_mark_pending = false;
+	this.j_mark_needed = [];
 
 	/*
 	 * Agent health management state: server-side updates to abandon tasks
@@ -3116,6 +3118,18 @@ Worker.prototype.jobMarkAllInputs = function (job, callback)
 {
 	var worker, bucket, filter, changes, request;
 
+	/*
+	 * We must not allow multiple of these to be executed concurrently, or
+	 * they may end up stomping on each others' records, causing those
+	 * records' etags to change (even though the content won't have
+	 * changed), causing etag conflict errors dispatching tasks.
+	 */
+	if (job.j_mark_pending) {
+		job.j_log.info('mark inputs already pending');
+		job.j_mark_needed.push(callback);
+		return;
+	}
+
 	worker = this;
 	bucket = this.w_buckets['jobinput'];
 	filter = sprintf('(&(jobId=%s)(!(domain=*)))', job.j_id);
@@ -3126,7 +3140,9 @@ Worker.prototype.jobMarkAllInputs = function (job, callback)
 	this.w_dtrace.fire('job-mark-inputs-start',
 	    function () { return ([ job.j_id ]); });
 
+	job.j_mark_pending = true;
 	this.w_bus.batch([ request ], {}, function (err, meta) {
+		job.j_mark_pending = false;
 		worker.w_dtrace.fire('job-mark-inputs-done',
 		    function () { return ([ job.j_id ]); });
 		job.j_log.debug({ 'err': err, 'result': meta },
@@ -3138,6 +3154,12 @@ Worker.prototype.jobMarkAllInputs = function (job, callback)
 			worker.jobMarkAllInputs(job, callback);
 		} else {
 			callback(err, meta);
+		}
+
+		if (job.j_mark_needed.length > 0) {
+			job.j_log.info('mark inputs: kicking another update');
+			var next = job.j_mark_needed.shift();
+			worker.jobMarkAllInputs(job, next);
 		}
 	});
 };
