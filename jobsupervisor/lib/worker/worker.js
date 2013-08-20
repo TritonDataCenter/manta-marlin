@@ -2776,6 +2776,7 @@ Worker.prototype.jobAssigned = function (job)
 		    query, worker.w_bus_options, function (c) {
 			barrier.done('phase ' + i + ' tasks needing retry');
 			mod_assert.equal(typeof (c), 'number');
+			job.j_log.info('tasks needing retry', c);
 			job.j_phases[i].p_nretryneeded = c;
 		    });
 
@@ -2787,6 +2788,7 @@ Worker.prototype.jobAssigned = function (job)
 			barrier.done('phase ' + i +
 			    ' taskinputs needing retry');
 			mod_assert.equal(typeof (c), 'number');
+			job.j_log.info('taskinputs needing retry', c);
 			job.j_phases[i].p_ninretryneeded = c;
 		    });
 

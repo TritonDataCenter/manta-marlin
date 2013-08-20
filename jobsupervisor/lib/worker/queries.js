@@ -244,7 +244,13 @@ exports.wqCountJobTasksNeedingRetry = {
     'bucket': 'task',
     'countonly': true,
     'query': function (phasei, jobid) {
- 	return (sprintf('(&(jobId=%s)(phaseNum=%d)(timeOutputsMarkDone=*)' +
+	/*
+	 * Similar to the previous query, this one does NOT exclude queries
+	 * without timeOutputsMarkStart, since we need an accurate count of ALL
+	 * tasks needing retry in order to know that there's still work
+	 * outstanding.
+	 */
+	return (sprintf('(&(jobId=%s)(phaseNum=%d)' +
 	    '(|(wantRetry=true)(wantRetry=TRUE))' + /* workaround MANTA-1065 */
 	    '(!(timeCancelled=*))(!(timeRetried=*)))', jobid, phasei));
     }

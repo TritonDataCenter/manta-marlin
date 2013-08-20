@@ -41,8 +41,8 @@ while ((option = parser.getopt()) !== undefined) {
 	}
 }
 
-if (process.argv[parser.optind()] == 'main') {
-	test.log.info('only running "main" (stress) tests');
+if (process.argv[parser.optind()] == 'stress') {
+	test.log.info('only running stress tests');
 	tests = jobs.jobsStress;
 }
 
