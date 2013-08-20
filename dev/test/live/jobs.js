@@ -1592,7 +1592,7 @@ exports.jobMinitKillAfter = {
     'errors': []
 };
 
-exports.jobsAll = [
+exports.jobsMain = [
     exports.jobM,
     exports.jobMimage,
     exports.jobMX,
@@ -1633,16 +1633,10 @@ exports.jobsAll = [
     exports.jobMerrorAssetMissing,
     exports.jobMerrorBadReducer,
     exports.jobMerrorVeryBadReducer,
-    exports.jobMerrorOom,
-    exports.jobMerrorDisk,
     exports.jobMerrorLackeyCrash,
-    exports.jobMerrorLackeyOom,
     exports.jobMerrorCmd,
     exports.jobMerrorMuskie,
     exports.jobMerrorMuskieMpipe,
-    exports.jobMerrorMuskieRetry,
-    exports.jobRmuskieRetry,
-    exports.jobRerrorMuskieRetry,
     exports.jobMerrorMuskieRetryMpipe,
     exports.jobMerrorMpipeMkdirp,
     exports.jobMerrorBadImage,
@@ -1657,6 +1651,26 @@ exports.jobsAll = [
     exports.jobMinitKill,
     exports.jobMinitKillAfter
 ];
+
+/*
+ * The "corner cases" are really just a bunch of expensive jobs that we don't
+ * necessariliy want to be running frequently during stress tests and where
+ * basically any success validates the correct behavior.
+ */
+exports.jobsCornerCases = [
+    exports.jobMerrorOom,
+    exports.jobMerrorDisk,
+    exports.jobMerrorLackeyOom,
+    exports.jobMerrorMuskieRetry,
+    exports.jobRmuskieRetry,
+    exports.jobRerrorMuskieRetry,
+];
+
+exports.jobsAll = exports.jobsCornerCases.concat(exports.jobsMain);
+exports.jobsStress = exports.jobsMain.concat([
+    exports.jobM500,
+    exports.jobMR1000
+]);
 
 function initJobs()
 {

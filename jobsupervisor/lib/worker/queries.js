@@ -136,7 +136,6 @@ exports.wqJobTasksDone = {
     'name': 'done tasks',
     'bucket': 'task',
     'query': function (conf, domainid) {
-	/* workaround MANTA-1065 */
 	return (sprintf('(&(domain=%s)(state=done)(!(timeCommitted=*))' +
 	    '(timeDispatchDone=*))', domainid));
     }
