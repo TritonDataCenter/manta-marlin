@@ -2398,6 +2398,10 @@ function populateData(manta, keys, callback)
 	}
 
 	var final_err;
+	var dirs = keys.filter(
+	    function (key) { return (mod_jsprim.endsWith(key, 'dir')); });
+	keys = keys.filter(
+	    function (key) { return (!mod_jsprim.endsWith(key, 'dir')); });
 
 	var queue = mod_vasync.queuev({
 	    'concurrency': 15,
@@ -2448,12 +2452,31 @@ function populateData(manta, keys, callback)
 	    }
 	});
 
-	keys.forEach(function (key) {
-		if (key.indexOf('notavalid') == -1)
-			queue.push(key);
-	});
+	var putKeys = function (keylist) {
+		keylist.forEach(function (key) {
+			if (key.indexOf('notavalid') == -1)
+				queue.push(key);
+		});
+	};
 
-	queue.drain = function () { callback(final_err); };
+	log.info('dirs', dirs);
+	log.info('keys', keys);
+
+	if (dirs.length > 0) {
+		putKeys(dirs);
+	} else {
+		putKeys(keys);
+		keys = [];
+	}
+
+	queue.drain = function () {
+		if (keys.length > 0) {
+			putKeys(keys);
+			keys = [];
+		} else {
+			callback(final_err);
+		}
+	};
 }
 
 function StringInputStream(contents)
