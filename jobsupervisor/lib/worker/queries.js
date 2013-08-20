@@ -251,6 +251,16 @@ exports.wqCountJobTasksNeedingRetry = {
     }
 };
 
+exports.wqCountJobTaskInputsNeedingRetry = {
+    'name': 'count tasks needing retry',
+    'bucket': 'taskinput',
+    'countonly': true,
+    'query': function (phasei, jobid) {
+ 	return (sprintf('(&(jobId=%s)(phaseNum=%d)(retryTaskId=*)' +
+	    '(!(timeJobCancelled=*))(!(timeRetried=*)))', jobid, phasei));
+    }
+};
+
 exports.wqCountJobTasksNeedingOutputsMarked = {
     'name': 'count tasks needing outputs marked',
     'bucket': 'task',

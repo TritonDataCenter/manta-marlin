@@ -392,6 +392,7 @@ MorayBus.prototype.batch = function (records, options, callback)
 		}
 
 		if (rec['options']['etag'] !== undefined &&
+		    txn.tx_issued === undefined &&
 		    txn.tx_retry_conflict === undefined) {
 			throw (new VError('attempted conditional putBatch ' +
 			    'with concurrent write without retryConflict ' +

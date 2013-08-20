@@ -526,6 +526,7 @@ var sMorayTaskInput = {
 		'taskInputId': sStringRequiredNonEmpty,
 		'jobId': sStringRequiredNonEmpty,
 		'taskId': sStringRequiredNonEmpty,
+		'phaseNum': sNonNegativeInteger,
 		'domain': sStringRequiredNonEmpty,
 		'mantaComputeId': sStringRequiredNonEmpty, /* assigned cn */
 		'agentGeneration': sStringRequiredNonEmpty,
@@ -737,13 +738,14 @@ sBktConfigs['jobinput'] = {
  */
 sBktConfigs['taskinput'] = {
     'options': {
-	'version': 5
+	'version': 6
     },
     'index': {
 	'taskInputId':			{ 'type': 'string', 'unique': true },
 	'jobId':			{ 'type': 'string' },
 	'domain':			{ 'type': 'string' },
 	'taskId':			{ 'type': 'string' },
+	'phaseNum':			{ 'type': 'number' },
 	'mantaComputeId':		{ 'type': 'string' },
 	'agentGeneration':		{ 'type': 'string' },
 	'timeJobCancelled':		{ 'type': 'string' },

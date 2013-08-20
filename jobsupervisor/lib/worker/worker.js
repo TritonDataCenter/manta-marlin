@@ -284,6 +284,8 @@ function JobPhase(phase)
 	this.p_nuncommitted = undefined;	/* nr of uncommitted tasks */
 	this.p_nunpropagated = undefined;	/* nr of unpropagated outputs */
 	this.p_nretryneeded = undefined;	/* nr of tasks needing retry */
+	this.p_ninretryneeded = undefined;	/* nr of taskinputs needing */
+						/* retry */
 	this.p_nunmarked_propagate = undefined;	/* nr of tasks needing */
 						/* taskoutputs marked */
 	this.p_nunmarked_cleanup = undefined;	/* nr of tasks needing */
@@ -302,9 +304,7 @@ function JobPhase(phase)
 
 	for (var i = 0; i < this.p_reducers.length; i++) {
 		this.p_reducers[i] = {
-		    'r_task': undefined,	/* task record */
-		    'r_ninput': 0,		/* total nr of input keys */
-		    'r_nissued': 0		/* nr of inputs issued */
+		    'r_task': undefined		/* task record */
 		};
 	}
 }
@@ -317,6 +317,7 @@ function JobTask(jobid, pi, taskid)
 	this.t_id = taskid;		/* unique task identifier */
 	this.t_etag = undefined;	/* last received etag for this task */
 	this.t_done = false;		/* task is done (reduce only) */
+	this.t_ninput = undefined;	/* taskinputs issued (reduce only) */
 	this.t_retry = false;		/* task will be retried (ditto) */
 	this.t_value = {		/* authoritative task record */
 	    'jobId': jobid,
@@ -1609,6 +1610,7 @@ Worker.prototype.taskRetryReduce = function (record, barrier, job, phase, now)
 
 	job.j_log.info('retrying reduce task "%s" as "%s"',
 	    record['key'], task.t_id);
+	task.t_ninput = 0;
 
 	value['rIdx'] = record['value']['rIdx'];
 	value['mantaComputeId'] = agent.a_record['value']['instance'];
@@ -1698,12 +1700,20 @@ Worker.prototype.taskRetryReduce = function (record, barrier, job, phase, now)
 Worker.prototype.onRecordTaskMarkInputsRetry = function (record, barrier, job,
     phase, now)
 {
-	var filter, changes, limit, update, worker;
+	var canbedone, filter, changes, limit, update, worker;
 
 	/* Drop records for cancelled jobs. */
 	job = this.jobForRecord(record);
 	if (job === null)
 		return;
+
+	/*
+	 * If there's a reduce task which is being retried, then we may still be
+	 * issuing taskinputs for it.  In that case, even if we update 0
+	 * records, we need to keep updating records in batches until we
+	 * complete a full lap *after* we've retried the reduce task.
+	 */
+	canbedone = phase.p_ninretryneeded === 0;
 
 	barrier.start(record['key']);
 
@@ -1735,10 +1745,19 @@ Worker.prototype.onRecordTaskMarkInputsRetry = function (record, barrier, job,
 		}
 
 		nupdated = meta.etags[0]['count'];
+		phase.p_ninretryneeded += nupdated;
 		mod_assert.equal(typeof (nupdated), 'number');
 		if (nupdated >= limit) {
 			job.j_log.info('task "%s": marked %d inputs for ' +
 			    'retry (need another lap)', record['key'],
+			    nupdated);
+			barrier.done(record['key']);
+			return;
+		}
+
+		if (!canbedone) {
+			job.j_log.info('task "%s": marked only %d inputs for ' +
+			    'retry, but more may exist', record['key'],
 			    nupdated);
 			barrier.done(record['key']);
 			return;
@@ -1812,7 +1831,8 @@ Worker.prototype.taskRetryMap = function (record, barrier, job, phase, now)
 Worker.prototype.onRecordTaskInput = function (record, barrier)
 {
 	var jc, jobrec, job, now, value;
-	var wantremove;
+	var phase, wantremove;
+	var worker = this;
 
 	/*
 	 * There are two reasons to find a taskinput record: either
@@ -1847,7 +1867,7 @@ Worker.prototype.onRecordTaskInput = function (record, barrier)
 		return;
 	}
 
-	if (this.jobForRecord(record) === null)
+	if ((job = this.jobForRecord(record)) === null)
 		return;
 
 	record['value']['timeRetried'] = now;
@@ -1855,6 +1875,7 @@ Worker.prototype.onRecordTaskInput = function (record, barrier)
 	    'taskInputId': mod_uuid.v4(),
 	    'jobId': record['value']['jobId'],
 	    'taskId': record['value']['retryTaskId'],
+	    'phaseNum': record['value']['phaseNum'],
 	    'domain': record['value']['domain'],
 	    'mantaComputeId': record['value']['retryMantaComputeId'],
 	    'agentGeneration': record['value']['retryAgentGeneration'],
@@ -1881,7 +1902,22 @@ Worker.prototype.onRecordTaskInput = function (record, barrier)
 	    value['taskInputId'],
 	    value
 	] ], {}, function () {
+		var reducer, i;
+
 		barrier.done('taskinput ' + value['taskInputId']);
+		phase = job.j_phases[record['value']['phaseNum']];
+		phase.p_ninretryneeded--;
+
+		for (i = 0; i < phase.p_reducers.length; i++) {
+			reducer = phase.p_reducers[i];
+			if (reducer.r_task.t_id == value['taskId']) {
+				reducer.r_task.t_ninput++;
+				break;
+			}
+		}
+
+		worker.jobPropagateEnd(job, null);
+		worker.jobTick(job);
 	});
 };
 
@@ -2743,6 +2779,17 @@ Worker.prototype.jobAssigned = function (job)
 			job.j_phases[i].p_nretryneeded = c;
 		    });
 
+		queryconf = wQueries.wqCountJobTaskInputsNeedingRetry;
+		query = queryconf['query'].bind(null, i, job.j_id);
+		barrier.start('phase ' + i + ' taskinputs needing retry');
+		worker.w_bus.count(worker.w_buckets[queryconf['bucket']],
+		    query, worker.w_bus_options, function (c) {
+			barrier.done('phase ' + i +
+			    ' taskinputs needing retry');
+			mod_assert.equal(typeof (c), 'number');
+			job.j_phases[i].p_ninretryneeded = c;
+		    });
+
 		if (i == job.j_phases.length - 1) {
 			job.j_phases[i].p_nunpropagated = 0;
 			return;
@@ -2888,8 +2935,7 @@ Worker.prototype.jobLoadReduceTask = function (job, record, barrier)
 	    queryconf['query'].bind(null, value['taskId']),
 	    this.w_bus_options, function (c) {
 		mod_assert.equal(typeof (c), 'number');
-		reducer.r_ninput = c;
-		reducer.r_nissued = c;
+		reducer.r_task.t_ninput = c;
 		barrier.done('count task ' + value['taskId'] + ' inputs');
 	    });
 };
@@ -2961,6 +3007,7 @@ Worker.prototype.jobLoaded = function (job)
 
 			task = worker.taskCreate(job, pi, now);
 			reducer.r_task = task;
+			reducer.r_task.t_ninput = 0;
 
 			value = task.t_value;
 			value['rIdx'] = ri;
@@ -3291,6 +3338,7 @@ Worker.prototype.jobDone = function (job)
 		    job.j_phases[pi].p_nunmarked_cleanup > 0 ||
 		    job.j_phases[pi].p_nunmarked_retry > 0 ||
 		    job.j_phases[pi].p_nunpropagated > 0 ||
+		    job.j_phases[pi].p_ninretryneeded > 0 ||
 		    job.j_phases[pi].p_nretryneeded > 0))
 			return (false);
 	}
@@ -3894,6 +3942,7 @@ Worker.prototype.dispReduce = function (dispatch)
 	    'taskInputId': uuid,
 	    'jobId': job.j_id,
 	    'taskId': task.t_id,
+	    'phaseNum': task.t_value['phaseNum'],
 	    'domain': job.j_job['worker'],
 	    'mantaComputeId': task.t_value['mantaComputeId'],
 	    'agentGeneration': worker.w_agents[
@@ -3939,7 +3988,7 @@ Worker.prototype.dispReduce = function (dispatch)
 	origin_value['nextRecordId'] = uuid;
 	origin_value['timePropagated'] = dispatch.d_time;
 
-	reducer.r_ninput++;
+	reducer.r_task.t_ninput++;
 	job.j_ndeletes += ndels;
 
 	this.w_dtrace.fire('taskinput-dispatched', function () {
@@ -3954,9 +4003,7 @@ Worker.prototype.dispReduce = function (dispatch)
 	    origin_value,
 	    { 'etag': dispatch.d_origin['_etag'] }
 	] ], {}, function (err) {
-		if (!err)
-			reducer.r_nissued++;
-		else
+		if (err)
 			job.j_ndeletes -= ndels;
 
 		dispatch.d_barrier.done(dispatch.d_id);
@@ -4146,6 +4193,7 @@ Worker.prototype.jobPropagateEnd = function (job, now)
 		    phase.p_nunmarked_cleanup > 0 ||
 		    phase.p_nunmarked_retry > 0 ||
 		    phase.p_nunpropagated > 0 ||
+		    phase.p_ninretryneeded > 0 ||
 		    phase.p_nretryneeded > 0)
 			/* Tasks still running. */
 			break;
@@ -4153,7 +4201,8 @@ Worker.prototype.jobPropagateEnd = function (job, now)
 
 	if (pi < job.j_phases.length &&
 	    job.j_phases[pi].p_reducers !== undefined &&
-	    job.j_phases[pi].p_ndispatches === 0) {
+	    job.j_phases[pi].p_ndispatches === 0 &&
+	    job.j_phases[pi].p_ninretryneeded === 0) {
 		if (now === null)
 			now = mod_jsprim.iso8601(new Date());
 		this.reduceEndInput(job, pi, now);
@@ -4184,9 +4233,10 @@ Worker.prototype.reduceEndInput = function (job, i, now)
 		}
 
 		job.j_log.info('marking input done for ' +
-		    'reduce phase %d (task %s)', i, task.t_id);
+		    'reduce phase %d (task %s) with %d inputs', i, task.t_id,
+		    reducer.r_task.t_ninput);
 		task.t_value['timeInputDone'] = now;
-		task.t_value['nInputs'] = reducer.r_ninput;
+		task.t_value['nInputs'] = reducer.r_task.t_ninput;
 		worker.w_dtrace.fire('task-input-done', function () {
 			return ([ job.j_id, task.t_id, task.t_value ]);
 		});
