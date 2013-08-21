@@ -2192,6 +2192,22 @@ function jobTestVerifyResultSync(verify)
 			for (var k in expected_error) {
 				exp = replaceParams(expected_error[k]);
 				if (typeof (expected_error[k]) == 'string') {
+					/*
+					 * In non-strict modes, cancelled jobs
+					 * are allowed to fail with EM_INTERNAL
+					 * instead of EM_JOBCANCELLED.
+					 */
+					if (!strict &&
+					    exp['code'] == EM_JOBCANCELLED &&
+					    actual_error['code'] ==
+					    EM_INTERNAL &&
+					    (k == 'code' || k == 'message')) {
+						log.warn('expected %s, ' +
+						    'but got %s, which is ' +
+						    'okay in non-strict mode',
+						    exp[k], actual_error[k]);
+					    	continue;
+					}
 					if (actual_error[k] !== exp) {
 						match = false;
 						break;
