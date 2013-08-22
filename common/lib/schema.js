@@ -411,6 +411,16 @@ var sMorayTask = {
 		'timeDispatched': sDateTimeRequired,	/* time created */
 
 		/*
+		 * For map and first-attempt reduce tasks, timeDispatchDone ==
+		 * timeDispatched.  If this reduce task is a retry of another
+		 * task, timeDispatchDone is unset until that other task has
+		 * finished being retried.  We use this to avoid committing a
+		 * reduce task before its predecessor has finished being
+		 * retried.
+		 */
+		'timeDispatchDone': sString,
+
+		/*
 		 * The agent records when it accepts the task, which just
 		 * indicates that it has read it.  Cancelled and aborted tasks
 		 * may never become accepted.
@@ -433,6 +443,39 @@ var sMorayTask = {
 		 * "taskoutput" record.  It's described in lib/worker/worker.js.
 		 */
 		'timeCommitted': sDateTime,	/* time worker committed */
+
+		/*
+		 * Tasks can have very large numbers of outputs, so we mark
+		 * those outputs for propagation asynchronously.
+		 * timeOutputsMarkStart is usually set to timeCommitted at
+		 * commit-time.  The supervisor marks outputs in batches until
+		 * there are none left, after which point it sets
+		 * timeOutputsMarkDone.
+		 */
+		'timeOutputsMarkStart': sDateTime,
+		'timeOutputsMarkDone': sDateTime,
+
+		/*
+		 * Similarly, reduce tasks can have very large numbers of
+		 * inputs, so we mark those for cleanup asynchronously.
+		 * timeInputsMarkCleanupStart is usually set to
+		 * timeOutputsMarkDone.  The supervisor marks inputs in batches
+		 * until there are none left, after which point it sets
+		 * timeInputsMarkDone.
+		 */
+		'timeInputsMarkCleanupStart': sDateTime, /* reduce only */
+		'timeInputsMarkCleanupDone': sDateTime,  /* reduce only */
+
+		/*
+		 * Similarly, we asynchronously mark taskinputs needing retry.
+		 * In order to do this, we need to keep track of the retry task
+		 * for this task.
+		 */
+		'timeInputsMarkRetryStart': sDateTime, /* reduce only */
+		'timeInputsMarkRetryDone': sDateTime,
+		'retryTaskId': sString,
+		'retryMantaComputeId': sString,
+		'retryAgentGeneration': sString,
 
 		/*
 		 * There are two cases where task processing may stop without
@@ -483,6 +526,7 @@ var sMorayTaskInput = {
 		'taskInputId': sStringRequiredNonEmpty,
 		'jobId': sStringRequiredNonEmpty,
 		'taskId': sStringRequiredNonEmpty,
+		'phaseNum': sNonNegativeInteger,
 		'domain': sStringRequiredNonEmpty,
 		'mantaComputeId': sStringRequiredNonEmpty, /* assigned cn */
 		'agentGeneration': sStringRequiredNonEmpty,
@@ -694,13 +738,14 @@ sBktConfigs['jobinput'] = {
  */
 sBktConfigs['taskinput'] = {
     'options': {
-	'version': 5
+	'version': 6
     },
     'index': {
 	'taskInputId':			{ 'type': 'string', 'unique': true },
 	'jobId':			{ 'type': 'string' },
 	'domain':			{ 'type': 'string' },
 	'taskId':			{ 'type': 'string' },
+	'phaseNum':			{ 'type': 'number' },
 	'mantaComputeId':		{ 'type': 'string' },
 	'agentGeneration':		{ 'type': 'string' },
 	'timeJobCancelled':		{ 'type': 'string' },
@@ -752,7 +797,7 @@ sBktConfigs['taskoutput'] = {
  */
 sBktConfigs['task'] = {
     'options': {
-	'version': 4
+	'version': 5
     },
     'index': {
 	'taskId':		{ 'type': 'string', 'unique': true },
@@ -767,6 +812,7 @@ sBktConfigs['task'] = {
 	'state':		{ 'type': 'string' },
 	'wantRetry':		{ 'type': 'string' },
 	'wantInputRemoved':	{ 'type': 'string' },
+	'timeDispatchDone':	{ 'type': 'string' },
 	'timeAbandoned':	{ 'type': 'string' },
 	'timeCancelled':	{ 'type': 'string' },
 	'timeInputDone':	{ 'type': 'string' },
@@ -775,6 +821,12 @@ sBktConfigs['task'] = {
 	'timeDone':		{ 'type': 'string' },
 	'timeRetried':		{ 'type': 'string' },
 	'timeInputRemoved':	{ 'type': 'string' },
+	'timeOutputsMarkStart': { 'type': 'string' },
+	'timeOutputsMarkDone':	{ 'type': 'string' },
+	'timeInputsMarkCleanupStart': { 'type': 'string' },
+	'timeInputsMarkCleanupDone':  { 'type': 'string' },
+	'timeInputsMarkRetryStart':   { 'type': 'string' },
+	'timeInputsMarkRetryDone':    { 'type': 'string' },
 
 	/* for debugging only */
 	'nattempts':		{ 'type': 'number' },

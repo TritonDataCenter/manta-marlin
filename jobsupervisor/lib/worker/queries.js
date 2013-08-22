@@ -137,7 +137,36 @@ exports.wqJobTasksDone = {
     'bucket': 'task',
     'query': function (conf, domainid) {
 	return (sprintf('(&(domain=%s)(state=done)(!(timeCommitted=*))' +
-	    '(!(timeCancelled=*)))', domainid));
+	    '(timeDispatchDone=*))', domainid));
+    }
+};
+
+exports.wqJobTasksNeedingOutputsMarked = {
+    'name': 'tasks needing outputs marked',
+    'bucket': 'task',
+    'query': function (conf, domainid) {
+	return (sprintf('(&(domain=%s)(timeCommitted=*)(!(timeCancelled=*))' +
+	    '(timeOutputsMarkStart=*)(!(timeOutputsMarkDone=*)))', domainid));
+    }
+};
+
+exports.wqJobTasksNeedingInputsMarked = {
+    'name': 'tasks needing inputs marked for cleanup',
+    'bucket': 'task',
+    'query': function (conf, domainid) {
+	return (sprintf('(&(domain=%s)(timeCommitted=*)(!(timeCancelled=*))' +
+	    '(timeInputsMarkCleanupStart=*)(!(timeInputsMarkCleanupDone=*)))',
+	    domainid));
+    }
+};
+
+exports.wqJobTasksNeedingInputsRetried = {
+    'name': 'tasks needing inputs marked for retry',
+    'bucket': 'task',
+    'query': function (conf, domainid) {
+	return (sprintf('(&(domain=%s)(timeCommitted=*)(!(timeCancelled=*))' +
+	    '(timeInputsMarkRetryStart=*)(!(timeInputsMarkRetryDone=*)))',
+	    domainid));
     }
 };
 
@@ -166,9 +195,9 @@ exports.wqJobTasksNeedingRetry = {
     'bucket': 'task',
     'query': function (conf, domainid) {
 	/* workaround MANTA-1065 */
-	return (sprintf('(&(domain=%s)(!(timeRetried=*))' +
-	    '(!(timeCancelled=*))(|(wantRetry=true)(wantRetry=TRUE)))',
-	    domainid));
+	return (sprintf('(&(domain=%s)(timeOutputsMarkDone=*)' +
+	    '(!(timeRetried=*))(!(timeCancelled=*))' +
+	    '(|(wantRetry=true)(wantRetry=TRUE)))', domainid));
     }
 };
 
@@ -200,6 +229,11 @@ exports.wqCountJobTasksUncommitted = {
     'bucket': 'task',
     'countonly': true,
     'query': function (phasei, jobid) {
+	/*
+	 * This "count" query goes with JobTasksDone above, but does NOT exclude
+	 * !timeDispatchDone the way that one does because that's a transient
+	 * state that still represents outstanding work.
+	 */
 	return (sprintf('(&(jobId=%s)(phaseNum=%d)(!(timeCommitted=*)))',
 	    jobid, phasei));
     }
@@ -210,9 +244,58 @@ exports.wqCountJobTasksNeedingRetry = {
     'bucket': 'task',
     'countonly': true,
     'query': function (phasei, jobid) {
- 	return (sprintf('(&(jobId=%s)(phaseNum=%d)' +
+	/*
+	 * Similar to the previous query, this one does NOT exclude queries
+	 * without timeOutputsMarkStart, since we need an accurate count of ALL
+	 * tasks needing retry in order to know that there's still work
+	 * outstanding.
+	 */
+	return (sprintf('(&(jobId=%s)(phaseNum=%d)' +
 	    '(|(wantRetry=true)(wantRetry=TRUE))' + /* workaround MANTA-1065 */
-	    '(!(timeRetried=*)))', jobid, phasei));
+	    '(!(timeCancelled=*))(!(timeRetried=*)))', jobid, phasei));
+    }
+};
+
+exports.wqCountJobTaskInputsNeedingRetry = {
+    'name': 'count tasks needing retry',
+    'bucket': 'taskinput',
+    'countonly': true,
+    'query': function (phasei, jobid) {
+ 	return (sprintf('(&(jobId=%s)(phaseNum=%d)(retryTaskId=*)' +
+	    '(!(timeJobCancelled=*))(!(timeRetried=*)))', jobid, phasei));
+    }
+};
+
+exports.wqCountJobTasksNeedingOutputsMarked = {
+    'name': 'count tasks needing outputs marked',
+    'bucket': 'task',
+    'countonly': true,
+    'query': function (phasei, jobid) {
+	return (sprintf('(&(jobId=%s)(phaseNum=%d)(timeCommitted=*)' +
+	    '(!(timeCancelled=*))(timeOutputsMarkStart=*)' +
+	    '(!(timeOutputsMarkDone=*)))', jobid, phasei));
+    }
+};
+
+exports.wqCountJobTasksNeedingInputsMarked = {
+    'name': 'count tasks needing inputs marked',
+    'bucket': 'task',
+    'countonly': true,
+    'query': function (phasei, jobid) {
+	return (sprintf('(&(jobId=%s)(phaseNum=%d)(timeCommitted=*)' +
+	    '(!(timeCancelled=*))(timeInputsMarkCleanupStart=*)' +
+	    '(!(timeInputsMarkCleanupDone=*)))', jobid, phasei));
+    }
+};
+
+exports.wqCountJobTasksNeedingInputsRetried = {
+    'name': 'count tasks needing inputs marked for retry',
+    'bucket': 'task',
+    'countonly': true,
+    'query': function (phasei, jobid) {
+	return (sprintf('(&(jobId=%s)(phaseNum=%d)(timeCommitted=*)' +
+	    '(!(timeCancelled=*))(timeInputsMarkRetryStart=*)' +
+	    '(!(timeInputsMarkRetryDone=*)))', jobid, phasei));
     }
 };
 
@@ -222,7 +305,7 @@ exports.wqCountJobTaskOutputsUnpropagated = {
     'countonly': true,
     'query': function (phasei, jobid) {
 	return (sprintf('(&(jobId=%s)(phaseNum=%d)(timeCommitted=*)' +
-	    '(!(timePropagated=*)))', jobid, phasei));
+	    '(!(timeJobCancelled=*))(!(timePropagated=*)))', jobid, phasei));
     }
 };
 

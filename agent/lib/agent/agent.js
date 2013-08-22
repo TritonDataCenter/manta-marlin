@@ -279,6 +279,11 @@ var maKilledError = {
     'message': 'task killed (excessive resource usage)'
 };
 
+var maCancelError = {
+    'code': EM_JOBCANCELLED,
+    'message': 'job was cancelled'
+};
+
 /*
  * Kstats filters.  The instance numbers of the corresponding kstats must
  * correspond to the zoneids of the corresponding zone.
@@ -1039,8 +1044,7 @@ mAgent.prototype.onRecordTask = function (record, barrier)
 	var taskid = record['value']['taskId'];
 	var task, group;
 
-	if (record['value']['state'] == 'dispatched' &&
-	    record['value']['timeCancelled'] === undefined) {
+	if (record['value']['state'] == 'dispatched') {
 		this.taskAccept(record, barrier);
 		return;
 	}
@@ -1088,7 +1092,7 @@ mAgent.prototype.onRecordTask = function (record, barrier)
 		    record['value']['timeCancelled'];
 		task.t_record['_etag'] = record['_etag'];
 		barrier.start(task.t_id);
-		this.taskMarkFailed(task, Date.now(), undefined, barrier);
+		this.taskMarkFailed(task, Date.now(), maCancelError, barrier);
 		this.taskCancel(task);
 		return;
 	}
@@ -1198,6 +1202,7 @@ mAgent.prototype.taskAccept = function (record, barrier)
 	 * until we've finished updating the state of previous ones.
 	 */
 	var taskid = record['value']['taskId'];
+	var cancel = record['value']['timeCancelled'] !== undefined;
 	mod_assert.ok(!this.ma_tasks.hasOwnProperty(taskid));
 
 	/*
@@ -1205,22 +1210,26 @@ mAgent.prototype.taskAccept = function (record, barrier)
 	 * succeeds.  That way if we fail with EtagConflict, we can ignore the
 	 * error and just deal with this task the next time around (as though
 	 * we'd never seen it before).
-	 *
-	 * Although the task could have timeCancelled set, we let the normal
-	 * flow handle that: it'll take an extra round trip, but the resulting
-	 * code is simpler.
 	 */
+	record['value']['timeAccepted'] = mod_jsprim.iso8601(Date.now());
+
+	if (cancel) {
+		record['value']['state'] = 'done';
+		record['value']['nOutputs'] = 0;
+		record['value']['result'] = 'fail';
+		record['value']['timeDone'] = record['value']['timeAccepted'];
+	} else {
+		record['value']['state'] = 'accepted';
+	}
+
 	var agent = this;
 	barrier.start(taskid);
-	record['value']['state'] = 'accepted';
-	record['value']['timeAccepted'] = mod_jsprim.iso8601(Date.now());
 	this.ma_bus.putBatch([
 	    [ record['bucket'], record['key'], record['value'],
-	      { 'etag': record['_etag'] } ] ],
-	    {}, function (err) {
+	      { 'etag': record['_etag'] } ] ], {}, function (err) {
 		barrier.done(taskid);
 
-		if (!err)
+		if (!cancel && !err)
 			agent.taskAcceptFinish(record);
 	    });
 };
@@ -1722,6 +1731,7 @@ mAgent.prototype.taskDirty = function (task, related, barrier)
 		return (mod_bus.mergeRecords([
 			'nInputs',
 			'timeCancelled',
+			'timeDispatchDone',
 			'timeInputDone'
 		    ], [
 			'machine',

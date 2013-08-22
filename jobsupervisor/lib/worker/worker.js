@@ -124,21 +124,6 @@
  * o To list errors, query moray for error objects for job $jobid.
  *
  *
- * JOB CANCELLATION
- *
- * If a job is cancelled while it's still executing:
- *
- * (1) Muskie receives the job cancellation request and updates the "job" record
- *     to set cancelled = true.
- *
- * (2) The worker sees that cancelled = true and state != "done" and writes a
- *     transaction that sets the job's state = "done" as well as cancelled =
- *     "true" for all of the job's tasks with state != "done".  These are done
- *     in a transaction, and the latter is a server-side mass update.
- *
- * (3) The agents process task cancellation as described below.
- *
- *
  * TASK CANCELLATION
  *
  * Individual tasks may be cancelled, either because of a job cancellation or
@@ -211,9 +196,6 @@ require('../errors');
 exports.mwConfSchema = mwConfSchema;
 exports.mwWorker = Worker;
 
-/* Static configuration */
-var mwTmpfileRoot = '/var/tmp/marlin';
-
 /*
  * Maintains state for a single job.  The logic for this class lives in the
  * worker class.  Arguments include:
@@ -260,6 +242,19 @@ function JobState(args)
 	 * (or is writing) some inputs before the workerid was assigned.
 	 */
 	this.j_mark_inputs = new Throttler(tunables['timeMarkInputs']);
+	this.j_mark_pending = false;
+	this.j_mark_needed = [];
+
+	/*
+	 * Agent health management state: server-side updates to abandon tasks
+	 * for this job are serialized using these structures.
+	 * j_abandons_{pending,wanted} protect task abandon operations that
+	 * affect a specific set of agent generations, while
+	 * j_abandonall_pending protects operations that affect all tasks.
+	 */
+	this.j_abandons_pending = {};	/* agent instance -> timestamp */
+	this.j_abandons_wanted = {};	/* agent instance -> timestamp */
+	this.j_abandonall_pending = {};	/* agent instance -> timestamp */
 }
 
 JobState.prototype.debugState = function ()
@@ -289,6 +284,17 @@ function JobPhase(phase)
 	this.p_nuncommitted = undefined;	/* nr of uncommitted tasks */
 	this.p_nunpropagated = undefined;	/* nr of unpropagated outputs */
 	this.p_nretryneeded = undefined;	/* nr of tasks needing retry */
+	this.p_ninretryneeded = undefined;	/* nr of taskinputs needing */
+						/* retry */
+	this.p_nunmarked_propagate = undefined;	/* nr of tasks needing */
+						/* taskoutputs marked */
+	this.p_nunmarked_cleanup = undefined;	/* nr of tasks needing */
+						/* taskinputs marked for */
+						/* cleanup */
+	this.p_nunmarked_retry = undefined;	/* nr of tasks needing */
+						/* taskinputs marked for */
+						/* retry */
+
 
 	if (this.p_type != 'reduce')
 		return;
@@ -298,9 +304,7 @@ function JobPhase(phase)
 
 	for (var i = 0; i < this.p_reducers.length; i++) {
 		this.p_reducers[i] = {
-		    'r_task': undefined,	/* task record */
-		    'r_ninput': 0,		/* total nr of input keys */
-		    'r_nissued': 0		/* nr of inputs issued */
+		    'r_task': undefined		/* task record */
 		};
 	}
 }
@@ -313,6 +317,7 @@ function JobTask(jobid, pi, taskid)
 	this.t_id = taskid;		/* unique task identifier */
 	this.t_etag = undefined;	/* last received etag for this task */
 	this.t_done = false;		/* task is done (reduce only) */
+	this.t_ninput = undefined;	/* taskinputs issued (reduce only) */
 	this.t_retry = false;		/* task will be retried (ditto) */
 	this.t_value = {		/* authoritative task record */
 	    'jobId': jobid,
@@ -322,11 +327,7 @@ function JobTask(jobid, pi, taskid)
 }
 
 /*
- * Agent health management: the worker is responsible for monitoring agent
- * health and handling tasks that have been assigned to agents which have either
- * restarted or just gone out to lunch.  In both cases, we'll use per-job
- * server-side updates to set state=done and result=fail, which will trigger
- * other queries to find these tasks and handle them just like any other errors.
+ * See "Agent health management" below.
  */
 function AgentState(record)
 {
@@ -388,7 +389,6 @@ function Worker(args)
 	this.w_max_pending_auths = conf['tunables']['maxPendingAuths'];
 	this.w_max_pending_deletes = conf['tunables']['maxPendingDeletes'];
 	this.w_time_tick = conf['tunables']['timeTick'];
-	this.w_tmproot = mwTmpfileRoot + '-' + this.w_uuid;
 	this.w_names = {};
 	this.w_storage_map = {};
 
@@ -415,6 +415,10 @@ function Worker(args)
 	    },
 	    'limit': conf['tunables']['maxRecordsPerQuery'],
 	    'timePoll': conf['tunables']['timePoll']
+	};
+
+	this.w_update_options = {
+	    'limit': conf['tunables']['maxRecordsPerUpdate']
 	};
 
 	this.w_locator = mod_locator.createLocator(args['conf'], {
@@ -455,6 +459,24 @@ function Worker(args)
 	    'taskinput': this.onRecordTaskInput.bind(this),
 	    'taskoutput': this.onRecordTaskOutput.bind(this)
 	};
+
+	/* XXX do this with other records as well? */
+	this.w_task_handlers = {};
+	this.w_task_handlers[wQueries.wqJobTasksDone['name']] =
+	    this.onRecordTaskCommit.bind(this);
+	this.w_task_handlers[wQueries.wqJobTasksNeedingOutputsMarked['name']] =
+	    this.onRecordTaskMarkOutputs.bind(this);
+	this.w_task_handlers[wQueries.wqJobTasksNeedingInputsMarked['name']] =
+	    this.onRecordTaskMarkInputsCleanup.bind(this);
+	this.w_task_handlers[wQueries.wqJobTasksNeedingInputsRetried['name']] =
+	    this.onRecordTaskMarkInputsRetry.bind(this);
+	this.w_task_handlers[wQueries.wqJobTasksNeedingDelete['name']] =
+	    function (record, barrier, job, phase, now) {
+		worker.taskRecordCleanup(record, barrier, job, job.j_job, now);
+	    };
+	this.w_task_handlers[wQueries.wqJobTasksNeedingRetry['name']] =
+	    this.onRecordTaskRetry.bind(this);
+	this.w_subscrip_handlers = {};
 
 	/* global dynamic state */
 	this.w_jobs = {};			/* all jobs, by jobId */
@@ -504,6 +526,7 @@ function Worker(args)
 	 * onRecordForUnknownJob for details.
 	 */
 	this.w_jobs_cached = {};		/* cache of finished jobs */
+	this.w_jobs_cancelling = {};		/* jobid => callback array */
 }
 
 Worker.prototype.debugState = function ()
@@ -541,7 +564,6 @@ Worker.prototype.start = function ()
 	this.w_dtrace.fire('worker-startup',
 	    function () { return ([ worker.w_uuid ]); });
 
-	this.initTmp();
 	this.initMoray();
 	this.initRedis();
 
@@ -570,23 +592,6 @@ Worker.prototype.start = function ()
 
 		process.nextTick(worker.w_ticker);
 		worker.w_log.info('worker started');
-	});
-};
-
-Worker.prototype.initTmp = function ()
-{
-	var worker = this;
-	var files;
-
-	mod_assert.ok(mod_jsprim.startsWith(this.w_tmproot, '/var/tmp/marlin'));
-
-	this.w_log.info('initializing "%s"', this.w_tmproot);
-	mod_mkdirp.sync(this.w_tmproot);
-
-	files = mod_fs.readdirSync(this.w_tmproot);
-	files.forEach(function (file) {
-		worker.w_log.info('removing "%s"', file);
-		mod_fs.unlinkSync(mod_path.join(worker.w_tmproot, file));
 	});
 };
 
@@ -741,6 +746,9 @@ Worker.prototype.domainStart = function (domainid)
 		    wQueries.wqJobsInputEnded,
 		    wQueries.wqJobInputs,
 		    wQueries.wqJobTasksDone,
+		    wQueries.wqJobTasksNeedingOutputsMarked,
+		    wQueries.wqJobTasksNeedingInputsMarked,
+		    wQueries.wqJobTasksNeedingInputsRetried,
 		    wQueries.wqJobTasksNeedingDelete,
 		    wQueries.wqJobTaskInputsNeedingDelete,
 		    wQueries.wqJobTasksNeedingRetry,
@@ -756,11 +764,16 @@ Worker.prototype.domainStart = function (domainid)
 			var options = queryconf['options'] ?
 			    queryconf['options'](worker.w_conf) :
 			    worker.w_bus_options;
-			worker.w_ourdomains[domainid][queryconf['name']] =
+			var sid =
 			    worker.w_bus.subscribe(
 			    worker.w_buckets[queryconf['bucket']],
 			    queryconf['query'].bind(null, worker.w_conf,
 			    domainid), options, worker.onRecord.bind(worker));
+			worker.w_ourdomains[domainid][queryconf['name']] = sid;
+			if (worker.w_task_handlers.hasOwnProperty(
+			    queryconf['name']))
+				worker.w_subscrip_handlers[sid] =
+				    worker.w_task_handlers[queryconf['name']];
 		});
 	    });
 };
@@ -781,9 +794,11 @@ Worker.prototype.domainStop = function (domainid)
 	this.w_log.info('domain "%s": stopping processing', domainid);
 
 	var worker = this;
-	var k;
+	var k, s;
 	for (k in this.w_ourdomains[domainid]) {
-		this.w_bus.unsubscribe(this.w_ourdomains[domainid][k]);
+		s = this.w_ourdomains[domainid][k];
+		this.w_bus.unsubscribe(s);
+		delete (this.w_subscrip_handlers[s]);
 	}
 
 	delete (this.w_ourdomains[domainid]);
@@ -947,7 +962,7 @@ Worker.prototype.heartbeat = function ()
 	});
 };
 
-Worker.prototype.onRecord = function (record, barrier)
+Worker.prototype.onRecord = function (record, barrier, sid)
 {
 	var schema, error, handler;
 
@@ -966,7 +981,7 @@ Worker.prototype.onRecord = function (record, barrier)
 
 	handler = this.w_record_handlers[this.w_names[record['bucket']]];
 	mod_assert.ok(handler !== undefined);
-	handler(record, barrier);
+	handler(record, barrier, sid);
 };
 
 /*
@@ -995,7 +1010,7 @@ Worker.prototype.onRecordJob = function (record, barrier)
 		return;
 	}
 
-	if ((job = this.jobForRecord(record)) === null)
+	if ((job = this.jobForRecord(record, true)) === null)
 		return;
 
 	/*
@@ -1004,7 +1019,7 @@ Worker.prototype.onRecordJob = function (record, barrier)
 	 * require our attention and we never write records for which we haven't
 	 * made as much forward progress as we can.
 	 */
-	if (job.j_etag == record['_etag'])
+	if (job.j_cancelled === undefined && job.j_etag == record['_etag'])
 		job.j_log.warn('onRecord: found record with up-to-date etag',
 		    record);
 
@@ -1018,21 +1033,17 @@ Worker.prototype.onRecordJob = function (record, barrier)
 		return;
 	}
 
-	if (record['value']['timeCancelled'] !== undefined &&
-	    record['value']['state'] != 'done') {
-		job.j_log.info('job cancelled');
-		job.j_cancelled = record['value']['timeCancelled'];
+	if (record['value']['timeCancelled'] !== undefined) {
+		if (job.j_cancelled === undefined) {
+			job.j_log.info('detected job cancelled');
+			job.j_cancelled = record['value']['timeCancelled'];
+			job.j_job['timeCancelled'] = job.j_cancelled;
+		}
 
 		job.j_etag = record['_etag'];
-		job.j_job['state'] = 'done';
-		job.j_job['timeCancelled'] = job.j_cancelled;
-		job.j_job['timeDone'] = mod_jsprim.iso8601(Date.now());
-
-		job.j_save_barrier = barrier;
-		job.j_save.markDirty();
-		barrier.start('save job ' + job.j_id);
-
-		this.jobTransition(job, 'running', 'finishing');
+		barrier.start(record['key']);
+		this.jobCancelRecords(job.j_id, job.j_cancelled,
+		    function () { barrier.done(record['key']); });
 		return;
 	}
 
@@ -1061,6 +1072,97 @@ Worker.prototype.onRecordJob = function (record, barrier)
 	job.j_save.markDirty();
 	barrier.start('save job ' + job.j_id);
 	this.jobInputEnded(job);
+};
+
+/*
+ * Invoked when we find a cancelled job to mark corresponding records cancelled,
+ * including tasks, taskinputs, taskoutputs, and jobinputs.  While we can ensure
+ * that no new tasks and taskinputs are issued after we detect for the first
+ * time that the job is cancelled, agents can continue issuing taskoutputs until
+ * all tasks are actually completed, and muskie can continue issuing jobinputs
+ * until all ongoing requests complete.  We won't mark the job "done" until all
+ * tasks are completed, at which point no new taskoutputs should be issued, but
+ * if for some reason we find a straggling taskoutput or jobinput after we've
+ * marked the job "done", we'll go through this loop again.
+ */
+Worker.prototype.jobCancelRecords = function (jobid, timestamp, callback)
+{
+	var limit, options, requests, filter, changes;
+	var worker = this;
+
+	if (this.w_jobs_cancelling.hasOwnProperty(jobid)) {
+		if (callback)
+			this.w_jobs_cancelling[jobid].push(callback);
+		this.w_log.debug('job "%s": request to cancel already pending',
+		    jobid);
+		return;
+	}
+
+	this.w_jobs_cancelling[jobid] = [];
+	if (callback)
+		this.w_jobs_cancelling[jobid].push(callback);
+
+	if (timestamp === undefined)
+		timestamp = mod_jsprim.iso8601(Date.now());
+
+	this.w_log.info('job "%s": cancelling records', jobid);
+	limit = this.w_conf['tunables']['maxRecordsPerCancel'];
+	mod_assert.equal(typeof (limit), 'number');
+	options = { 'limit': limit };
+	requests = [];
+
+	/*
+	 * Cancel any tasks we might possibly want to operate on in order to
+	 * stop execution.  We're still going to process these through the task
+	 * commit path (so that we can wait until they all complete), but we
+	 * won't write out new ones.
+	 */
+	requests.push([ 'update', this.w_buckets['task'],
+	    sprintf('(&(jobId=%s)(!(timeCancelled=*)))',
+	        jobid), { 'timeCancelled': timestamp }, options ]);
+
+	/*
+	 * We're going to stop issuing new tasks, so we want to stop polling on
+	 * jobinputs and taskoutputs altogether.  We also want to stop
+	 * processing retries, so we stop processing taskinputs altogether.
+	 * This has the unfortunate side effect of stopping processing cleanups,
+	 * too, but that problem is more complicated anyway.
+	 */
+	filter = sprintf('(&(jobId=%s)(!(timeJobCancelled=*)))', jobid);
+	changes = { 'timeJobCancelled': timestamp };
+	requests.push([ 'update', this.w_buckets['jobinput'],
+	    filter, changes, options ]);
+	requests.push([ 'update', this.w_buckets['taskoutput'],
+	    filter, changes, options ]);
+	requests.push([ 'update', this.w_buckets['taskinput'],
+	    filter, changes, options ]);
+
+	this.w_bus.batch(requests, {}, function (err, meta) {
+		var needlap, callbacks;
+
+		if (err) {
+			worker.w_log.warn(err,
+			    'job "%s": failed to cancel requests', jobid);
+		} else {
+			needlap = false;
+			meta.etags.forEach(function (r) {
+				if (r['count'] >= limit) {
+					worker.w_log.info('job "%s": cancel: ' +
+					    'bucket "%s": need another lap',
+					    jobid, r['bucket']);
+					needlap = true;
+				}
+			});
+
+			if (!needlap)
+				worker.w_log.info('job "%s": cancel: ' +
+				    'all records updated', jobid);
+		}
+
+		callbacks = worker.w_jobs_cancelling[jobid];
+		delete (worker.w_jobs_cancelling[jobid]);
+		callbacks.forEach(function (cb) { cb(err, needlap); });
+	});
 };
 
 Worker.prototype.onRecordJobInput = function (record, barrier)
@@ -1112,69 +1214,53 @@ Worker.prototype.onRecordJobInput = function (record, barrier)
 	this.dispStart(dispatch);
 };
 
-Worker.prototype.onRecordTask = function (record, barrier)
+Worker.prototype.onRecordTask = function (record, barrier, sid)
 {
-	var job, phase, now;
+	var job, handler, phase, now;
 
-	if ((job = this.jobForRecord(record)) === null)
+	if ((job = this.jobForRecord(record, true)) === null)
 		return;
-
-	phase = job.j_phases[record['value']['phaseNum']];
-	now = mod_jsprim.iso8601(Date.now());
 
 	if (record['value']['state'] != 'done') {
 		if (!this.w_logthrottle.throttle(sprintf(
 		    'record %s/%s', record['bucket'], record['key'])))
 			job.j_log.error('onRecord: unexpected task', record);
-	} else if (record['value']['timeCommitted'] === undefined) {
-		this.onRecordTaskCommit(record, barrier, job, phase, now);
-	} else if (record['value']['wantRetry'] &&
-	    record['value']['timeRetried'] === undefined) {
-		this.onRecordTaskRetry(record, barrier, job, phase, now);
-	} else if (record['value']['wantInputRemoved'] &&
-	    record['value']['timeInputRemoved'] === undefined) {
-		this.taskRecordCleanup(record, barrier, job, job.j_job, now);
-	} else if (!this.w_logthrottle.throttle(sprintf(
-	    'record %s/%s', record['bucket'], record['key']))) {
-		job.j_log.error('onRecord: unexpected task', record);
+		return;
 	}
+
+	if (!this.w_subscrip_handlers.hasOwnProperty(sid)) {
+		if (!this.w_logthrottle.throttle(sprintf('sid %s', sid)))
+			this.w_log.error('onRecord: no handler for sid', sid,
+			    this.w_subscrip_handlers);
+		return;
+	}
+
+	handler = this.w_subscrip_handlers[sid];
+	phase = job.j_phases[record['value']['phaseNum']];
+	now = mod_jsprim.iso8601(Date.now());
+	handler(record, barrier, job, phase, now);
 };
 
 Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
     now)
 {
-	var worker = this;
-	var tochanges, allchanges, uuid, errvalue;
+	var allchanges, uuid, errvalue;
 	var whichstat, reducer;
 	var nretries = 0;
 	var nerrors = 0;
-	var nunpropagated = 0;
-	var ndeletes = 0;
-	var njoboutputs = 0;
+	var updatei = -1;
 
 	job.j_log.debug('committing task "%s"', record['key']);
 
-	tochanges = {};
-	tochanges['timeCommitted'] = now;
 	record['value']['timeCommitted'] = now;
+	record['value']['timeOutputsMarkStart'] = now;
 
 	allchanges = [];
 
 	if (record['value']['result'] == 'ok') {
 		whichstat = 'nTasksCommittedOk';
-
-		if (record['value']['phaseNum'] == job.j_phases.length - 1) {
-			njoboutputs = record['value']['nOutputs'];
-			tochanges['valid'] = true;
-			tochanges['timePropagated'] = now;
-		} else {
-			nunpropagated = record['value']['nOutputs'];
-			phase.p_nunpropagated += nunpropagated;
-		}
 	} else {
 		whichstat = 'nTasksCommittedFail';
-
-		tochanges['timePropagated'] = now;
 
 		/*
 		 * On a normal, non-retryable failure, the agent issues an
@@ -1187,8 +1273,9 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 			record['value']['nextRecordType'] = 'error';
 			record['value']['nextRecordId'] = uuid;
 			record['value']['wantRetry'] =
-			    record['value']['nattempts'] === undefined ||
-			    record['value']['nattempts'] <= this.w_max_retries;
+			    job.j_cancelled === undefined &&
+			    (record['value']['nattempts'] === undefined ||
+			    record['value']['nattempts'] <= this.w_max_retries);
 
 			if (record['value']['wantRetry']) {
 				phase.p_nretryneeded++;
@@ -1218,78 +1305,34 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 			    function () { return ([ job.j_id, errvalue ]); });
 		} else if (record['value']['errorCode'] &&
 		    record['value']['errorCode'] == EM_TASKKILLED &&
+		    job.j_cancelled === undefined &&
 		    (record['value']['nattempts'] === undefined ||
 		    record['value']['nattempts'] <= this.w_max_retries)) {
 			phase.p_nretryneeded++;
 			nretries = 1;
 			record['value']['wantRetry'] = true;
+			/*
+			 * We should never have more than one error per task.
+			 * We set the limit to a few more so that we can check
+			 * whether something went wrong.
+			 */
+			updatei = allchanges.length;
 			allchanges.push([ 'update', this.w_buckets['error'],
 			    sprintf('(taskId=%s)', record['value']['taskId']),
-			    { 'retried': true, 'timeCommitted': now } ]);
+			    { 'retried': true, 'timeCommitted': now },
+			    { 'limit': 5 }]);
 		} else {
 			nerrors = 1;
+			updatei = allchanges.length;
 			allchanges.push([ 'update', this.w_buckets['error'],
 			    sprintf('(taskId=%s)', record['value']['taskId']),
-			    { 'retried': false, 'timeCommitted': now } ]);
+			    { 'retried': false, 'timeCommitted': now },
+			    { 'limit': 5 } ]);
 		}
-	}
-
-	/*
-	 * Now's the time to schedule cleanup of anonymous intermediate objects
-	 * created by this job.  By "anonymous", we mean objects that the user
-	 * has not explicitly given a name to.  (Named objects are not
-	 * automatically removed.)  By "intermediate", we mean objects created
-	 * by this job that are not final output objects, which we identify as
-	 * the inputs to all non-phase-0 tasks.  These may be specified in the
-	 * task itself (for map tasks), or they may be specified by a number of
-	 * taskinput records (for reduce tasks).
-	 *
-	 * If this task failed and was retried, there's nothing to do here,
-	 * since we're not ready to remove the input objects yet.
-	 *
-	 * Otherwise, if this is a map task, we mark wantInputRemoved=true when
-	 * we save it here.  If this is a reduce task, we do a server-side mass
-	 * update to set wantInputRemoved=true on the taskinput records.  We
-	 * have separate queries that scan for such records, delete the
-	 * corresponding object if it's not anonymous, and then set
-	 * timeInputRemoved.  (This has to be two steps for the taskinput case
-	 * because we don't have those records at the moment.  Separating these
-	 * two steps for the task case allows us to write this commit and
-	 * process other commits without blocking on the delete to actually
-	 * happen.)
-	 */
-	if (record['value']['phaseNum'] > 0 &&
-	    (record['value']['result'] == 'ok' ||
-	    !record['value']['wantRetry'])) {
-		if (phase.p_type == 'reduce') {
-			if (record['value']['nInputs'] !== undefined) {
-				ndeletes = record['value']['nInputs'];
-			} else {
-				/*
-				 * If we didn't end input yet, we don't know
-				 * exactly how many taskinput records there are.
-				 * There's at least r_nissued, and at most
-				 * r_ninput, and the difference are in flight.
-				 */
-				reducer = phase.p_reducers[
-				    record['value']['rIdx']];
-				ndeletes = reducer.r_nissued;
-			}
-			allchanges.push([ 'update', this.w_buckets['taskinput'],
-			    sprintf('(taskId=%s)', record['value']['taskId']),
-			    { 'wantInputRemoved': true } ]);
-		} else {
-			ndeletes = 1;
-			record['value']['wantInputRemoved'] = true;
-		}
-
-		job.j_ndeletes += ndeletes;
 	}
 
 	allchanges.push([ 'put', record['bucket'], record['key'],
 	    record['value'], { 'etag': record['_etag'] } ]);
-	allchanges.push([ 'update', this.w_buckets['taskoutput'],
-	      sprintf('(taskId=%s)', record['key']), tochanges ]);
 
 	if (phase.p_type == 'reduce') {
 		reducer = phase.p_reducers[record['value']['rIdx']];
@@ -1303,44 +1346,37 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 
 	barrier.start('task ' + record['key']);
 	this.w_bus.batch(allchanges, {
-	    'retryConflict': function () {
-		/*
-		 * See the comment in taskRetryReduce.  The bus may think
-		 * there's a possibility for a conflict here if we issue this
-		 * write while the initial task dispatch write is still pending.
-		 * The conflict cannot actually happen, since the etag we're
-		 * using here is newer in that case, but the bus has no way to
-		 * know that and blows up if it sees us making a dependent write
-		 * without handling this error.  (This is hard to see, since it
-		 * requires the agent making at least two round-trips before our
-		 * write completes, but it has been seen in production.)
-		 *
-		 * In order to handle other errors, we avoid committing changes
-		 * to the job stats above until after we know the write
-		 * completes.  We can't avoid changes to the various per-job and
-		 * per-phase counters because these need to keep track of the
-		 * fact that there's work outstanding or we might end the job
-		 * early, so we make those changes and unwind them upon failure.
-		 */
-		return (new Error('conflict while committing task'));
+	    'retryConflict': function (oldrec, newrec) {
+		if (oldrec['value']['timeCancelled'] !== undefined &&
+		    newrec['value']['timeCancelled'] === undefined) {
+			newrec['value']['timeCancelled'] =
+			    oldrec['value']['timeCancelled'];
+			return (newrec['value']);
+		}
+
+		return (new Error('unexpected etag conflict committing task'));
 	    }
-	}, function (err) {
+	}, function (err, meta) {
 		if (!err) {
-			job.j_job['stats']['nJobOutputs'] += njoboutputs;
 			job.j_job['stats'][whichstat]++;
 			job.j_job['stats']['nErrors'] += nerrors;
 			job.j_job['stats']['nRetries'] += nretries;
+			phase.p_nunmarked_propagate++;
 			phase.p_nuncommitted--;
-			worker.jobPropagateEnd(job, null);
+
+			if (updatei != -1) {
+				if (meta.etags[updatei]['count'] !== 0 &&
+				    meta.etags[updatei]['count'] != 1) {
+					job.j_log.error({
+					    'requests': allchanges,
+					    'result': meta
+					}, 'unexpectedly updated too many ' +
+					    'error records');
+				}
+			}
 		} else {
 			job.j_log.warn(err, 'unwinding state changes after ' +
 			    'error committing task');
-
-			job.j_ndeletes -= ndeletes;
-			mod_assert.ok(job.j_ndeletes >= 0);
-
-			phase.p_nunpropagated -= nunpropagated;
-			mod_assert.ok(phase.p_nunpropagated >= 0);
 
 			if (nretries > 0) {
 				phase.p_nretryneeded--;
@@ -1352,8 +1388,212 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 	});
 };
 
+Worker.prototype.onRecordTaskMarkOutputs = function (record, barrier, job,
+    phase, now)
+{
+	var filter, changes, limit, update, worker;
+
+	/* Drop records for cancelled jobs. */
+	job = this.jobForRecord(record);
+	if (job === null)
+		return;
+
+	barrier.start(record['key']);
+
+	/*
+	 * Set timeCommitted on all of the taskoutputs for this task.  If we're
+	 * not going to propagate them (because either the task failed or
+	 * because this is the final phase), also set timePropagated here.
+	 */
+	filter = sprintf('(&(taskId=%s)(!(timeCommitted=*)))', record['key']);
+	changes = { 'timeCommitted': now };
+
+	if (record['value']['result'] == 'ok') {
+		if (record['value']['phaseNum'] == job.j_phases.length - 1) {
+			changes['valid'] = true;
+			changes['timePropagated'] = now;
+		}
+	} else {
+		changes['timePropagated'] = now;
+	}
+
+	job.j_log.debug('task "%s": marking outputs', record['key'], changes);
+	limit = this.w_update_options['limit'];
+	mod_assert.equal(typeof (limit), 'number');
+	update = [ 'update', this.w_buckets['taskoutput'], filter, changes,
+	    this.w_update_options ];
+	worker = this;
+	this.w_bus.batch([ update ], {}, function (err, meta) {
+		var nupdated, taskchanges;
+
+		if (err) {
+			job.j_log.warn(err,
+			    'task "%s": failed to mark outputs', record['key']);
+			barrier.done(record['key']);
+			return;
+		}
+
+		nupdated = meta.etags[0]['count'];
+		mod_assert.equal(typeof (nupdated), 'number');
+		if (changes['timePropagated'] === undefined)
+			phase.p_nunpropagated += nupdated;
+		else if (changes['valid'])
+			job.j_job['stats']['nJobOutputs'] += nupdated;
+
+		if (nupdated >= limit) {
+			job.j_log.info('task "%s": marked %d outputs (need ' +
+			    'another lap)', record['key'], nupdated);
+			barrier.done(record['key']);
+			return;
+		}
+
+		/*
+		 * We could use a PUT here, but this avoids the possibility of
+		 * an EtagConflict since there's no possibility of a legitimate
+		 * conflict here.
+		 */
+		job.j_log.debug('task "%s": updating task after marking ' +
+		    '%d outputs', record['key'], nupdated);
+		taskchanges = {
+		    'timeOutputsMarkDone': mod_jsprim.iso8601(Date.now())
+		};
+
+		/*
+		 * Now's the time to schedule cleanup of anonymous intermediate
+		 * objects created by this job.  By "anonymous", we mean objects
+		 * that the user has not explicitly given a name to.  (Named
+		 * objects are not automatically removed.)  By "intermediate",
+		 * we mean objects created by this job that are not final output
+		 * objects, which we identify as the inputs to all non-phase-0
+		 * tasks.  These may be specified in the task itself (for map
+		 * tasks), or they may be specified by a number of taskinput
+		 * records (for reduce tasks).
+		 *
+		 * If this task failed and was retried, there's nothing to do
+		 * here, since we're not ready to remove the input objects yet.
+		 *
+		 * Otherwise, if this is a map task, we mark
+		 * wantInputRemoved=true when we save it here.  If this is a
+		 * reduce task, we set timeInputsMarkCleanupStart, which will
+		 * later cause us to do server-side batch updates to set
+		 * wantInputRemoved=true on the taskinput records.  We have
+		 * separate queries that scan for such records, delete the
+		 * corresponding object if it's not anonymous, and then set
+		 * timeInputRemoved.
+		 */
+		var ndeletes = 0, ncleanup = 0;
+
+		if (record['value']['phaseNum'] > 0 &&
+		    (record['value']['result'] == 'ok' ||
+		    !record['value']['wantRetry'])) {
+			if (phase.p_type == 'reduce') {
+				ncleanup = 1;
+				taskchanges['timeInputsMarkCleanupStart'] =
+				    taskchanges['timeOutputsMarkDone'];
+			} else {
+				ndeletes = 1;
+				taskchanges['wantInputRemoved'] = true;
+			}
+		}
+
+		worker.w_bus.batch([[ 'update', record['bucket'],
+		    sprintf('(taskId=%s)', record['key']), taskchanges,
+		    { 'limit': 1 } ]], {}, function (err2) {
+			if (err2) {
+				job.j_log.warn(err2,
+				    'task "%s": failed to mark outputs',
+				    record['key']);
+			} else {
+				job.j_log.debug('task "%s": marked all outputs',
+				    record['key']);
+				job.j_ndeletes += ndeletes;
+				phase.p_nunmarked_cleanup += ncleanup;
+				phase.p_nunmarked_propagate--;
+				worker.jobPropagateEnd(job, null);
+			}
+
+			barrier.done(record['key']);
+		});
+	});
+};
+
+Worker.prototype.onRecordTaskMarkInputsCleanup = function (record, barrier, job,
+    phase, now)
+{
+	var filter, changes, limit, update, worker;
+
+	barrier.start(record['key']);
+
+	/*
+	 * Set wantInputRemoved on all of the taskinputs for this task.
+	 */
+	filter = sprintf('(&(taskId=%s)(!(wantInputRemoved=*)))',
+	    record['key']);
+	changes = { 'wantInputRemoved': true };
+	job.j_log.debug('task "%s": marking inputs for cleanup', record['key']);
+	limit = this.w_update_options['limit'];
+	mod_assert.equal(typeof (limit), 'number');
+	update = [ 'update', this.w_buckets['taskinput'], filter, changes,
+	    this.w_update_options ];
+	worker = this;
+	this.w_bus.batch([ update ], {}, function (err, meta) {
+		var nupdated, taskchanges;
+
+		if (err) {
+			job.j_log.warn(err,
+			    'task "%s": failed to mark inputs for cleanup',
+			    record['key']);
+			barrier.done(record['key']);
+			return;
+		}
+
+		nupdated = meta.etags[0]['count'];
+		mod_assert.equal(typeof (nupdated), 'number');
+		job.j_ndeletes += nupdated;
+		if (nupdated >= limit) {
+			job.j_log.info('task "%s": marked %d inputs for ' +
+			    'cleanup (need another lap)', record['key'],
+			    nupdated);
+			barrier.done(record['key']);
+			return;
+		}
+
+		/*
+		 * We could use a PUT here, but this avoids the possibility of
+		 * an EtagConflict since there's no possibility of a legitimate
+		 * conflict here.
+		 */
+		job.j_log.debug('task "%s": updating task after marking ' +
+		    '%d inputs for cleanup', record['key'], nupdated);
+		taskchanges = {
+		    'timeInputsMarkCleanupDone': mod_jsprim.iso8601(Date.now())
+		};
+
+		worker.w_bus.batch([[ 'update', record['bucket'],
+		    sprintf('(taskId=%s)', record['key']), taskchanges,
+		    { 'limit': 1 } ]], {}, function (err2) {
+			if (err2) {
+				job.j_log.warn(err2, 'task "%s": failed to ' +
+				    'mark inputs for cleanup', record['key']);
+			} else {
+				job.j_log.debug('task "%s": marked all ' +
+				    'inputs for cleanup', record['key']);
+				phase.p_nunmarked_cleanup--;
+				worker.jobPropagateEnd(job, null);
+			}
+
+			barrier.done(record['key']);
+		});
+	});
+};
+
 Worker.prototype.onRecordTaskRetry = function (record, barrier, job, phase, now)
 {
+	/* Drop records for cancelled jobs. */
+	job = this.jobForRecord(record);
+	if (job === null)
+		return;
+
 	if (record['value']['input'] === undefined)
 		this.taskRetryReduce(record, barrier, job, phase, now);
 	else
@@ -1370,6 +1610,7 @@ Worker.prototype.taskRetryReduce = function (record, barrier, job, phase, now)
 
 	job.j_log.info('retrying reduce task "%s" as "%s"',
 	    record['key'], task.t_id);
+	task.t_ninput = 0;
 
 	value['rIdx'] = record['value']['rIdx'];
 	value['mantaComputeId'] = agent.a_record['value']['instance'];
@@ -1383,6 +1624,11 @@ Worker.prototype.taskRetryReduce = function (record, barrier, job, phase, now)
 	}
 
 	record['value']['timeRetried'] = now;
+	record['value']['timeInputsMarkRetryStart'] = now;
+	record['value']['retryTaskId'] = value['taskId'];
+	record['value']['retryMantaComputeId'] = value['mantaComputeId'];
+	record['value']['retryAgentGeneration'] = value['agentGeneration'];
+	phase.p_nunmarked_retry++;
 
 	this.w_dtrace.fire('task-dispatched', function () {
 	    return ([ task.t_value['jobId'], task.t_id, value ]);
@@ -1400,15 +1646,6 @@ Worker.prototype.taskRetryReduce = function (record, barrier, job, phase, now)
 	    record['key'],
 	    record['value'],
 	    { 'etag': record['_etag'] }
-	], [
-	    'update',
-	    this.w_buckets['taskinput'],
-	    sprintf('(taskId=%s)', record['key']),
-	    {
-		'retryTaskId': value['taskId'],
-		'retryMantaComputeId': value['mantaComputeId'],
-		'retryAgentGeneration': value['agentGeneration']
-	    }
 	] ], {
 	    'retryConflict': function () {
 		/*
@@ -1460,6 +1697,109 @@ Worker.prototype.taskRetryReduce = function (record, barrier, job, phase, now)
 	});
 };
 
+Worker.prototype.onRecordTaskMarkInputsRetry = function (record, barrier, job,
+    phase, now)
+{
+	var canbedone, filter, changes, limit, update, worker;
+
+	/* Drop records for cancelled jobs. */
+	job = this.jobForRecord(record);
+	if (job === null)
+		return;
+
+	/*
+	 * If there's a reduce task which is being retried, then we may still be
+	 * issuing taskinputs for it.  In that case, even if we update 0
+	 * records, we need to keep updating records in batches until we
+	 * complete a full lap *after* we've retried the reduce task.
+	 */
+	canbedone = phase.p_ninretryneeded === 0 &&
+	    phase.p_nretryneeded === 0;
+
+	barrier.start(record['key']);
+
+	/*
+	 * Set retryTaskId, retryMantaComputeId, and retryAgentGeneration on all
+	 * of the taskinputs for this task.
+	 */
+	filter = sprintf('(&(taskId=%s)(!(retryTaskId=*)))', record['key']);
+	changes = {
+	    'retryTaskId': record['value']['retryTaskId'],
+	    'retryMantaComputeId': record['value']['retryMantaComputeId'],
+	    'retryAgentGeneration': record['value']['retryAgentGeneration']
+	};
+	job.j_log.debug('task "%s": marking inputs for retry', record['key']);
+	limit = this.w_update_options['limit'];
+	mod_assert.equal(typeof (limit), 'number');
+	update = [ 'update', this.w_buckets['taskinput'], filter, changes,
+	    this.w_update_options ];
+	worker = this;
+	this.w_bus.batch([ update ], {}, function (err, meta) {
+		var nupdated, taskchanges, retrytaskchanges;
+
+		if (err) {
+			job.j_log.warn(err,
+			    'task "%s": failed to mark inputs for retry',
+			    record['key']);
+			barrier.done(record['key']);
+			return;
+		}
+
+		nupdated = meta.etags[0]['count'];
+		phase.p_ninretryneeded += nupdated;
+		mod_assert.equal(typeof (nupdated), 'number');
+		if (nupdated >= limit) {
+			job.j_log.info('task "%s": marked %d inputs for ' +
+			    'retry (need another lap)', record['key'],
+			    nupdated);
+			barrier.done(record['key']);
+			return;
+		}
+
+		if (!canbedone) {
+			job.j_log.info('task "%s": marked only %d inputs for ' +
+			    'retry, but more may exist', record['key'],
+			    nupdated);
+			barrier.done(record['key']);
+			return;
+		}
+
+		/*
+		 * We could use a PUT here, but this avoids the possibility of
+		 * an EtagConflict since there's no possibility of a legitimate
+		 * conflict here.
+		 */
+		job.j_log.info('task "%s": updating task after marking ' +
+		    '%d inputs for retry', record['key'], nupdated);
+		taskchanges = {
+		    'timeInputsMarkRetryDone': mod_jsprim.iso8601(Date.now())
+		};
+		retrytaskchanges = {
+		    'timeDispatchDone': taskchanges['timeInputsMarkRetryDone']
+		};
+		worker.w_bus.batch([
+		    [ 'update', record['bucket'],
+		       sprintf('(taskId=%s)', record['key']), taskchanges,
+		       { 'limit': 1 } ],
+		    [ 'update', record['bucket'],
+		       sprintf('(taskId=%s)', record['value']['retryTaskId']),
+		       retrytaskchanges, { 'limit': 1 } ]
+		], {}, function (err2) {
+			if (err2) {
+				job.j_log.warn(err2, 'task "%s": failed to ' +
+				    'mark inputs for retry', record['key']);
+			} else {
+				job.j_log.info('task "%s": marked all ' +
+				    'inputs for retry', record['key']);
+				phase.p_nunmarked_retry--;
+				worker.jobPropagateEnd(job, null);
+			}
+
+			barrier.done(record['key']);
+		});
+	});
+};
+
 Worker.prototype.taskRetryMap = function (record, barrier, job, phase, now)
 {
 	var dispatch;
@@ -1492,7 +1832,8 @@ Worker.prototype.taskRetryMap = function (record, barrier, job, phase, now)
 Worker.prototype.onRecordTaskInput = function (record, barrier)
 {
 	var jc, jobrec, job, now, value;
-	var wantremove;
+	var phase, wantremove;
+	var worker = this;
 
 	/*
 	 * There are two reasons to find a taskinput record: either
@@ -1517,7 +1858,7 @@ Worker.prototype.onRecordTaskInput = function (record, barrier)
 			this.w_log.warn('cleaning up taskinput record ' +
 			    '%s for removed job', record['key']);
 		} else {
-			job = this.jobForRecord(record);
+			job = this.jobForRecord(record, true);
 			if (job === null)
 				return;
 			jobrec = job.j_job;
@@ -1527,11 +1868,15 @@ Worker.prototype.onRecordTaskInput = function (record, barrier)
 		return;
 	}
 
+	if ((job = this.jobForRecord(record)) === null)
+		return;
+
 	record['value']['timeRetried'] = now;
 	value = {
 	    'taskInputId': mod_uuid.v4(),
 	    'jobId': record['value']['jobId'],
 	    'taskId': record['value']['retryTaskId'],
+	    'phaseNum': record['value']['phaseNum'],
 	    'domain': record['value']['domain'],
 	    'mantaComputeId': record['value']['retryMantaComputeId'],
 	    'agentGeneration': record['value']['retryAgentGeneration'],
@@ -1558,7 +1903,22 @@ Worker.prototype.onRecordTaskInput = function (record, barrier)
 	    value['taskInputId'],
 	    value
 	] ], {}, function () {
+		var reducer, i;
+
 		barrier.done('taskinput ' + value['taskInputId']);
+		phase = job.j_phases[record['value']['phaseNum']];
+		phase.p_ninretryneeded--;
+
+		for (i = 0; i < phase.p_reducers.length; i++) {
+			reducer = phase.p_reducers[i];
+			if (reducer.r_task.t_id == value['taskId']) {
+				reducer.r_task.t_ninput++;
+				break;
+			}
+		}
+
+		worker.jobPropagateEnd(job, null);
+		worker.jobTick(job);
 	});
 };
 
@@ -1631,7 +1991,7 @@ Worker.prototype.onRecordTaskOutput = function (record, barrier)
 	this.dispStart(dispatch);
 };
 
-Worker.prototype.jobForRecord = function (record)
+Worker.prototype.jobForRecord = function (record, allowcancelled)
 {
 	if (!this.w_jobs.hasOwnProperty(record['value']['jobId']))
 		return (this.onRecordForUnknownJob(record));
@@ -1644,6 +2004,9 @@ Worker.prototype.jobForRecord = function (record)
 		return (null);
 	}
 
+	if (job.j_cancelled && !allowcancelled)
+		return (this.onRecordForCancelledJob(job, record));
+
 	if (job.j_state != 'running') {
 		if (!this.w_logthrottle.throttle(
 		    'job ' + job.j_id + ' initializing'))
@@ -1654,6 +2017,18 @@ Worker.prototype.jobForRecord = function (record)
 
 	mod_assert.equal(job.j_state, 'running');
 	return (job);
+};
+
+Worker.prototype.onRecordForCancelledJob = function (job, record)
+{
+	var jobid = record['value']['jobId'];
+	if (!this.w_logthrottle.throttle(
+	    sprintf('%s for cancelled job %s', record['bucket'], jobid)))
+		this.w_log.warn('onRecord: dropping record ' +
+		    'for cancelled job', record);
+
+	this.jobCancelRecords(jobid, job.j_cancelled);
+	return (null);
 };
 
 Worker.prototype.onRecordForUnknownJob = function (record)
@@ -1684,8 +2059,6 @@ Worker.prototype.onRecordForUnknownJob = function (record)
 	    record['bucket'] == this.w_buckets['taskinput'] ||
 	    record['bucket'] == this.w_buckets['taskoutput']) {
 		if (!this.w_jobs_cached.hasOwnProperty(jobid)) {
-			this.w_log.warn('onRecord: dropping record for ' +
-			    'unknown job (fetching record)', record);
 			jc = new JobCacheState();
 			jc.jc_checking = true;
 			this.w_jobs_cached[jobid] = jc;
@@ -1722,39 +2095,6 @@ Worker.prototype.onRecordForUnknownJob = function (record)
 	}
 
 	return (null);
-};
-
-Worker.prototype.jobCancelRecords = function (jobid)
-{
-	var worker = this;
-	var jc, batch;
-
-	jc = this.w_jobs_cached[jobid];
-	mod_assert.ok(!jc.jc_checking);
-	mod_assert.ok(jc.jc_timecancelled);
-	if (jc.jc_throttle.tooRecent())
-		return;
-
-	batch = [ [ 'update', this.w_buckets['task'],
-	    sprintf('(&(jobId=%s)(!(timeCancelled=*)))', jobid),
-	    { 'timeCancelled': jc.jc_timecancelled } ] ];
-	[ 'jobinput', 'taskinput', 'taskoutput' ].forEach(function (b) {
-		batch.push([ 'update', worker.w_buckets[b],
-		    sprintf('(&(jobId=%s)(!(timeCancelled=*)))', jobid),
-		    { 'timeJobCancelled': jc.jc_timecancelled } ]);
-	});
-
-	this.w_log.info('job "%s": cancelling job records', jobid);
-	jc.jc_throttle.start();
-	this.w_bus.batch(batch, {}, function (err) {
-		jc.jc_throttle.done();
-		if (err)
-			worker.w_log.warn(err,
-			    'job "%s": failed to cancel records', jobid);
-		else
-			worker.w_log.info(
-			    'job "%s": cancelled job records', jobid);
-	});
 };
 
 /*
@@ -1912,6 +2252,136 @@ Worker.prototype.onRecordHealth = function (record, barrier)
 		this.onWorkerHealth(record, barrier);
 };
 
+Worker.prototype.onWorkerHealth = function (record, barrier)
+{
+	var instance, ws, oldrec, now;
+
+	instance = record['value']['instance'];
+	if (instance == this.w_uuid)
+		return;
+
+	if (!this.w_allworkers.hasOwnProperty(instance)) {
+		this.w_log.info('worker "%s": discovered', instance);
+		this.w_allworkers[instance] = new WorkerState(record);
+		return;
+	}
+
+	ws = this.w_allworkers[instance];
+	oldrec = ws.ws_record;
+	now = Date.now();
+	if (oldrec['_mtime'] != record['_mtime']) {
+		/* This worker is alive, since the health record was updated. */
+		if (ws.ws_timedout) {
+			this.w_log.info('worker "%s": came back', instance);
+			ws.ws_timedout = false;
+		}
+		ws.ws_last = now;
+		ws.ws_record = record;
+	} else if (now - ws.ws_last >
+	    this.w_conf['tunables']['timeWorkerAbandon']) {
+		/*
+		 * It's been too long since this health record has been updated.
+		 * We (and the other workers still running) will attempt to pick
+		 * up this worker's load.  Each time through, we pick up one of
+		 * the domains he's still operating in attempt to spread out the
+		 * load.  We use the barrier to avoid queueing multiple attempts
+		 * to takeover the same domain.
+		 */
+		if (!ws.ws_timedout) {
+			this.w_log.info('worker "%s": timed out', instance);
+			this.w_dtrace.fire('worker-timeout',
+			    function () { return ([ instance ]); });
+			ws.ws_timedout = true;
+		}
+
+		if (ws.ws_operating.length > 0)
+			this.domainTakeover(mod_jsprim.randElt(ws.ws_operating),
+			    barrier, instance);
+	}
+};
+
+Worker.prototype.onMantaStorage = function (newrec)
+{
+	var v = newrec['value'];
+	this.w_storage_map[v['manta_storage_id']] = v;
+};
+
+Worker.prototype.eachRunningJob = function (func)
+{
+	mod_jsprim.forEachKey(this.w_jobs, function (_, job) {
+		if (job.j_dropped ||
+		    job.j_state == 'unassigned' || job.j_state == 'finishing')
+			return;
+
+		func(job);
+	});
+};
+
+
+/*
+ * Agent health management
+ *
+ * It's the job supervisor's responsibility to monitor agent health and retry
+ * tasks when an agent crashes or disappears for an extended period.  In the
+ * current design, agents don't try to resume tasks they were executing before a
+ * crash, so the supervisor must explicitly abandon such tasks and retry them as
+ * new tasks.  Similarly when an agent disappears for an extended period (as in
+ * the case of a network partition or hang), the supervisor can decide to
+ * abandon and retry tasks assigned to that agent.
+ *
+ * Monitoring is driven by periodic queries of the "health" bucket.  (We don't
+ * use explicit timeouts because we don't want to inadvertently mark agents as
+ * failed when we've lost connectivity to Moray.)  When we read each agent's
+ * health record, we enter onAgentHealth(), which decides whether the agent is
+ * alive, has timed out (as in the case of a partition or hang), or has
+ * restarted.  onAgentHealth() may invoke agentStarted() or agentTimeout(),
+ * which eventually invokes agentAbandonTasks() to mark the Moray records for
+ * these tasks as abandoned, completed, and failed.  After that, the usual task
+ * commit and retry mechanism processes the tasks.
+ *
+ * The details of this process are non-trivial for a number of reasons.  First,
+ * these operations could require updating an arbitrary number of records.  We
+ * use a server-side "update" mechanism, but it's still pretty expensive, and
+ * must for practical purposes be limited to operate on at most a fixed number
+ * of records at a time.  But the agent's state can change while we're issuing
+ * these updates.  Moreover, we abandon tasks on a per-job basis.  This is
+ * required in some cases, as when we initially assign a job to ourselves, since
+ * we don't know that we didn't miss an agent restart while we ourselves were
+ * offline.  We also use the per-job approach in all cases to avoid the
+ * headaches associated with modifying other supervisors' records, and because
+ * it keeps the individual queries smaller.
+ *
+ * To summarize, the call chain basically looks like this:
+ *
+ *                    onAgentHealth(): read health record
+ *          +------------------------+--------------------------+
+ *          |                                                   |
+ *  agentTimeout(): agent has                        agentStarted(): agent
+ *  timed out; for all jobs...                       has restarted; for all
+ *          |                                        jobs ...   |
+ *          |                                                   |
+ *          |                                                   |
+ *  agentAbandonAll():                          agentAbandonStale():
+ *  abandon all tasks for this                  abandon tasks for previous
+ *  agent and job.                              agent generations
+ *          |                                                   |
+ *          | (loop while agent         (loop until no matching |
+ *          |  is timed out)             tasks left)            |
+ *          +------------------------+--------------------------+
+ *                                   |
+ *                  agentAbandonTasks(): marks a fixed-size set
+ *                  of matching task records as abandoned
+ *
+ * Both agentAbandonAll() and agentAbandonStale() deal with concurrent
+ * invocations for the same job (in different ways) in order to handle weird
+ * state transitions (e.g., multiple agent restarts, the second detected while
+ * we're still trying to abandon tasks from the first one; a timeout followed by
+ * a restart while we're still abandoning tasks; a restart followed by a
+ * timeout).
+ *
+ * When we assign ourselves a job, we also invoke agentAbandonStale() for that
+ * job to deal with the case of agent restarts while we were offline.
+ */
 Worker.prototype.onAgentHealth = function (newrec)
 {
 	var instance, agent, oldrec, now, tunables;
@@ -1983,128 +2453,164 @@ Worker.prototype.onAgentHealth = function (newrec)
 	this.agentTimeout(instance);
 };
 
-Worker.prototype.onWorkerHealth = function (record, barrier)
-{
-	var instance, ws, oldrec, now;
-
-	instance = record['value']['instance'];
-	if (instance == this.w_uuid)
-		return;
-
-	if (!this.w_allworkers.hasOwnProperty(instance)) {
-		this.w_log.info('worker "%s": discovered', instance);
-		this.w_allworkers[instance] = new WorkerState(record);
-		return;
-	}
-
-	ws = this.w_allworkers[instance];
-	oldrec = ws.ws_record;
-	now = Date.now();
-	if (oldrec['_mtime'] != record['_mtime']) {
-		/* This worker is alive, since the health record was updated. */
-		if (ws.ws_timedout) {
-			this.w_log.info('worker "%s": came back', instance);
-			ws.ws_timedout = false;
-		}
-		ws.ws_last = now;
-		ws.ws_record = record;
-	} else if (now - ws.ws_last >
-	    this.w_conf['tunables']['timeWorkerAbandon']) {
-		/*
-		 * It's been too long since this health record has been updated.
-		 * We (and the other workers still running) will attempt to pick
-		 * up this worker's load.  Each time through, we pick up one of
-		 * the domains he's still operating in attempt to spread out the
-		 * load.  We use the barrier to avoid queueing multiple attempts
-		 * to takeover the same domain.
-		 */
-		if (!ws.ws_timedout) {
-			this.w_log.info('worker "%s": timed out', instance);
-			this.w_dtrace.fire('worker-timeout',
-			    function () { return ([ instance ]); });
-			ws.ws_timedout = true;
-		}
-
-		if (ws.ws_operating.length > 0)
-			this.domainTakeover(mod_jsprim.randElt(ws.ws_operating),
-			    barrier, instance);
-	}
-};
-
-Worker.prototype.onMantaStorage = function (newrec)
-{
-	var v = newrec['value'];
-	this.w_storage_map[v['manta_storage_id']] = v;
-};
-
-Worker.prototype.eachRunningJob = function (func)
-{
-	mod_jsprim.forEachKey(this.w_jobs, function (_, job) {
-		if (job.j_dropped ||
-		    job.j_state == 'unassigned' || job.j_state == 'finishing')
-			return;
-
-		func(job);
-	});
-};
-
 /*
- * Invoked when we detect that an agent has restarted to finish off any tasks
- * from a previous instance of that agent.  We also invoke this when we discover
- * a new agent in case, as it's always safe to do this.
+ * Invoked when we detect that an agent has restarted to abandon any tasks from
+ * a previous instance of that agent.  This is always safe, since we abandon
+ * tasks not from the current generation (which we will have just read), so
+ * we shouldn't affect anything that just happened.
  */
 Worker.prototype.agentStarted = function (instance)
 {
 	var worker = this;
-	var agent = this.w_agents[instance];
-	var generation = agent.a_record['value']['generation'];
-	var filter = sprintf('(!(agentGeneration=%s))', generation);
 	var timestamp = mod_jsprim.iso8601(new Date());
 
-	/*
-	 * We don't technically need to do this on a per-job basis, but it keeps
-	 * the queries themselves small and avoids the headaches of dealing with
-	 * workers stomping on each others' jobs.
-	 */
-	this.w_log.info('agent "%s": failing stale tasks for all jobs',
-	    instance, filter);
+	this.w_log.info('agent "%s": abandoning stale tasks for all my jobs',
+	    instance);
 	this.eachRunningJob(function (job) {
-		worker.agentFailTasks(instance, job, timestamp, filter);
+		worker.agentAbandonStale(instance, job, timestamp);
 	});
 };
 
 /*
- * Invoked when we decide that an agent has been AWOL for too long to wait for.
- * We abort any tasks that this agent was responsible for.  This sounds like
- * what we do on agent restart (see agentStarted), but the difference is that we
- * abort all unfinished tasks, not just ones that we *know* the agent isn't
- * working on.  As a result, the filter's a little different, and it's
- * inadvisable to invoke this unless we're fairly sure the agent has gone away.
+ * Abandons all tasks for the given job that are older than the current agent
+ * generation.  This works using batches of server-side updates and keeps going
+ * until we have gotten all the records.  Callers ensure that new tasks are not
+ * being issued for this job with an older generation so that this will always
+ * converge.  For each batch of server-side updates, we use the latest
+ * generation we've read, handling multiple agent restarts in a short period.
+ *
+ * This function is invoked both when an agent restarts and when we assign
+ * ourselves a job.  For simplicity, we always update the records on a per-job
+ * basis, which keeps the queries themselves smaller, avoids the headaches
+ * associated with supervisors stomping each others' jobs, and is much easier to
+ * reason about.
+ */
+Worker.prototype.agentAbandonStale = function (instance, job, timestamp)
+{
+	var worker, agent, generation, filter, limit;
+
+	if (job.j_abandons_pending.hasOwnProperty(instance)) {
+		job.j_log.info('agent "%s": pending request to abandon stale ' +
+		    'tasks (enqueued new request)', instance);
+		job.j_abandons_wanted[instance] = timestamp;
+		return;
+	}
+
+	job.j_abandons_pending[instance] = timestamp;
+	delete (job.j_abandons_wanted[instance]);
+
+	worker = this;
+	agent = this.w_agents[instance];
+	generation = agent.a_record['value']['generation'];
+	filter = sprintf('(!(agentGeneration=%s))', generation);
+	job.j_log.info('agent "%s": abandoning stale tasks', instance);
+	limit = this.agentAbandonTasks(instance, job, timestamp, filter,
+	    function (err, count) {
+		delete (job.j_abandons_pending[instance]);
+
+		/*
+		 * If this failed, or we hit our self-imposed limit, or there's
+		 * been another request in the meantime (usually signifying a
+		 * generation change), take another lap with the latest
+		 * generation and filter.
+		 */
+		if (err || count >= limit)
+			job.j_abandons_wanted[instance] = timestamp;
+
+		if (job.j_abandons_wanted.hasOwnProperty(instance))
+			worker.agentAbandonStale(instance, job,
+			    job.j_abandons_wanted[instance]);
+	    });
+};
+
+/*
+ * Invoked periodically while an agent is AWOL to abandon tasks that this agent
+ * was responsible for.  This is similar to what we do when an agent restarts
+ * (see agentStarted), but in this case we abort *all* tasks instead of just
+ * ones from a previous generation.  As a result, it's inadvisable to invoke
+ * this unless we're fairly sure the agent is gone.
+ *
+ * This function abandons tasks on a per-job basis, and each time this function
+ * is invoked, we kick off an abandon request for each job that doesn't already
+ * have one outstanding.  If that request completes having only abandoned some
+ * of the tasks (e.g., because we hit the self-imposed per-query limit), another
+ * request will be made immediately as long as the agent is still timed out.
  */
 Worker.prototype.agentTimeout = function (instance)
 {
 	var worker = this;
 	var timestamp = mod_jsprim.iso8601(new Date());
 
-	/*
-	 * See agentStarted for why we do this per-job instead of globally.
-	 */
-	this.w_log.info('agent "%s": failing unfinished tasks for all jobs',
+	mod_assert.ok(this.w_agents[instance].a_timedout);
+	this.w_log.info('agent "%s": abandoning all tasks for all my jobs',
 	    instance);
 	this.eachRunningJob(function (job) {
-		worker.agentFailTasks(instance, job, timestamp, '');
+		worker.agentAbandonAll(instance, job, timestamp);
 	});
 };
 
-Worker.prototype.agentFailTasks = function (instance, job, timestamp, extra)
+/*
+ * Abandons all tasks for the given agent and job.  This is done in batches
+ * using server-side updates.  If the agent stops becoming timed out at any
+ * point, we'll stop making requests.
+ */
+Worker.prototype.agentAbandonAll = function (instance, job, timestamp)
+{
+	var worker, agent, limit;
+
+	if (job.j_abandonall_pending.hasOwnProperty(instance)) {
+		/*
+		 * Unlike agentAbandonStale(), where a subsequent request is
+		 * semantically meaningful because the agent generation has
+		 * changed, a subsequent request here doesn't mean we need to
+		 * issue another update.  Once the pending request finishes, if
+		 * the agent is still timed out, another update will be
+		 * triggered.  If not, then another update isn't necessary.
+		 */
+		job.j_log.info('agent "%s": pending request to abandon all ' +
+		    'tasks (ignored new request)', instance);
+		return;
+	}
+
+	job.j_abandonall_pending[instance] = timestamp;
+	worker = this;
+	agent = this.w_agents[instance];
+	job.j_log.info('agent "%s": abandoning unfinished tasks', instance);
+	limit = this.agentAbandonTasks(instance, job, timestamp, '',
+	    function (err, count) {
+		delete (job.j_abandonall_pending[instance]);
+
+		/*
+		 * If we failed or hit our self-imposed limit, we'll
+		 * take another lap immediately unless the agent is no
+		 * longer timed out.
+		 */
+		if (agent.a_timedout && (err || count >= limit))
+			worker.agentAbandonAll(instance, job, timestamp);
+	    });
+};
+
+/*
+ * Common function to abandon some number of uncompleted tasks assigned to agent
+ * "instance" for job "job" that also match the optional filter "extra".
+ * Invokes "callback" upon completion.  This operation makes a single
+ * server-side update with a limit, so it may update any number of tasks, and
+ * not necessarily all of them.  This function returns the limit used for the
+ * request.  "callback" is invoked with an error and the number of records
+ * updated so that callers can implement differing policies about what to do
+ * based on the number of records updated.
+ */
+Worker.prototype.agentAbandonTasks = function (instance, job, timestamp, extra,
+    callback)
 {
 	var worker = this;
-	var bucket, filter, changes;
+	var bucket, filter, changes, limit, request;
 
 	/*
-	 * All we actually need to do is set state=done and result=fail on each
-	 * of these.  After that it will be picked up by the same query that
-	 * handles failures recorded by the agent.
+	 * All we actually need to do to cause these tasks to be committed and
+	 * retried is to set state=done, result=fail, and timeAbandoned.  After
+	 * that it will be picked up by the same query that handles failures
+	 * recorded by the agent.
 	 */
 	bucket = this.w_buckets['task'];
 	filter = sprintf('(&(jobId=%s)(!(state=done))(mantaComputeId=%s)%s)',
@@ -2116,13 +2622,26 @@ Worker.prototype.agentFailTasks = function (instance, job, timestamp, extra)
 	    'timeAbandoned': timestamp
 	};
 
-	this.w_log.debug('agent "%s": job "%s": failing tasks',
+	limit = this.w_update_options['limit'];
+	mod_assert.equal(typeof (limit), 'number');
+	request = [ 'update', bucket, filter, changes, this.w_update_options ];
+	this.w_log.info('agent "%s": job "%s": abandoning tasks',
 	    instance, job.j_id, extra);
-	worker.w_bus.batch([
-	    [ 'update', bucket, filter, changes ] ], {}, function () {
-		worker.w_log.debug('agent "%s": job "%s": done failing tasks',
-		    instance, job.j_id, extra);
-	    });
+	this.w_bus.batch([ request ], {}, function (err, meta) {
+		if (err) {
+			worker.w_log.warn(err, 'agent "%s": job "%s": ' +
+			    'failed to abandon tasks', instance, job.j_id,
+			    extra);
+			callback(err);
+		} else {
+			var count = meta.etags[0]['count'];
+			worker.w_log.info('agent "%s": job "%s": ' +
+			    'abandoned %d tasks', instance, job.j_id, count,
+			    extra);
+			callback(null, count);
+		}
+	});
+	return (limit);
 };
 
 /*
@@ -2198,13 +2717,13 @@ Worker.prototype.jobAssigned = function (job)
 
 	/*
 	 * In order to know when the job is finished, we need to know how many
-	 * uncommitted tasks, tasks needing retry, and committed, unpropagated
-	 * taskoutputs there are.  Since we're the only component that writes
-	 * new tasks and commits taskoutputs, these numbers cannot go up except
-	 * by our own action, and if both of these numbers are zero, then there
-	 * cannot be any outstanding work.  We need this same information on a
-	 * per-phase basis in order to know when individual reducers' inputs are
-	 * done.
+	 * uncommitted tasks, tasks needing outputs marked, tasks needing retry,
+	 * and committed, unpropagated taskoutputs there are.  Since we're the
+	 * only component that writes new tasks and commits taskoutputs, these
+	 * numbers cannot go up except by our own action, and if both of these
+	 * numbers are zero, then there cannot be any outstanding work.  We need
+	 * this same information on a per-phase basis in order to know when
+	 * individual reducers' inputs are done.
 	 */
 	job.j_phases.forEach(function (_, i) {
 		queryconf = wQueries.wqCountJobTasksUncommitted;
@@ -2217,6 +2736,40 @@ Worker.prototype.jobAssigned = function (job)
 			job.j_phases[i].p_nuncommitted = c;
 		    });
 
+		queryconf = wQueries.wqCountJobTasksNeedingOutputsMarked;
+		query = queryconf['query'].bind(null, i, job.j_id);
+		barrier.start('phase ' + i + ' tasks needing outputs');
+		worker.w_bus.count(worker.w_buckets[queryconf['bucket']],
+		    query, worker.w_bus_options, function (c) {
+			barrier.done('phase ' + i + ' tasks needing outputs');
+			mod_assert.equal(typeof (c), 'number');
+			job.j_log.info('tasks needing outputs', c);
+			job.j_phases[i].p_nunmarked_propagate = c;
+		    });
+
+		queryconf = wQueries.wqCountJobTasksNeedingInputsMarked;
+		query = queryconf['query'].bind(null, i, job.j_id);
+		barrier.start('phase ' + i + ' tasks needing inputs');
+		worker.w_bus.count(worker.w_buckets[queryconf['bucket']],
+		    query, worker.w_bus_options, function (c) {
+			barrier.done('phase ' + i + ' tasks needing inputs');
+			mod_assert.equal(typeof (c), 'number');
+			job.j_log.info('tasks needing inputs removed', c);
+			job.j_phases[i].p_nunmarked_cleanup = c;
+		    });
+
+		queryconf = wQueries.wqCountJobTasksNeedingInputsRetried;
+		query = queryconf['query'].bind(null, i, job.j_id);
+		barrier.start('phase ' + i + ' tasks needing ins retried');
+		worker.w_bus.count(worker.w_buckets[queryconf['bucket']],
+		    query, worker.w_bus_options, function (c) {
+			barrier.done(
+			    'phase ' + i + ' tasks needing ins retried');
+			mod_assert.equal(typeof (c), 'number');
+			job.j_log.info('tasks needing inputs retried', c);
+			job.j_phases[i].p_nunmarked_retry = c;
+		    });
+
 		queryconf = wQueries.wqCountJobTasksNeedingRetry;
 		query = queryconf['query'].bind(null, i, job.j_id);
 		barrier.start('phase ' + i + ' tasks needing retry');
@@ -2224,7 +2777,20 @@ Worker.prototype.jobAssigned = function (job)
 		    query, worker.w_bus_options, function (c) {
 			barrier.done('phase ' + i + ' tasks needing retry');
 			mod_assert.equal(typeof (c), 'number');
+			job.j_log.info('tasks needing retry', c);
 			job.j_phases[i].p_nretryneeded = c;
+		    });
+
+		queryconf = wQueries.wqCountJobTaskInputsNeedingRetry;
+		query = queryconf['query'].bind(null, i, job.j_id);
+		barrier.start('phase ' + i + ' taskinputs needing retry');
+		worker.w_bus.count(worker.w_buckets[queryconf['bucket']],
+		    query, worker.w_bus_options, function (c) {
+			barrier.done('phase ' + i +
+			    ' taskinputs needing retry');
+			mod_assert.equal(typeof (c), 'number');
+			job.j_log.info('taskinputs needing retry', c);
+			job.j_phases[i].p_ninretryneeded = c;
 		    });
 
 		if (i == job.j_phases.length - 1) {
@@ -2328,12 +2894,10 @@ Worker.prototype.jobAssigned = function (job)
 	 * fact that we don't start picking up jobs until we've gotten each
 	 * agents' last health report.
 	 */
-	job.j_log.info('failing stale tasks on all agents');
+	job.j_log.info('abandoning stale tasks on all agents');
 	var timestamp = mod_jsprim.iso8601(new Date());
 	mod_jsprim.forEachKey(this.w_agents, function (instance, agent) {
-		var filter = sprintf('(!(agentGeneration=%s))',
-		    agent.a_record['value']['generation']);
-		worker.agentFailTasks(instance, job, timestamp, filter);
+		worker.agentAbandonStale(instance, job, timestamp);
 	});
 };
 
@@ -2374,8 +2938,7 @@ Worker.prototype.jobLoadReduceTask = function (job, record, barrier)
 	    queryconf['query'].bind(null, value['taskId']),
 	    this.w_bus_options, function (c) {
 		mod_assert.equal(typeof (c), 'number');
-		reducer.r_ninput = c;
-		reducer.r_nissued = c;
+		reducer.r_task.t_ninput = c;
 		barrier.done('count task ' + value['taskId'] + ' inputs');
 	    });
 };
@@ -2447,6 +3010,7 @@ Worker.prototype.jobLoaded = function (job)
 
 			task = worker.taskCreate(job, pi, now);
 			reducer.r_task = task;
+			reducer.r_task.t_ninput = 0;
 
 			value = task.t_value;
 			value['rIdx'] = ri;
@@ -2455,6 +3019,7 @@ Worker.prototype.jobLoaded = function (job)
 			value['agentGeneration'] = worker.w_agents[
 			    instance].a_record['value']['generation'];
 			value['nattempts'] = 1;
+			value['timeDispatchDone'] = value['timeDispatched'];
 
 			worker.w_dtrace.fire('task-dispatched', function () {
 			    return ([ task.t_value['jobId'], task.t_id,
@@ -2541,8 +3106,11 @@ Worker.prototype.jobTick = function (job)
 
 	mod_assert.equal(job.j_state, 'running');
 
-	if (!job.j_input_fully_read && !job.j_mark_inputs.tooRecent())
-		this.jobMarkInputs(job);
+	if (!job.j_input_fully_read && !job.j_mark_inputs.tooRecent()) {
+		job.j_mark_inputs.start();
+		this.jobMarkAllInputs(job,
+		    function () { job.j_mark_inputs.done(); });
+	}
 
 	if (this.jobDone(job)) {
 		job.j_save.markDirty();
@@ -2579,7 +3147,7 @@ Worker.prototype.jobInputEnded = function (job)
 	this.w_dtrace.fire('job-input-done',
 	    function () { return ([ job.j_id, job.j_job ]); });
 	job.j_last_input = undefined;
-	this.jobMarkInputs(job, function () {
+	this.jobMarkAllInputs(job, function () {
 		worker.w_bus.fence(sid, function () {
 			job.j_log.info('finished reading job inputs');
 			job.j_input_fully_read = true;
@@ -2591,30 +3159,58 @@ Worker.prototype.jobInputEnded = function (job)
 	});
 };
 
-Worker.prototype.jobMarkInputs = function (job, forcecb)
+/*
+ * Updates jobinput objects to have domain = us.  We do this in batches to avoid
+ * arbitrary-size server-side operations, so we keep running the query until we
+ * get fewer than the "limit" number of records updated.
+ */
+Worker.prototype.jobMarkAllInputs = function (job, callback)
 {
-	var worker, bucket, filter, changes;
+	var worker, bucket, filter, changes, request;
+
+	/*
+	 * We must not allow multiple of these to be executed concurrently, or
+	 * they may end up stomping on each others' records, causing those
+	 * records' etags to change (even though the content won't have
+	 * changed), causing etag conflict errors dispatching tasks.
+	 */
+	if (job.j_mark_pending) {
+		job.j_log.info('mark inputs already pending');
+		job.j_mark_needed.push(callback);
+		return;
+	}
 
 	worker = this;
 	bucket = this.w_buckets['jobinput'];
 	filter = sprintf('(&(jobId=%s)(!(domain=*)))', job.j_id);
 	changes = { 'domain': job.j_job['worker'] };
+	request = [ 'update', bucket, filter, changes, this.w_update_options ];
 
+	job.j_log.debug('marking inputs');
 	this.w_dtrace.fire('job-mark-inputs-start',
 	    function () { return ([ job.j_id ]); });
 
-	job.j_log.debug('marking inputs');
-	if (!forcecb)
-		job.j_mark_inputs.start();
-	this.w_bus.batch([
-	    [ 'update', bucket, filter, changes ] ], {}, function () {
+	job.j_mark_pending = true;
+	this.w_bus.batch([ request ], {}, function (err, meta) {
+		job.j_mark_pending = false;
 		worker.w_dtrace.fire('job-mark-inputs-done',
 		    function () { return ([ job.j_id ]); });
-		job.j_log.debug('marked inputs');
-		if (!forcecb)
-			job.j_mark_inputs.done();
-		else
-			forcecb();
+		job.j_log.debug({ 'err': err, 'result': meta },
+		    'marked inputs');
+
+		if (meta && meta.etags[0]['count'] >=
+		    worker.w_update_options['limit']) {
+			job.j_log.warn('mark inputs: update overflow');
+			worker.jobMarkAllInputs(job, callback);
+		} else {
+			callback(err, meta);
+		}
+
+		if (job.j_mark_needed.length > 0) {
+			job.j_log.info('mark inputs: kicking another update');
+			var next = job.j_mark_needed.shift();
+			worker.jobMarkAllInputs(job, next);
+		}
 	});
 };
 
@@ -2685,37 +3281,6 @@ Worker.prototype.jobSave = function (job)
 	    { 'etag': job.j_etag }
 	] ];
 
-	/*
-	 * If we're cancelling this job, make sure to also cancel the other
-	 * associated job records.
-	 */
-	if (job.j_state == 'finishing' && job.j_job['state'] == 'done' &&
-	    job.j_job['timeCancelled'] !== undefined) {
-		/*
-		 * Tasks are cancelled directly to stop execution.  We write
-		 * this on all tasks, committed, done, or not, because we're
-		 * going to stop processing any updates and we don't want to
-		 * keep finding them.
-		 */
-		records.push([ 'update', this.w_buckets['task'],
-		    sprintf('(&(jobId=%s))', job.j_id),
-		    { 'timeCancelled': job.j_job['timeCancelled'] } ]);
-
-		/*
-		 * We mark timeJobCancelled on jobinputs, taskoutputs, and
-		 * taskinputs so that our polling doesn't keep finding them.
-		 */
-		records.push([ 'update', this.w_buckets['jobinput'],
-		    sprintf('(&(jobId=%s))', job.j_id),
-		    { 'timeJobCancelled': job.j_job['timeCancelled'] } ]);
-		records.push([ 'update', this.w_buckets['taskoutput'],
-		    sprintf('(&(jobId=%s))', job.j_id),
-		    { 'timeJobCancelled': job.j_job['timeCancelled'] } ]);
-		records.push([ 'update', this.w_buckets['taskinput'],
-		    sprintf('(&(jobId=%s))', job.j_id),
-		    { 'timeJobCancelled': job.j_job['timeCancelled'] } ]);
-	}
-
 	this.w_bus.batch(records, options, function (err) {
 		job.j_save_throttle.done();
 
@@ -2760,7 +3325,7 @@ Worker.prototype.jobDone = function (job)
 	if (job.j_state != 'running' && job.j_state != 'finishing')
 		return (false);
 
-	if (!job.j_input_fully_read)
+	if (job.j_cancelled === undefined && !job.j_input_fully_read)
 		return (false);
 
 	if (job.j_nlocates > 0 || job.j_nauths > 0 || job.j_ndeletes > 0)
@@ -2768,9 +3333,16 @@ Worker.prototype.jobDone = function (job)
 
 	for (pi = 0; pi < job.j_phases.length; pi++) {
 		if (job.j_phases[pi].p_ndispatches > 0 ||
-		    job.j_phases[pi].p_nuncommitted > 0 ||
+		    job.j_phases[pi].p_nuncommitted > 0)
+			return (false);
+
+		if (job.j_cancelled === undefined &&
+		    (job.j_phases[pi].p_nunmarked_propagate > 0 ||
+		    job.j_phases[pi].p_nunmarked_cleanup > 0 ||
+		    job.j_phases[pi].p_nunmarked_retry > 0 ||
 		    job.j_phases[pi].p_nunpropagated > 0 ||
-		    job.j_phases[pi].p_nretryneeded > 0)
+		    job.j_phases[pi].p_ninretryneeded > 0 ||
+		    job.j_phases[pi].p_nretryneeded > 0))
 			return (false);
 	}
 
@@ -2901,7 +3473,7 @@ Worker.prototype.taskCreate = function (job, pi, now)
 Worker.prototype.taskPostDispatchCheck = function (task)
 {
 	var taskvalue, instance, agent;
-	var job, filter, timestamp;
+	var job, timestamp;
 
 	taskvalue = task.t_value;
 	instance = taskvalue['mantaComputeId'];
@@ -2916,11 +3488,8 @@ Worker.prototype.taskPostDispatchCheck = function (task)
 	mod_assert.ok(job !== undefined);
 	job.j_log.info('issued task "%s" with already stale generation',
 	    task.t_id);
-
-	filter = sprintf('(!(agentGeneration=%s))',
-	    agent.a_record['value']['generation']);
 	timestamp = mod_jsprim.iso8601(new Date());
-	this.agentFailTasks(instance, job, timestamp, filter);
+	this.agentAbandonStale(instance, job, timestamp);
 };
 
 /*
@@ -3174,6 +3743,15 @@ Worker.prototype.dispLocateResponse = function (dispatches, err, locations)
 
 Worker.prototype.dispDispatch = function (dispatch)
 {
+	if (dispatch.d_error === undefined &&
+	    dispatch.d_job.j_cancelled !== undefined) {
+		dispatch.d_error = {
+		    'code': EM_JOBCANCELLED,
+		    'message': 'job was cancelled'
+		};
+	}
+
+
 	if (dispatch.d_error !== undefined)
 		this.dispError(dispatch);
 	else if (dispatch.d_job.j_phases[dispatch.d_pi].p_type == 'reduce')
@@ -3244,6 +3822,7 @@ Worker.prototype.dispMap = function (dispatch)
 	value['agentGeneration'] = this.w_agents[instance].
 	    a_record['value']['generation'];
 	value['zonename'] = zonename;
+	value['timeDispatchDone'] = value['timeDispatched'];
 
 	if (dispatch.d_origin['bucket'] == this.w_buckets['jobinput']) {
 		value['prevRecordType'] = 'jobinput';
@@ -3291,27 +3870,43 @@ Worker.prototype.dispMap = function (dispatch)
 	    origin_value,
 	    { 'etag': dispatch.d_origin['_etag'] }
 	] ], {
-	    'retryConflict': function () {
+	    'retryConflict': function (oldrec) {
 		/*
 		 * See the retryConflict function in taskRetryReduce.  The only
 		 * legitimate way this can happen here is for the same reason it
 		 * can happen there: the "write" that set wantRetry = true is
 		 * still pending.
 		 */
-		mod_assert.ok(isretry);
-		return (new Error('conflict while retrying map task ' +
-		    '(will try again)'));
+		if (!isretry) {
+			if (oldrec['value']['timeCancelled'] !== undefined)
+				return (new Error('skipped map dispatch ' +
+				    'because origin cancelled'));
+			else
+				return (new Error(
+				    'unexpected conflict dispatching map'));
+		} else {
+			return (new Error('conflict while retrying map task ' +
+			    '(will try again)'));
+		}
 	    }
 	}, function (err) {
 		dispatch.d_barrier.done(dispatch.d_id);
 		dispatch.d_job.j_phases[dispatch.d_pi].p_ndispatches--;
 
-		if (dispatch.d_pi > 0 && !isretry)
-			phase.p_nunpropagated--;
+		if (!err) {
+			if (dispatch.d_pi > 0 && !isretry)
+				phase.p_nunpropagated--;
 
-		worker.jobPropagateEnd(dispatch.d_job, null);
-		worker.jobTick(dispatch.d_job);
-		worker.taskPostDispatchCheck(task);
+			worker.jobPropagateEnd(dispatch.d_job, null);
+			worker.jobTick(dispatch.d_job);
+			worker.taskPostDispatchCheck(task);
+		} else {
+			phase = dispatch.d_job.j_phases[dispatch.d_pi];
+			dispatch.d_job.j_job['stats']['nTasksDispatched']--;
+			phase.p_nuncommitted--;
+			if (isretry)
+				phase.p_nretryneeded++;
+		}
 	});
 };
 
@@ -3350,6 +3945,7 @@ Worker.prototype.dispReduce = function (dispatch)
 	    'taskInputId': uuid,
 	    'jobId': job.j_id,
 	    'taskId': task.t_id,
+	    'phaseNum': task.t_value['phaseNum'],
 	    'domain': job.j_job['worker'],
 	    'mantaComputeId': task.t_value['mantaComputeId'],
 	    'agentGeneration': worker.w_agents[
@@ -3395,7 +3991,7 @@ Worker.prototype.dispReduce = function (dispatch)
 	origin_value['nextRecordId'] = uuid;
 	origin_value['timePropagated'] = dispatch.d_time;
 
-	reducer.r_ninput++;
+	reducer.r_task.t_ninput++;
 	job.j_ndeletes += ndels;
 
 	this.w_dtrace.fire('taskinput-dispatched', function () {
@@ -3410,9 +4006,7 @@ Worker.prototype.dispReduce = function (dispatch)
 	    origin_value,
 	    { 'etag': dispatch.d_origin['_etag'] }
 	] ], {}, function (err) {
-		if (!err)
-			reducer.r_nissued++;
-		else
+		if (err)
 			job.j_ndeletes -= ndels;
 
 		dispatch.d_barrier.done(dispatch.d_id);
@@ -3598,7 +4192,11 @@ Worker.prototype.jobPropagateEnd = function (job, now)
 
 		if (phase.p_ndispatches > 0 ||
 		    phase.p_nuncommitted > 0 ||
+		    phase.p_nunmarked_propagate > 0 ||
+		    phase.p_nunmarked_cleanup > 0 ||
+		    phase.p_nunmarked_retry > 0 ||
 		    phase.p_nunpropagated > 0 ||
+		    phase.p_ninretryneeded > 0 ||
 		    phase.p_nretryneeded > 0)
 			/* Tasks still running. */
 			break;
@@ -3606,7 +4204,8 @@ Worker.prototype.jobPropagateEnd = function (job, now)
 
 	if (pi < job.j_phases.length &&
 	    job.j_phases[pi].p_reducers !== undefined &&
-	    job.j_phases[pi].p_ndispatches === 0) {
+	    job.j_phases[pi].p_ndispatches === 0 &&
+	    job.j_phases[pi].p_ninretryneeded === 0) {
 		if (now === null)
 			now = mod_jsprim.iso8601(new Date());
 		this.reduceEndInput(job, pi, now);
@@ -3637,9 +4236,10 @@ Worker.prototype.reduceEndInput = function (job, i, now)
 		}
 
 		job.j_log.info('marking input done for ' +
-		    'reduce phase %d (task %s)', i, task.t_id);
+		    'reduce phase %d (task %s) with %d inputs', i, task.t_id,
+		    reducer.r_task.t_ninput);
 		task.t_value['timeInputDone'] = now;
-		task.t_value['nInputs'] = reducer.r_ninput;
+		task.t_value['nInputs'] = reducer.r_task.t_ninput;
 		worker.w_dtrace.fire('task-input-done', function () {
 			return ([ job.j_id, task.t_id, task.t_value ]);
 		});
@@ -3679,10 +4279,14 @@ Worker.prototype.reduceEndInput = function (job, i, now)
 				 * now be "accepted" instead of "dispatched".
 				 * (It's also possible to write "timeCancelled",
 				 * but that should result in a failure here
-				 * anyway.)
+				 * anyway.)  "timeDispatchDone" is logically
+				 * written by us elsewhere, but using a
+				 * server-side update, so it's effectively
+				 * external to this update.
 				 */
 				return (mod_bus.mergeRecords([ 'timeAccepted',
-				    'state' ], ['timeInputDone', 'nInputs' ],
+				    'state', 'timeDispatchDone' ],
+				    [ 'timeInputDone', 'nInputs' ],
 				    oldrec['value'], newrec['value']));
 			}
 		    }, function (err, etags) {

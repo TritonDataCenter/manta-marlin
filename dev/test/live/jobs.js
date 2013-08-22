@@ -301,6 +301,21 @@ exports.jobMR1000 = {
     'errors': []
 };
 
+exports.jobM4RR1000 = {
+    'job': {
+	'phases': [
+	    { 'type': 'map', 'exec': 'wc' },
+	    { 'type': 'reduce', 'count': 4, 'exec': 'wc' },
+	    { 'type': 'reduce', 'exec': 'awk \'{sum+=$1} END { print sum }\'' }
+	]
+    },
+    'inputs': [],
+    'timeout': 300 * 1000,
+    'expected_outputs': [ /%user%\/jobs\/.*\/stor\/reduce\.2\./ ],
+    'expected_output_content': [ '1000\n' ],
+    'errors': []
+};
+
 exports.jobMRRoutput = {
     'job': {
 	'phases': [ {
@@ -1326,7 +1341,28 @@ exports.jobMcancel = {
 		});
 	}, 10 * 1000);
     },
-    'errors': []
+    'errors': [ {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/%user%/stor/obj1"',
+	'input': '/%user%/stor/obj1',
+	'p0input': '/%user%/stor/obj1',
+	'code': EM_JOBCANCELLED,
+	'message': 'job was cancelled'
+    }, {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/%user%/stor/obj2"',
+	'input': '/%user%/stor/obj2',
+	'p0input': '/%user%/stor/obj2',
+	'code': EM_JOBCANCELLED,
+	'message': 'job was cancelled'
+    }, {
+	'phaseNum': '0',
+	'what': 'phase 0: map input "/%user%/stor/obj3"',
+	'input': '/%user%/stor/obj3',
+	'p0input': '/%user%/stor/obj3',
+	'code': EM_JOBCANCELLED,
+	'message': 'job was cancelled'
+    } ]
 };
 
 exports.jobMmeterCheckpoints = {
@@ -1571,7 +1607,7 @@ exports.jobMinitKillAfter = {
     'errors': []
 };
 
-exports.jobsAll = [
+exports.jobsMain = [
     exports.jobM,
     exports.jobMimage,
     exports.jobMX,
@@ -1612,16 +1648,10 @@ exports.jobsAll = [
     exports.jobMerrorAssetMissing,
     exports.jobMerrorBadReducer,
     exports.jobMerrorVeryBadReducer,
-    exports.jobMerrorOom,
-    exports.jobMerrorDisk,
     exports.jobMerrorLackeyCrash,
-    exports.jobMerrorLackeyOom,
     exports.jobMerrorCmd,
     exports.jobMerrorMuskie,
     exports.jobMerrorMuskieMpipe,
-    exports.jobMerrorMuskieRetry,
-    exports.jobRmuskieRetry,
-    exports.jobRerrorMuskieRetry,
     exports.jobMerrorMuskieRetryMpipe,
     exports.jobMerrorMpipeMkdirp,
     exports.jobMerrorBadImage,
@@ -1637,6 +1667,27 @@ exports.jobsAll = [
     exports.jobMinitKillAfter
 ];
 
+/*
+ * The "corner cases" are really just a bunch of expensive jobs that we don't
+ * necessariliy want to be running frequently during stress tests and where
+ * basically any success validates the correct behavior.
+ */
+exports.jobsCornerCases = [
+    exports.jobMerrorOom,
+    exports.jobMerrorDisk,
+    exports.jobMerrorLackeyOom,
+    exports.jobMerrorMuskieRetry,
+    exports.jobRmuskieRetry,
+    exports.jobRerrorMuskieRetry,
+];
+
+exports.jobsAll = exports.jobsCornerCases.concat(exports.jobsMain);
+exports.jobsStress = exports.jobsMain.concat([
+    exports.jobM500,
+    exports.jobMR1000,
+    exports.jobM4RR1000
+]);
+
 function initJobs()
 {
 	var job = exports.jobM500;
@@ -1650,6 +1701,12 @@ function initJobs()
 	}
 
 	job = exports.jobMR1000;
+	for (i = 0; i < 1000; i++) {
+		key = '/%user%/stor/obj' + i;
+		job['inputs'].push(key);
+	}
+
+	job = exports.jobM4RR1000;
 	for (i = 0; i < 1000; i++) {
 		key = '/%user%/stor/obj' + i;
 		job['inputs'].push(key);
@@ -2100,7 +2157,13 @@ function jobTestVerifyResultSync(verify)
 	/* verify jobSubmit, jobFetch, jobFetchInputs */
 	mod_assert.deepEqual(testspec['job']['phases'], job['phases']);
 	expected_inputs = testspec['inputs'].map(replaceParams);
-	mod_assert.deepEqual(expected_inputs.sort(), inputs.sort());
+
+	/*
+	 * We don't really need to verify this for very large jobs, and it's
+	 * non-trivial to do so.
+	 */
+	if (expected_inputs.length <= 1000)
+		mod_assert.deepEqual(expected_inputs.sort(), inputs.sort());
 
 	/* Wait for the job to be completed. */
 	mod_assert.equal(job['state'], 'done');
@@ -2157,6 +2220,22 @@ function jobTestVerifyResultSync(verify)
 			for (var k in expected_error) {
 				exp = replaceParams(expected_error[k]);
 				if (typeof (expected_error[k]) == 'string') {
+					/*
+					 * In non-strict modes, cancelled jobs
+					 * are allowed to fail with EM_INTERNAL
+					 * instead of EM_JOBCANCELLED.
+					 */
+					if (!strict &&
+					    exp['code'] == EM_JOBCANCELLED &&
+					    actual_error['code'] ==
+					    EM_INTERNAL &&
+					    (k == 'code' || k == 'message')) {
+						log.warn('expected %s, ' +
+						    'but got %s, which is ' +
+						    'okay in non-strict mode',
+						    exp[k], actual_error[k]);
+					    	continue;
+					}
 					if (actual_error[k] !== exp) {
 						match = false;
 						break;
@@ -2189,10 +2268,8 @@ function jobTestVerifyResultSync(verify)
 	mod_assert.equal(stats['nErrors'], verify['errors'].length);
 	mod_assert.equal(stats['nInputsRead'], verify['inputs'].length);
 	mod_assert.equal(stats['nJobOutputs'], verify['outputs'].length);
-
-	if (job['timeCancelled'] === undefined)
-		mod_assert.equal(stats['nTasksDispatched'],
-		    stats['nTasksCommittedOk'] + stats['nTasksCommittedFail']);
+	mod_assert.equal(stats['nTasksDispatched'],
+	    stats['nTasksCommittedOk'] + stats['nTasksCommittedFail']);
 
 	/*
 	 * For every failed task, there should be either a retry or an error.
@@ -2379,6 +2456,11 @@ function populateData(manta, keys, callback)
 	}
 
 	var final_err;
+	var dirs = keys.filter(
+	    function (key) { return (mod_jsprim.endsWith(key, 'dir')); });
+	keys = keys.filter(
+	    function (key) { return (!mod_jsprim.endsWith(key, 'dir')); });
+	var done = {};
 
 	var queue = mod_vasync.queuev({
 	    'concurrency': 15,
@@ -2388,6 +2470,12 @@ function populateData(manta, keys, callback)
 			    return;
 		    }
 
+		    if (done[key]) {
+			    subcallback();
+			    return;
+		    }
+
+		    done[key] = true;
 		    key = replaceParams(key);
 
 		    if (mod_jsprim.endsWith(key, 'dir')) {
@@ -2429,12 +2517,28 @@ function populateData(manta, keys, callback)
 	    }
 	});
 
-	keys.forEach(function (key) {
-		if (key.indexOf('notavalid') == -1)
-			queue.push(key);
-	});
+	var putKeys = function (keylist) {
+		keylist.forEach(function (key) {
+			if (key.indexOf('notavalid') == -1)
+				queue.push(key);
+		});
+	};
 
-	queue.drain = function () { callback(final_err); };
+	if (dirs.length > 0) {
+		putKeys(dirs);
+	} else {
+		putKeys(keys);
+		keys = [];
+	}
+
+	queue.drain = function () {
+		if (keys.length > 0) {
+			putKeys(keys);
+			keys = [];
+		} else {
+			callback(final_err);
+		}
+	};
 }
 
 function StringInputStream(contents)

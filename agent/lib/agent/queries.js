@@ -14,7 +14,7 @@ exports.aqTasksDispatched = {
     'query': function (conf) {
     	return (sprintf(
 	    '(&(mantaComputeId=%s)(state=dispatched)(agentGeneration=%s)' +
-	    '(!(timeAbandoned=*))(!(timeCancelled=*)))',
+	    '(!(timeAbandoned=*)))',
 	    conf['mantaComputeId'], conf['agentGeneration']));
     }
 };

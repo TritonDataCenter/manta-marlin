@@ -24,6 +24,7 @@ exports.EM_SERVICEUNAVAILABLE	= 'ServiceUnavailableError';
 exports.EM_TASKINIT		=           'TaskInitError';
 exports.EM_TASKKILLED		=	  'TaskKilledError';
 exports.EM_USERTASK		=           'UserTaskError';
+exports.EM_JOBCANCELLED		=	'JobCancelledError';
 
 /*
  * We export these as global variables so that jslint can catch typos.
@@ -42,3 +43,4 @@ var EM_SERVICEUNAVAILABLE;
 var EM_TASKINIT;
 var EM_TASKKILLED;
 var EM_USERTASK;
+var EM_JOBCANCELLED;
