@@ -301,6 +301,21 @@ exports.jobMR1000 = {
     'errors': []
 };
 
+exports.jobM4RR1000 = {
+    'job': {
+	'phases': [
+	    { 'type': 'map', 'exec': 'wc' },
+	    { 'type': 'reduce', 'count': 4, 'exec': 'wc' },
+	    { 'type': 'reduce', 'exec': 'awk \'{sum+=$1} END { print sum }\'' }
+	]
+    },
+    'inputs': [],
+    'timeout': 300 * 1000,
+    'expected_outputs': [ /%user%\/jobs\/.*\/stor\/reduce\.2\./ ],
+    'expected_output_content': [ '1000\n' ],
+    'errors': []
+};
+
 exports.jobMRRoutput = {
     'job': {
 	'phases': [ {
@@ -1669,7 +1684,8 @@ exports.jobsCornerCases = [
 exports.jobsAll = exports.jobsCornerCases.concat(exports.jobsMain);
 exports.jobsStress = exports.jobsMain.concat([
     exports.jobM500,
-    exports.jobMR1000
+    exports.jobMR1000,
+    exports.jobM4RR1000
 ]);
 
 function initJobs()
@@ -1685,6 +1701,12 @@ function initJobs()
 	}
 
 	job = exports.jobMR1000;
+	for (i = 0; i < 1000; i++) {
+		key = '/%user%/stor/obj' + i;
+		job['inputs'].push(key);
+	}
+
+	job = exports.jobM4RR1000;
 	for (i = 0; i < 1000; i++) {
 		key = '/%user%/stor/obj' + i;
 		job['inputs'].push(key);
@@ -2135,7 +2157,13 @@ function jobTestVerifyResultSync(verify)
 	/* verify jobSubmit, jobFetch, jobFetchInputs */
 	mod_assert.deepEqual(testspec['job']['phases'], job['phases']);
 	expected_inputs = testspec['inputs'].map(replaceParams);
-	mod_assert.deepEqual(expected_inputs.sort(), inputs.sort());
+
+	/*
+	 * We don't really need to verify this for very large jobs, and it's
+	 * non-trivial to do so.
+	 */
+	if (expected_inputs.length <= 1000)
+		mod_assert.deepEqual(expected_inputs.sort(), inputs.sort());
 
 	/* Wait for the job to be completed. */
 	mod_assert.equal(job['state'], 'done');
@@ -2432,6 +2460,7 @@ function populateData(manta, keys, callback)
 	    function (key) { return (mod_jsprim.endsWith(key, 'dir')); });
 	keys = keys.filter(
 	    function (key) { return (!mod_jsprim.endsWith(key, 'dir')); });
+	var done = {};
 
 	var queue = mod_vasync.queuev({
 	    'concurrency': 15,
@@ -2441,6 +2470,12 @@ function populateData(manta, keys, callback)
 			    return;
 		    }
 
+		    if (done[key]) {
+			    subcallback();
+			    return;
+		    }
+
+		    done[key] = true;
 		    key = replaceParams(key);
 
 		    if (mod_jsprim.endsWith(key, 'dir')) {

@@ -1713,7 +1713,8 @@ Worker.prototype.onRecordTaskMarkInputsRetry = function (record, barrier, job,
 	 * records, we need to keep updating records in batches until we
 	 * complete a full lap *after* we've retried the reduce task.
 	 */
-	canbedone = phase.p_ninretryneeded === 0;
+	canbedone = phase.p_ninretryneeded === 0 &&
+	    phase.p_nretryneeded === 0;
 
 	barrier.start(record['key']);
 
