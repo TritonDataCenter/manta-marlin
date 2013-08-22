@@ -2524,9 +2524,6 @@ function populateData(manta, keys, callback)
 		});
 	};
 
-	log.info('dirs', dirs);
-	log.info('keys', keys);
-
 	if (dirs.length > 0) {
 		putKeys(dirs);
 	} else {

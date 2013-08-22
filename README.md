@@ -249,24 +249,34 @@ Then you can run individual tests just like inside a zone:
 
 In one shell, start the worker in a way that will be automatically restarted:
 
-    $ while :; do node lib/worker/server.js ../config.json | \
-        tee ../worker.out | bunyan -o short; done
+    $ while :; do LOG_LEVEL=debug node \
+        build/proto/root/opt/smartdc/marlin/lib/worker/server.js \
+        ../config.json | tee -a ../worker.out | bunyan -linfo; done
 
-In another, start a loop that will *kill* the worker a random interval between 5
-and 30 seconds apart:
+In another, start a loop that will *kill* the supervisor a random interval
+between 5 and 30 seconds apart.  There's a script in tools/ for this:
 
-    $ while sleep $(( RANDOM % 30 + 5 )); do date; pkill -f worker/server.js; done
+    $ dev/tools/test_sup_kill.sh
 
 And finally, run the test suite in "stress" mode, which is a little laxer about
 transient failures:
 
     $ for (( i = 0; ; i++ )) { \
         echo "$i: $(date)"; \
-        if ! node test/live/tst.concurrent.js -S >> ../tests.out 2>&1; then \
-            echo "FAILED" \
-            break; \
-        fi \
-    }
+        if ! node build/proto/root/opt/smartdc/marlin/test/live/tst.concurrent.js \
+            -S stress >> ../tests.out 2>&1; then
+            echo "FAILED at $(date)";
+            break;
+        fi
+      }
+
+You can also test periodic agent crashes using a script to periodically kill the
+agent.  The minimum timeout for this script is longer than the corresponding
+supervisor script because jobs fail if the agent fails too many times while
+they're running.  You must run this from the global zone:
+
+    # /zones/$YOUR_ZONE/root/home/$YOUR_USER/marlin/dev/tools/test_agent_kill.sh
+
 
 # Before pushing changes
 
