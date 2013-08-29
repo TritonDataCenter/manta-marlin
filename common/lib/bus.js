@@ -548,9 +548,9 @@ MorayBus.prototype.txnHandleError = function (txn, err)
 	this.mb_client.getObject(rec['bucket'], rec['key'], { 'noCache': true },
 	    function (err2, record) {
 		if (err2) {
-			bus.txnFini(txn, new VError(err2,
-			    'failed to fetch object after retryable ' +
-			    'EtagConflict error'));
+			bus.mb_log.warn(err2, 'error fetching object after ' +
+			    'retryable EtagConflict error');
+			bus.txnHandleError(txn, err2);
 			return;
 		}
 
