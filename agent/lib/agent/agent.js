@@ -1933,6 +1933,13 @@ mAgent.prototype.taskStreamAbort = function (stream, error)
 {
 	var agent = this;
 
+	if (stream.s_error !== undefined) {
+		stream.s_log.warn('ignoring stream abort because ' +
+		    'the stream already has abort pending', error);
+		return;
+	}
+
+	stream.s_error = error;
 	stream.s_log.warn('issued stream abort', error);
 	stream.s_rqqueue.push(function (callback) {
 		if (stream.s_state == maTaskStream.TASKSTREAM_S_DONE) {
@@ -1942,7 +1949,6 @@ mAgent.prototype.taskStreamAbort = function (stream, error)
 		}
 
 		stream.s_log.warn('executing stream abort', error);
-		stream.s_error = error;
 		if (stream.s_task !== undefined)
 			agent.taskDoneRunning(stream.s_task, callback);
 		else
