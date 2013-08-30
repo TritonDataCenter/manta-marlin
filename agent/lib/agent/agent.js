@@ -892,7 +892,7 @@ mAgent.prototype.heartbeat = function ()
 		'instance': this.ma_manta_compute_id,
 		'serverUuid': this.ma_server_uuid,
 		'generation': this.ma_start
-	    } ] ], {}, function (err) {
+	    } ] ], { 'urgent': true }, function (err) {
 		agent.ma_heartbeat.done();
 
 		if (err)

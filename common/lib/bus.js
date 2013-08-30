@@ -350,6 +350,11 @@ MorayBus.prototype.pollOne = function (subscrip, nowdate)
  * If options.retryConflict is not specified, EtagConflict errors will not be
  * retried.
  *
+ * The other supported option is "urgent", a boolean indicating whether this
+ * request should be moved to the head of the queue (instead of the back, by
+ * default).  This should only be used for very small numbers of time-critical
+ * writes (like heartbeats).
+ *
  * The callback is invoked as callback(error, etags), where "etags" is an array
  * of the etags resulting from the update operations.
  *
@@ -424,8 +429,12 @@ MorayBus.prototype.batch = function (records, options, callback)
 		deptxn.tx_dependents.push(txn);
 	} else {
 		this.mb_log.debug('batch: enter immediate',
+		    options['urgent'] ? 'urgent' : 'normal',
 		    mod_util.inspect(txn, false, 5));
-		this.mb_putq.push(txn.tx_ident);
+		if (options['urgent'])
+			this.mb_putq.unshift(txn.tx_ident);
+		else
+			this.mb_putq.push(txn.tx_ident);
 		this.flush();
 	}
 };
@@ -449,9 +458,10 @@ MorayBus.prototype.flush = function (unow)
 	now = unow ? unow : mod_jsprim.iso8601(Date.now());
 	this.mb_log.trace('flush');
 
-	while (this.mb_npendingputs < this.mb_nmaxputs &&
-	    this.mb_putq.length > 0) {
-		txn = this.mb_txns[this.mb_putq.pop()];
+	while (this.mb_putq.length > 0 &&
+	    (this.mb_npendingputs < this.mb_nmaxputs ||
+	    this.mb_putq[0].tx_urgent)) {
+		txn = this.mb_txns[this.mb_putq.shift()];
 		mod_assert.ok(txn !== undefined);
 		this.txnPut(client, txn, now);
 	}
@@ -829,6 +839,7 @@ function MorayBusTransaction(records, options, callback)
 
 	/* retry options */
 	this.tx_retry_conflict = options ? options['retryConflict'] : undefined;
+	this.tx_urgent = options && options['urgent'];
 	this.tx_nfails = 0;				/* failed attempts */
 	this.tx_wait_timer = undefined;			/* timeout for retry */
 	this.tx_wait_start = undefined;			/* backoff start time */
