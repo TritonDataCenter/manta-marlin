@@ -429,9 +429,9 @@ MorayBus.prototype.batch = function (records, options, callback)
 		deptxn.tx_dependents.push(txn);
 	} else {
 		this.mb_log.debug('batch: enter immediate',
-		    options['urgent'] ? 'urgent' : 'normal',
+		    options && options['urgent'] ? 'urgent' : 'normal',
 		    mod_util.inspect(txn, false, 5));
-		if (options['urgent'])
+		if (options && options['urgent'])
 			this.mb_putq.unshift(txn.tx_ident);
 		else
 			this.mb_putq.push(txn.tx_ident);
