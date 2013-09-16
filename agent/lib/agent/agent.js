@@ -2139,11 +2139,10 @@ mAgent.prototype.schedHogKill = function (group, timestamp)
 	mod_assert.ok(group.g_nstreams > 1);
 
 	/*
-	 * We prefer to kill streams in the following order:
-	 * (1) a stream which is idle
-	 * (2) a stream which is initializing
-	 * (3) the stream whose current task has been running for the least
-	 *     amount of time
+	 * We prefer to kill streams that are idle, or else one whose current
+	 * task has been running for the least amount of time.  We avoid killing
+	 * those which are initializing because that's a tricky state to abort
+	 * in.
 	 */
 	if (group.g_idle.length > 0) {
 		stream = group.g_idle.shift();
@@ -2151,15 +2150,16 @@ mAgent.prototype.schedHogKill = function (group, timestamp)
 		stream.s_idle_time = undefined;
 	} else {
 		mod_jsprim.forEachKey(group.g_streams, function (sid, astream) {
-			if (astream.s_task === undefined) {
-				stream = astream;
-				latest = Infinity;
-			} else if (latest === undefined ||
-			    astream.s_start > latest) {
+			if (astream.s_task !== undefined &&
+			    (latest === undefined ||
+			    astream.s_start > latest)) {
 				stream = astream;
 				latest = astream.s_start;
 			}
 		});
+
+		if (stream === undefined)
+			return;
 	}
 
 	mod_assert.ok(stream !== undefined);
