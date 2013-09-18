@@ -541,6 +541,7 @@ Worker.prototype.debugState = function ()
 	    'tTickDone': this.w_tick_done,
 	    'agents': Object.keys(this.w_agents),
 	    'workers': Object.keys(this.w_allworkers),
+	    'quiesced': this.quiesced(),
 	    'nAuthsIn': this.w_auths_in.length,
 	    'nAuthsOut': this.w_auths_out.length,
 	    'nLocIn': this.w_locates_in.length,
@@ -4316,6 +4317,65 @@ Worker.prototype.reduceEndInput = function (job, i, now)
 	});
 };
 
+Worker.prototype.quiesce = function (wantquiesce, callback)
+{
+	var q = wQueries.wqJobsCreated;
+	var subscrips, options;
+
+	if (wantquiesce) {
+		if (!this.w_ourdomains.hasOwnProperty(this.w_uuid) ||
+		    typeof (this.w_ourdomains[this.w_uuid]) == 'string') {
+			this.w_log.warn('quiesce: not operating our domain');
+			callback(new Error('not operating our domain'));
+			return;
+		}
+
+		subscrips = this.w_ourdomains[this.w_uuid];
+		if (!subscrips.hasOwnProperty(q['name'])) {
+			this.w_log.warn('quiesce: already quiesced');
+			callback();
+			return;
+		}
+
+		this.w_bus.unsubscribe(subscrips[q['name']]);
+		delete (subscrips[q['name']]);
+		this.w_log.info('quiesce: unsubscribed from "%s"', q['name']);
+		callback();
+	} else {
+		if (!this.w_ourdomains.hasOwnProperty(this.w_uuid) ||
+		    typeof (this.w_ourdomains[this.w_uuid]) == 'string') {
+			this.w_log.warn('unquiesce: not operating our domain');
+			callback(new Error(
+			    'unquiesce: not operating our domain'));
+			return;
+		}
+
+		subscrips = this.w_ourdomains[this.w_uuid];
+		if (subscrips.hasOwnProperty(q['name'])) {
+			this.w_log.warn('unquiesce: not quiesced');
+			callback();
+			return;
+		}
+
+		options = q['options'] ? q['options'](this.w_conf) :
+		    this.w_bus_options;
+		subscrips[q['name']] = this.w_bus.subscribe(
+		    this.w_buckets[q['bucket']],
+		    q['query'].bind(null, this.w_conf, this.w_uuid),
+		    options, this.onRecord.bind(this));
+		this.w_log.info('unquiesce: subscribed to "%s"', q['name']);
+		callback();
+	}
+};
+
+Worker.prototype.quiesced = function ()
+{
+	var q = wQueries.wqJobsCreated;
+	return (this.w_ourdomains.hasOwnProperty(this.w_uuid) &&
+	    typeof (this.w_ourdomains[this.w_uuid]) != 'string' &&
+	    !this.w_ourdomains[this.w_uuid].hasOwnProperty(q['name']));
+};
+
 /*
  * Kang (introspection) entry points
  */
@@ -4357,6 +4417,7 @@ Worker.prototype.kangSchema = function (type)
 			'input_fully_read',
 			'cancelled',
 			'nlocates',
+			'quiesced',
 			'nauths'
 		    ]
 		});

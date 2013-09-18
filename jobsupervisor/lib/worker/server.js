@@ -56,6 +56,22 @@ function main()
 	    'stats': worker.kangStats.bind(worker)
 	}));
 
+	server.post('/quiesce', function (request, response, next) {
+		worker.quiesce(true, function (err) {
+			if (!err)
+				response.send(204);
+			next(err);
+		});
+	});
+
+	server.post('/unquiesce', function (request, response, next) {
+		worker.quiesce(false, function (err) {
+			if (!err)
+				response.send(204);
+			next(err);
+		});
+	});
+
 	server.listen(conf['port'], function () {
 		var addr = server.address();
 		log.info('server listening at http://%s:%d',

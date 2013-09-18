@@ -95,7 +95,8 @@ BASH_FILES	 = \
     client/sbin/mrextractjob		\
     dev/tools/catest			\
     dev/tools/mru			\
-    jobsupervisor/boot/configure.sh
+    jobsupervisor/boot/configure.sh     \
+    jobsupervisor/sbin/mrsup
 
 DOC_FILES	 = index.restdown ops.restdown
 

@@ -1,0 +1,77 @@
+#!/bin/bash
+
+#
+# mrsup: manage a marlin supervisor
+#
+
+set -o pipefail
+
+arg0=$(basename $0)
+
+function usage
+{
+	[[ -n "$@" ]] && echo "$arg0: $*" >&2
+	cat <<EOF
+usage: $arg0 [-h HOST] [-p PORT] get
+       $arg0 [-h HOST] [-p PORT] quiesce
+       $arg0 [-h HOST] [-p PORT] resume
+
+  $arg0 get
+
+    Fetches the current state of the supervisor.  This output is not stable.
+
+  $arg0 quiesce
+
+    Quiesce the supervisor, causing it to take on no new jobs but to continue
+    working on the jobs it's already working on.  This can be used as a
+    precursor to permanently removing the supervisor from service, as during a
+    major upgrade.  This state is not persistent, so if the supervisor restarts
+    for any reason, it will start picking up new jobs again.
+
+  $arg0 unquiesce
+
+    Unquiesce the supervisor, causing it to take on new jobs again (and continue
+    working on jobs it's already working on).
+
+Options:
+
+    -h HOST    Specify hostname of remote supervisor management API [localhost]
+    -p PORT    Specify port of remote supervisor management API [80]
+EOF
+	exit 2
+}
+
+function cmd_get
+{
+	curl -fsS $opt_h:$opt_p/kang/snapshot | json
+}
+
+function cmd_quiesce
+{
+	curl -fsS -X POST $opt_h:$opt_p/quiesce
+}
+
+function cmd_unquiesce
+{
+	curl -fsS -X POST $opt_h:$opt_p/unquiesce
+}
+
+opt_h="localhost"
+opt_p="80"
+
+while getopts ":h:p:" c $@; do
+	case "$c" in
+	h|p)		eval opt_$c=$OPTARG ;;
+	:)		usage "option requires an argument -- $OPTARG" ;;
+	*)		usage "invalid option: $OPTARG" ;;
+	esac
+done
+
+shift $(( OPTIND - 1 ))
+[[ $# -eq 1 ]] || usage
+cmd="$1"
+
+case "$cmd" in
+	get|quiesce|unquiesce)		cmd_$cmd ;;
+	*)				usage "invalid command: $cmd" ;;
+esac

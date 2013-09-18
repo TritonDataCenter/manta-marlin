@@ -113,12 +113,6 @@ All of these are capped at 1000 results by default.
 Use `mrerrors -j JOBID`.  The output includes internal error messages and
 retried errors, which are not exposed to end users.
 
-## Cancel a running job
-
-Use `mrjob cancel JOBID`, which produces no output on success.  This is a last
-resort option for jobs that have run amok.  Any time this is necessary, there's
-likely an underlying software bug that needs to be filed and fixed.
-
 ## Using the Moray tools to fetch detailed state
 
 Sometimes it's necessary to dig into the Moray state directly because "mrjob"
@@ -196,7 +190,7 @@ and, of course, summarize the results with json(1):
     1e8de5f3-561a-4211-9855-b90690994e35 25.cn.us-east.joyent.us
 
 Note that physical storage nodes in Manta are identified by mantaComputeId
-rather than server_uuid or hostname.  You need to translate this to figure out
+rather than server\_uuid or hostname.  You need to translate this to figure out
 which physical server that corresponds to.
 
 ## Translating from mantaComputeId to hostname
@@ -262,7 +256,7 @@ want to go see exactly what it's doing.  The full procedure is:
   process state -- with the usual caveats about interfering with production
   systems.
 
-The user task's stdout and stderr are saved to /var/tmp/marlin_task inside the
+The user task's stdout and stderr are saved to /var/tmp/marlin\_task inside the
 zone.  These are the stdout and stderr files that will be saved to Manta when
 the task completes, so do not modify or remove them!
 
@@ -360,10 +354,10 @@ Jobs enter the "queued" state when they're submitted, but should move to
 jobs remain in state "queued" for more than a minute, there are several things
 to check:
 
-* Run a simple no-op job, like "mjob create -m wc < /dev/null".  That job should
-  complete within a second or two without dispatching any tasks.  If it does,
-  there's likely something invalid about the user's job that the system failed
-  to handle properly.  Check the corresponding jobsupervisor's log (see
+* Run a simple no-op job, like "mjob create -m wc &lt; /dev/null".  That job
+  should complete within a second or two without dispatching any tasks.  If it
+  does, there's likely something invalid about the user's job that the system
+  failed to handle properly.  Check the corresponding jobsupervisor's log (see
   "Figuring out which jobsupervisor is managing a job").
 * If that test job remains queued for a minute, check that the jobsupervisor
   services are healthy (namely, that the SMF service is running, not in
@@ -473,6 +467,62 @@ One error we've seen is ": not connected: ".  This is issued by a jobsupervisor
 when attempting to locate an object, but when it fails to contact the
 electric-moray service.  Check supervisor health, look for errors in the log,
 and check whether electric-moray is online.
+
+
+# Controlling Marlin
+
+Occasionally it may be necessary or desirable to modify the running Marlin
+system.
+
+## Modifying Marlin state
+
+As described above, Marlin's state lives in Moray.  **Extreme care should be
+taken when modifying it directly.**
+
+## Cancel a running job
+
+Use `mrjob cancel JOBID`, which produces no output on success.  This is a last
+resort option for jobs that have run amok.  Any time this is necessary, there's
+likely an underlying software bug that needs to be filed and fixed.
+
+## Deleting a job
+
+In rare instances (always involving a serious Marlin bug), the presence of a job
+may disrupt the system so much that cancelling it is not tenable or not
+sufficient to stabilize the system.  In such cases, it's possible to delete the
+job, which removes all records associated with the job from Moray.
+
+If the job has already been completed and archived (has "timeArchiveDone" set),
+deleting a job has only a small user-facing impact: the user will no longer be
+able to fetch inputs, outputs, errors, and so on from the "live" API.  They will
+be able to fetch them through the archived objects (in.txt, out.txt, and so on).
+See the user-facing REST API documentation for details.  This transition happens
+anyway for all jobs after a few hours; deleting an archived job only has the
+effect of making this transition happen immediately.
+
+**If the job has not been completed or has not been archived, deleting the job
+will result in data loss for the user.**  In particular, the inputs, outputs,
+errors, and so on will all be lost permanently.  **This can also have an
+unpredictable impact on the rest of Marlin, which is not designed to have state
+removed while a job is running.**  This operation should be used with extreme
+care, and likely only by engineering.
+
+To delete a job, use `mrjob delete JOBID`.  Be sure to have read the above
+caveats.
+
+## Quiescing a supervisor
+
+It's possible to *quiesce* a supervisor, which causes that supervisor to
+continue processing whatever jobs it's working on, but to avoid picking up new
+jobs.  This is useful when the supervisor is being removed from service (as
+during some upgrades), or in cases where the supervisor has become clogged due
+to a bug but is still picking up new jobs (that are then becoming hung).
+
+The "mrsup" command can be used to both quiesce and unquiesce a supervisor.
+These commands produce no output on success, but cause entries to be written to
+the supervisor log.  The quiesce state is not persistent, so if the supervisor
+crashes or restarts for another reason, it will start picking up new jobs when
+it comes up again.
 
 
 # Reference
