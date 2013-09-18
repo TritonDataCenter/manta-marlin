@@ -3751,7 +3751,6 @@ Worker.prototype.dispDispatch = function (dispatch)
 		};
 	}
 
-
 	if (dispatch.d_error !== undefined)
 		this.dispError(dispatch);
 	else if (dispatch.d_job.j_phases[dispatch.d_pi].p_type == 'reduce')
@@ -4055,6 +4054,17 @@ Worker.prototype.dispError = function (dispatch)
 	origin_value['nextRecordType'] = 'error';
 	origin_value['nextRecordId'] = uuid;
 	origin_value['timePropagated'] = dispatch.d_time;
+
+	/*
+	 * If this dispatch was part of a retry, set timeRetried on the origin
+	 * record now.  This can happen when an object is removed between the
+	 * first attempt and the second attempt, causing the second attempt to
+	 * fail here.  We must set timeRetried to mark that we've processed the
+	 * retry, or else we'll keep picking up the unretried record.  This only
+	 * applies to map tasks.
+	 */
+	if (dispatch.d_origin['bucket'] == this.w_buckets['task'])
+		origin_value['timeRetried'] = dispatch.d_time;
 
 	this.w_dtrace.fire('error-dispatched',
 	    function () { return ([ job.j_id, value ]); });
