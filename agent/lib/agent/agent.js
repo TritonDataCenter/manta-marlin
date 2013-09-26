@@ -385,6 +385,8 @@ function mAgent(filename)
 	this.ma_conf = mod_mautil.readConf(this.ma_log, maConfSchema, filename);
 	this.ma_log.info('configuration', this.ma_conf);
 
+	this.ma_hostname = mod_os.hostname();
+	this.ma_dcname = '';
 	this.ma_server_uuid = this.ma_conf['instanceUuid'];
 	this.ma_manta_compute_id = this.ma_conf['mantaComputeId'];
 	this.ma_buckets = this.ma_conf['buckets'];
@@ -545,6 +547,26 @@ mAgent.prototype.init = function ()
 			    'failed to set up logadm: "%s"', stderr);
 		} else {
 			agent.ma_log.info('updated logadm.conf');
+		}
+	});
+
+	this.ma_spawner.aspawn([ 'sysinfo' ], function (err, stdout, stderr) {
+		var config;
+
+		if (!err) {
+			try {
+				config = JSON.parse(stdout);
+			} catch (ex) {
+				err = new VError(ex, 'failed to parse JSON');
+			}
+		}
+
+		if (err) {
+			agent.ma_log.error(err,
+			    'failed to get datacenter name');
+		} else {
+			agent.ma_dcname = config['Datacenter Name'] || '';
+			agent.ma_log.info('datacenter name: ', agent.ma_dcname);
 		}
 	});
 
@@ -4426,6 +4448,8 @@ function maKangGetObject(type, id)
 
 	if (type == 'agent') {
 		return ({
+		    'hostname': agent.ma_hostname,
+		    'datacenter': agent.ma_dcname,
 		    'tickStart': agent.ma_tick_start,
 		    'tickDone': agent.ma_tick_done,
 		    'nTasks': agent.ma_ntasks,
