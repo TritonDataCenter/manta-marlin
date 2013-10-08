@@ -3930,10 +3930,6 @@ function maTaskApiManta(request, response, next)
 		    }
 		};
 
-		if (iostream === 'stdout' && group.g_intermediate)
-			proxyargs['server']['headers'][
-			    'x-durability-level'] = 1;
-
 		agent.ma_counters['mantarq_proxy_sent']++;
 
 		mod_mautil.maHttpProxy(proxyargs, function (err, res) {
