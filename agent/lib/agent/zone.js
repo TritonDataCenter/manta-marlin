@@ -261,8 +261,13 @@ function maZoneExec(zone, argv, callback)
 		zone.z_pending_command = undefined;
 
 		if (err) {
-			err = new VError(err, 'command "%s" ' +
-			    'failed with stderr: %s', argv.join(' '), stderr);
+			if (stderr !== undefined)
+				err = new VError(err, 'command "%s" ' +
+				    'failed with stderr: %s', argv.join(' '),
+				    stderr);
+			else
+				err = new VError(err, 'command "%s" failed',
+				    argv.join(' '));
 			callback(err);
 		} else {
 			callback(null, stdout);
