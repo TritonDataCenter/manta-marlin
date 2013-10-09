@@ -144,6 +144,7 @@ var mazServerRequests;		/* pending server requests, by request id */
  */
 var mazPipeline;		/* current task pipeline */
 var mazCurrentTask;		/* current task */
+var mazErrorOpen;		/* error opening input file */
 var mazErrorFetch;		/* error fetching task input */
 var mazErrorSave;		/* error during task processing */
 var mazExecutor;		/* task executor */
@@ -377,6 +378,7 @@ function mazTaskFetch()
 		mod_assert.ok(mazCurrentTask === undefined);
 		mod_assert.ok(mazExecutor === undefined);
 		mod_assert.ok(mazExecutorResult === undefined);
+		mod_assert.ok(mazErrorOpen === undefined);
 		mod_assert.ok(mazErrorFetch === undefined);
 		mod_assert.ok(mazErrorSave === undefined);
 
@@ -731,6 +733,7 @@ function mazTaskReport(err)
 		mazCurrentTask = undefined;
 		mazExecutor = undefined;
 		mazExecutorResult = undefined;
+		mazErrorOpen = undefined;
 		mazErrorFetch = undefined;
 		mazErrorSave = undefined;
 		mazTaskFetch();
@@ -743,6 +746,7 @@ function mazTaskReport(err)
  * report the first one of the following that we saw:
  *
  *     o internal failure to process the execution pipeline itself
+ *     o internal failure to open the input file
  *     o internal failure to fork/exec the user process
  *     o internal failure to fetch reduce task input
  *     o user process dumped core
@@ -752,7 +756,7 @@ function mazTaskReport(err)
  */
 function mazDecodeError(pipelineError)
 {
-	var err = pipelineError || mazExecutorResult['error'];
+	var err = pipelineError || mazErrorOpen || mazExecutorResult['error'];
 	var code = mazInitHasRun ? EM_USERTASK : EM_TASKINIT;
 
 	if (err) {
@@ -1028,20 +1032,23 @@ MarlinExecutor.prototype.start = function ()
 	else if (this.mex_isinit || !this.mex_args['taskInputRemote'])
 		filename = '/dev/null';
 
+	log = this.mex_log;
+
 	if (filename !== undefined) {
 		barrier.start('open stdin');
 		mod_fs.open(filename, 'r', function (err, fd) {
 			if (err) {
-				executor.fatal(err, 'failed to open input');
-				throw (err);
+				mazErrorOpen = new VError(
+				    err, 'failed to open input');
+				mazLog.error(mazErrorOpen);
+			} else {
+				executor.mex_infd = fd;
 			}
 
-			executor.mex_infd = fd;
 			barrier.done('open stdin');
 		});
 	} else if (!this.mex_isinit) {
 		mod_assert.ok(this.mex_args['taskInputRemote'] !== undefined);
-		log = this.mex_log;
 
 		/*
 		 * Set up an HttpCatStream using the given remote URL.
@@ -1123,9 +1130,9 @@ MarlinExecutor.prototype.start = function ()
 	}
 
 	barrier.on('drain', function () {
-		if (mazErrorFetch) {
-			log.warn('skipping execution because input stream ' +
-			    'has already failed');
+		if (mazErrorFetch || mazErrorOpen) {
+			mazLog.warn(
+			    'skipping execution because of previous error');
 			mod_assert.ok(executor.mex_infd === undefined);
 			errstream.destroy();
 			outstream.destroy();
