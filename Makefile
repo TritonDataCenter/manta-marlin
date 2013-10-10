@@ -134,7 +134,7 @@ include ./dev/tools/mk/Makefile.defs
 include ./dev/tools/mk/Makefile.smf.defs
 
 ifneq ($(USE_LOCAL_NODE),true)
-    NODE_PREBUILT_VERSION = v0.8.25
+    NODE_PREBUILT_VERSION = v0.10.18
     NODE_PREBUILT_TAG = zone
 
     include ./dev/tools/mk/Makefile.node_prebuilt.defs
