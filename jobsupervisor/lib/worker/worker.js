@@ -830,8 +830,17 @@ Worker.prototype.domainTakeover = function (domainid, barrier, barrierid)
 	value['operatedBy'] = this.w_uuid;
 	options = { 'etag': record['_etag'] };
 	barrier.start(barrierid);
-	this.w_bus.putBatch([ [ bucket, key, value, options ] ], {},
-	    function (err) {
+	this.w_bus.putBatch([ [ bucket, key, value, options ] ], {
+		'retryConflict': function () {
+			/*
+			 * It's possible for this to race with a failback
+			 * request, from ourselves or someone else.  Ignore the
+			 * conflict -- we already handle the error case.
+			 */
+			return (new VError(
+			    'conflict attempting to takeover'));
+		}
+	    }, function (err) {
 		barrier.done(barrierid);
 
 		if (err) {
@@ -896,8 +905,17 @@ Worker.prototype.domainRequestFailback = function (domainid, barrier)
 	options = { 'etag': record['_etag'] };
 
 	barrier.start(domainid);
-	this.w_bus.putBatch([ [ bucket, key, value, options ] ], {},
-	    function (err) {
+	this.w_bus.putBatch([ [ bucket, key, value, options ] ], {
+		'retryConflict': function () {
+			/*
+			 * It's possible for this to race with a takeover, from
+			 * ourselves or someone else.  Ignore the conflict -- we
+			 * already handle the error case.
+			 */
+			return (new VError(
+			    'conflict attempting to request failback'));
+		}
+	    }, function (err) {
 		barrier.done(domainid);
 
 		if (err) {
