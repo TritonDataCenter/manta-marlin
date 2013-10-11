@@ -787,7 +787,7 @@ Worker.prototype.domainStop = function (domainid)
 		 * There's a domainStart operation still pending that will
 		 * invoke us again when it completes.
 		 */
-		this.w_ourdomains = 'removed';
+		this.w_ourdomains[domainid] = 'removed';
 		return;
 	}
 
@@ -903,7 +903,6 @@ Worker.prototype.domainRequestFailback = function (domainid, barrier)
 		if (err) {
 			worker.w_log.error(err,
 			    'domain "%s": failback requests failed', domainid);
-			worker.domainStart(domainid);
 		} else {
 			worker.w_log.info('domain "%s": failback request ok',
 			    domainid);
