@@ -134,7 +134,7 @@ include ./dev/tools/mk/Makefile.defs
 include ./dev/tools/mk/Makefile.smf.defs
 
 ifneq ($(USE_LOCAL_NODE),true)
-    NODE_PREBUILT_VERSION = v0.8.25
+    NODE_PREBUILT_VERSION = v0.8.26
     NODE_PREBUILT_TAG = zone
 
     include ./dev/tools/mk/Makefile.node_prebuilt.defs
@@ -181,6 +181,13 @@ include ./dev/tools/mk/Makefile.targ
 ifneq ($(USE_LOCAL_NODE),true)
     include ./dev/tools/mk/Makefile.node_prebuilt.targ
 endif
+
+#
+# This rule installs the common manta scripts into the build/scripts directory.
+#
+scripts: deps/manta-scripts/.git
+	mkdir -p $(BUILD)/scripts
+	cp deps/manta-scripts/*.sh $(BUILD)/scripts
 
 #
 # proto area construction
