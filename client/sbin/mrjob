@@ -50,7 +50,7 @@ var msUsage = [
     '       mrjob list     [-H] [-o field1[,field2...]] [-c] [-s state]',
     '                      [-t sec] [-u user] [-w worker]',
     '       mrjob submit   [-a asset] [-c count] [-d size] [-i image]',
-    '                      [-n name] [-s disk] [-t authToken] ',
+    '                      [-n name] [-s disk] [-t authToken] [--transient]',
     '                      [-x option=value ...] [-z init] ',
     '                      [-m exec] [-r exec] ...',
     '       mrjob addkeys  jobid [key ...]',
@@ -76,7 +76,7 @@ var msHelp = [
     'SUBCOMMANDS',
     '',
     '   submit [-a asset] [-c count] [-d size] [-i image] [-n name] [-t token]',
-    '          [-x option=value] [-m exec] [-r exec] ...',
+    '          [--transient] [-x option=value] [-m exec] [-r exec] ...',
     '',
     '      Submit a new job without ending input.  These options are available',
     '',
@@ -88,6 +88,7 @@ var msHelp = [
     '          -n name         Use "name" for the job\'s name',
     '          -s disk         Disk space allocated for tasks (gigabytes)',
     '          -t token        Auth token',
+    '          --transient     Job should be marked "transient"',
     '          -x option=value Specifies a supported option, one of:',
     '',
     '                 keepIntermediate=true     do not remove intermediate',
@@ -137,7 +138,7 @@ var msHelp = [
     '       Lists errors that occurred while processing the given job.',
     '',
     '   list [-H] [-o field1[,field2...]] [-c] [-s state] [-t sec] [-u user]',
-    '        [-w worker]',
+    '        [-T] [-w worker]',
     '',
     '       Lists all jobs.  The default output mode is a human-readable, ',
     '       unstable output format.  With -H, the output is a simple table ',
@@ -151,6 +152,7 @@ var msHelp = [
     '           -t sec          only jobs completed in last "sec" seconds',
     '           -u user         only jobs owned by "user"',
     '           -w worker       only jobs currently run by worker "worker"',
+    '           -T              only non-transient jobs',
     '',
     '   get [-v] jobid',
     '',
@@ -200,6 +202,7 @@ var msPhases = [];
 var msOptions = {};			/* special named options */
 var msAssets = [];			/* assets (for next phase) */
 var msCount = 1;			/* reducer count (for next phase) */
+var msTransient = false;		/* job should be transient */
 var msDram;				/* DRAM cap (for next phase) */
 var msDisk;				/* disk cap (for next phase) */
 var msImage;				/* zone image dep (for next phase) */
@@ -449,7 +452,8 @@ function cmdSubmit()
 {
 	var parser, option;
 
-	parser = new mod_getopt.BasicParser('a:c:d:i:m:n:r:s:t:x:z:',
+	parser = new mod_getopt.BasicParser(
+	    'a:c:d:i:m:n:r:s:T(transient)t:x:z:',
 	    process.argv.slice(1));
 
 	while ((option = parser.getopt()) !== undefined) {
@@ -488,6 +492,10 @@ function cmdSubmit()
 				console.error('%s: invalid size', msArg0);
 				usage();
 			}
+			break;
+
+		case 'T':
+			msTransient = true;
 			break;
 
 		case 't':
@@ -576,6 +584,7 @@ function cmdSubmit()
 	var job = {
 	    'jobId': msJobId,
 	    'name': msJobName,
+	    'transient': msTransient,
 	    'phases': msPhases,
 	    'options': msOptions,
 	    'owner': process.env['MANTA_USER_UUID'],
@@ -837,7 +846,7 @@ function cmdList()
 	var argv, parser, option, options;
 
 	argv = process.argv.slice(1);
-	parser = new mod_getopt.BasicParser('Ho:cs:t:u:w:', argv);
+	parser = new mod_getopt.BasicParser('Ho:cs:Tt:u:w:', argv);
 	options = {};
 
 	while ((option = parser.getopt()) !== undefined) {
@@ -848,6 +857,10 @@ function cmdList()
 
 		case 's':
 			options['state'] = option.optarg;
+			break;
+
+		case 'T':
+			options['transient'] = false;
 			break;
 
 		case 't':

@@ -277,9 +277,6 @@ MarlinApi.prototype.close = function ()
  *   owner	owning user
  *		(required)
  *
- *   input	source job for job's input stream
- *		[none]
- *
  *   authToken	authn token
  *		(required)
  *
@@ -293,6 +290,9 @@ MarlinApi.prototype.close = function ()
  *	groups		effective user's groups
  *
  *	token		authn token
+ *
+ *   transient  indicates that the job is "transient", meaning its inputs will
+ *   		be removed automatically and it may not be listed by default
  *
  *   options	additional options (only for privileged users)
  *
@@ -334,11 +334,9 @@ function jobCreate(api, conf, options, callback)
 	    'phases': mod_jsprim.deepCopy(conf['phases']),
 	    'state': 'queued',
 	    'timeCreated': mod_jsprim.iso8601(Date.now()),
+	    'transient': conf['transient'] || false,
 	    'options': conf['options'] || {}
 	};
-
-	if (conf['input'])
-		value['input'] = conf['input'];
 
 	log.debug('job "%s": creating with value', key, conf);
 	api.ma_client.putObject(bucket, key, value, function (err) {
@@ -1020,6 +1018,10 @@ function jobArchiveHeartbeat(api, jobid, options, callback)
  *
  *    name		List only jobs with a specified name.
  *
+ *    transient		If true, list only transient jobs.  If false, list only
+ *    			non-transient jobs.  (Leave unspecified or "null" for
+ *    			all jobs.)
+ *
  *    cancelled		If true, list only jobs that are cancelled.
  *
  *    owner		List only jobs with specified owner.
@@ -1073,6 +1075,9 @@ function jobsList(api, options)
 	if (options['name'] &&
 	    /^[\d\w-]+$/.test(options['name']))
 		filters.push('(name=' + options['name'] + ')');
+
+	if (typeof (options['transient']) == 'boolean')
+		filters.push('(transient=' + options['transient'] + ')');
 
 	if (options['owner'] && /^[\d\w-]+$/.test(options['owner']))
 		filters.push('(owner=' + options['owner'] + ')');
