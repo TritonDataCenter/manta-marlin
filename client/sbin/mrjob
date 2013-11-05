@@ -445,7 +445,8 @@ function clientInit(callback)
 
 function clientFini()
 {
-	msApi.close();
+	/* Work around MANTA-1875 */
+	process.nextTick(function () { msApi.close(); });
 }
 
 function cmdSubmit()
