@@ -2058,7 +2058,7 @@ function jobTestVerifyFetchObjectsFound(verify, callback)
 	var cmd = mod_path.join(__dirname,
 	    '../../node_modules/manta/bin/mfind');
 
-	mod_child.execFile(cmd, ['-i', '-t', 'o',
+	mod_child.execFile(process.execPath, [ cmd, '-i', '-t', 'o',
 	    replaceParams('/%user%/jobs/' + verify['jobid'] + '/stor') ],
 	    function (err, stdout, stderr) {
 		if (err) {

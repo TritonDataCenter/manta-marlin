@@ -267,6 +267,46 @@ $(PROTO_BOOT_ROOT)/configure.sh:
 	mkdir -p $(@D) && ln -fs /opt/smartdc/marlin/boot/configure.sh $@
 
 #
+# We deliver two sets of tools for use by users inside Marlin zones: the
+# node-manta tools, and the manta-compute-bin tools.  However, these are
+# mostly Node programs, some of which contain binary modules, which means we
+# must run them using the same Node that we build them with -- which is our
+# Node.  They generally use the first "node" they find in the environment, but
+# we want /opt/local/bin/node first on the path, since a *user* invoking Node
+# should always get a stock pkgsrc version, not whatever Marlin happened to be
+# built with.  In order to support having these tools on the PATH and having
+# them use our Node rather than the one on the user's PATH, we create a bunch of
+# shims that invoke the proper Node.
+#
+# Making things worse, we don't even know which tools we need to do this for
+# until after we've installed node_modules into the proto area.  For simplicity,
+# we just define them here, but if this becomes a maintenance burden, we could
+# define a target that re-invokes "make" again after node_modules has been
+# installed.
+#
+USER_TOOLS_MANTA = mfind mget mjob mln mlogin mls mmd5 mmkdir mput mrm mrmdir \
+    msign muntar 
+USER_TOOLS_MCB = maggr mcat mpipe msplit mtee
+PROTO_USER_TOOLS_ROOT = $(PROTO_MARLIN_ROOT)/ubin
+
+PROTO_USER_TOOLS_MANTA = $(USER_TOOLS_MANTA:%=$(PROTO_USER_TOOLS_ROOT)/%)
+PROTO_USER_TOOLS_MCB = $(USER_TOOLS_MCB:%=$(PROTO_USER_TOOLS_ROOT)/%)
+PROTO_MARLIN_AGENT += $(PROTO_USER_TOOLS_MANTA) $(PROTO_USER_TOOLS_MCB)
+
+$(PROTO_USER_TOOLS_MANTA): $(PROTO_USER_TOOLS_ROOT)/%: dev/stub_template
+	mkdir -p $(@D) && \
+	    sed -e 's#@@ARG0@@#$*#g' \
+	        -e 's#@@CMDBASE@@#manta/bin#g' \
+	        dev/stub_template > $@ && chmod 755 $@
+
+$(PROTO_USER_TOOLS_MCB): $(PROTO_USER_TOOLS_ROOT)/%: dev/stub_template
+	mkdir -p $(@D) && \
+	    sed -e 's#@@ARG0@@#$*#g' \
+	        -e 's#@@CMDBASE@@#manta-compute-bin/bin#g' \
+	        dev/stub_template > $@ && chmod 755 $@
+
+
+#
 # Some tools were historically delivered in "tools", but really belong on
 # "sbin".  We moved these to "sbin", but we add symlinks into "tools".
 #
@@ -291,7 +331,7 @@ proto_deps: $(PROTO_FILES)
 	cd $(PROTO_MARLIN_ROOT) && $(NPM_ENV) $(NPM) --no-rebuild install
 
 #
-# Mountagain Gorilla targets
+# Mountain Gorilla targets
 #
 MG_NAME 		 = marlin
 MG_PROTO		 = $(PROTO_ROOT)

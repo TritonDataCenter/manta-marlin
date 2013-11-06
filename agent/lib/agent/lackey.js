@@ -209,8 +209,7 @@ function main()
 	    '/opt/local/bin',
 	    '/opt/local/sbin',
 	    process.env['PATH'],
-	    mod_path.join(base, 'node_modules/manta/bin'),
-	    mod_path.join(base, 'node_modules/manta-compute-bin/bin')
+	    mod_path.join(base, 'ubin')
 	].join(':');
 
 	/*
