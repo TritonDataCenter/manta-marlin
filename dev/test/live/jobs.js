@@ -1208,6 +1208,32 @@ exports.jobMerrorBadImage = {
     } ]
 };
 
+/*
+ * We set fs_allowed=- to disallow users from mounting HSFS, NFS, and other
+ * filesystems because we believe it may be possible to do bad things to the
+ * system if one is allowed to mount these filesystems.  (At least, we haven't
+ * proved to ourselves that it's safe.)
+ */
+exports.jobMerrorHsfs = {
+    'job': {
+	'phases': [ {
+	    'type': 'map',
+	    'exec': 'mkisofs -o /my.iso /manta && ' +
+		'mkdir -p /mnt2 && ' +
+		'mount -F hsfs /my.iso /mnt2 2>&1; echo $?; find /mnt2'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 20 * 1000,
+    'errors': [],
+    'expected_outputs': [ 
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
+    ],
+    'expected_output_content': [
+        'mount: insufficient privileges\n33\n/mnt2\n'
+    ]
+};
+
 exports.jobR0inputs = {
     'job': {
 	'phases': [ {
@@ -1655,6 +1681,7 @@ exports.jobsMain = [
     exports.jobMerrorMuskieRetryMpipe,
     exports.jobMerrorMpipeMkdirp,
     exports.jobMerrorBadImage,
+    exports.jobMerrorHsfs,
     exports.jobMenv,
     exports.jobRenv,
     exports.jobMmeterCheckpoints,
