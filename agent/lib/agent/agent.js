@@ -570,6 +570,21 @@ mAgent.prototype.init = function ()
 		}
 	});
 
+	this.ma_spawner.aspawn([ 'priocntl', '-s', '-c', 'RT',
+	    process.pid.toString() ], function (err, stdout, stderr) {
+		if (err) {
+			agent.ma_log.error(err,
+			    'failed to place self into RT scheduling class; ' +
+			    'agent may be subject to CPU starvation',
+			    { 'pid': process.pid, 'stdout': stdout,
+			    'stderr': stderr });
+		} else {
+			agent.ma_log.info(
+			    'placed self into RT scheduling class',
+			    { 'pid': process.pid });
+		}
+	});
+
 	this.ma_dtrace.enable();
 	this.ma_dtrace.fire('agent-started', function () {
 		return ([ agent.ma_conf['mantaComputeId'] ]);
