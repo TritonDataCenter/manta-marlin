@@ -657,7 +657,7 @@ mAgent.prototype.initHttp = function ()
 	var server = this.ma_server;
 
 	server.use(function (request, response, next) {
-		agent.ma_requests[request.id] = request;
+		agent.ma_requests[request.id()] = request;
 		next();
 	});
 
@@ -672,7 +672,7 @@ mAgent.prototype.initHttp = function ()
 	}));
 
 	server.on('after', function (request, response) {
-		delete (agent.ma_requests[request.id]);
+		delete (agent.ma_requests[request.id()]);
 	});
 
 	server.on('error', function (err) {
@@ -3991,9 +3991,12 @@ function maJob(jobid)
 
 maJob.prototype.kangState = function ()
 {
+	var record = mod_jsprim.deepCopy(this.j_record);
+	delete (record['value']['auth']['token']);
+	delete (record['value']['authToken']);
 	return ({
 	    'jobid': this.j_id,
-	    'record': this.j_record,
+	    'record': record,
 	    'groups': Object.keys(this.j_groups)
 	});
 };
@@ -4082,7 +4085,6 @@ maTaskGroup.prototype.kangState = function (agent)
 	    'jobid': this.g_jobid,
 	    'phasei': this.g_phasei,
 	    'phase': this.g_phase,
-	    'token': this.g_token,
 	    'login': this.g_login,
 	    'intermediate': this.g_intermediate,
 	    'mapKeys': this.g_map_keys,
@@ -4480,7 +4482,7 @@ function maKangGetObject(type, id)
 		var request = agent.ma_requests[id];
 
 		return ({
-		    'id': request.id,
+		    'id': request.id(),
 		    'method': request.method,
 		    'url': request.url,
 		    'time': request.time

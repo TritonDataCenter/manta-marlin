@@ -259,8 +259,11 @@ function JobState(args)
 
 JobState.prototype.debugState = function ()
 {
+	var record = mod_jsprim.deepCopy(this.j_job);
+	delete (record['auth']['token']);
+	delete (record['authToken']);
 	return ({
-	    'record': this.j_job,
+	    'record': record,
 	    'state': this.j_state,
 	    'state_time': this.j_state_time,
 	    'dropped': this.j_dropped,
