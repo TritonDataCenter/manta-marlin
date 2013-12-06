@@ -3992,8 +3992,12 @@ function maJob(jobid)
 maJob.prototype.kangState = function ()
 {
 	var record = mod_jsprim.deepCopy(this.j_record);
-	delete (record['value']['auth']['token']);
-	delete (record['value']['authToken']);
+
+	if (record) {
+		delete (record['value']['auth']['token']);
+		delete (record['value']['authToken']);
+	}
+
 	return ({
 	    'jobid': this.j_id,
 	    'record': record,
