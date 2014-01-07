@@ -67,7 +67,7 @@
 		"timeAgentTimeout": 60000,
 		"timeHeartbeat": 5000,
 		"timeJobIdleClose": 3600000,
-		"timeJobSave": 10000,
+		"timeJobSave": 1000,
 		"timeMarkInputs": 5000,
 		"timePoll": 200,
 		"timeTick": 20,
