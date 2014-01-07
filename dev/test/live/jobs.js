@@ -719,6 +719,29 @@ exports.jobMerrorEnc = {
 };
 
 /*
+ * This job also tests that assets with names that require encoding also work.
+ */
+exports.jobRassetEncoding = {
+    'job': {
+	'assets': {
+	    '/%user%/stor/hello 1': '1234'
+	},
+        'phases': [ {
+	    'type': 'reduce',
+	    'assets': [ '/%user%/stor/hello 1' ],
+	    'exec': 'find /assets -type f'
+	} ],
+    },
+    'inputs': [],
+    'timeout': 30 * 1000,
+    'errors': [],
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/reduce.0./ ],
+    'expected_output_content': [ '/assets/%user%/stor/hello 1\n' ]
+};
+
+
+
+/*
  * This test relies on the fact that the systems where we run the test suite
  * don't support even a single task with this much memory.
  */
@@ -1663,6 +1686,7 @@ exports.jobsMain = [
     exports.jobMmjob,
     exports.jobMRnormalize,
     exports.jobMMRenc,
+    exports.jobRassetEncoding,
     exports.jobMkill,
     exports.jobMerrorEnc,
     exports.jobMerrorMemoryTooBig,

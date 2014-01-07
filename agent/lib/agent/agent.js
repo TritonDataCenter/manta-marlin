@@ -2594,6 +2594,7 @@ function maTaskStreamLoadAsset(agent, stream, asset, callback)
 	var group = stream.s_group;
 	var zone = agent.ma_zones[stream.s_machine];
 	var dstpath = mod_path.join(zone.z_root, 'assets', asset);
+	var uripath = asset.split('/').map(encodeURIComponent).join('/');
 
 	mod_mkdirp(mod_path.dirname(dstpath), function (err) {
 		if (err) {
@@ -2611,7 +2612,7 @@ function maTaskStreamLoadAsset(agent, stream, asset, callback)
 			    'host': agent.ma_dns_cache.lookupv4(
 				agent.ma_manta_host),
 			    'port': agent.ma_manta_port,
-			    'path': asset,
+			    'path': uripath,
 			    'headers': {
 				'authorization': sprintf('Token %s',
 				    group.g_token)
