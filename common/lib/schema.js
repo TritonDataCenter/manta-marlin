@@ -7,6 +7,10 @@
  */
 
 var sBoolean = {
+	'type': 'boolean'
+};
+
+var sBooleanString = {
 	'type': 'string',
 	'enum': [ 'true', 'false' ]
 };
@@ -166,6 +170,7 @@ var sHttpJobInput = {
 	'additionalProperties': false,
 	'properties': {
 		'name': sStringRequired,
+		'transient': sBoolean,
 		'phases': sJobPhases
 	}
 };
@@ -175,6 +180,7 @@ var sHttpJobInputPrivileged = {
 	'additionalProperties': false,
 	'properties': {
 		'name': sStringRequired,
+		'transient': sBoolean,
 		'phases': sJobPhases,
 		'options': {
 			'type': 'object'
@@ -235,7 +241,7 @@ var sMorayError = {
 		'prevRecordId': sString,		/* (for debugging) */
 
 		/* describes whether the error was retried */
-		'retried': sBoolean,
+		'retried': sBooleanString,
 		'timeCommitted': sDateTime
 	}
 };
@@ -275,6 +281,16 @@ var sMorayJob = {
 				'token': sStringRequiredNonEmpty
 			}
 		},
+
+		/*
+		 * "transient" was added with MANTA-1870.  It should be present
+		 * on all new jobs, but it was not made a required field in to
+		 * avoid a flag day with muskie, particularly given that the
+		 * default value is "false".  Once this flag day has been
+		 * crossed in most practical environments, we can make this
+		 * field required.
+		 */
+		'transient': sBoolean,
 
 		/* internal Marlin state */
 		'worker': sString, /* domain (so named for compatibility) */
@@ -588,7 +604,7 @@ var sMorayTaskOutput = {
 		'taskId': sStringRequiredNonEmpty,
 		'domain': sStringRequiredNonEmpty,
 		'phaseNum': sNonNegativeIntegerRequired,
-		'intermediate': sBoolean,
+		'intermediate': sBooleanString,
 		'output': sStringRequiredNonEmpty,	/* output object name */
 		'rIdx': sReducerIndex,			/* assigned reducer */
 
@@ -598,7 +614,7 @@ var sMorayTaskOutput = {
 		 * This corresponds with whether the task that generated this
 		 * output completed successfully.
 		 */
-		'valid': sBoolean,
+		'valid': sBooleanString,
 
 		'timeJobCancelled': sDateTime,		/* time job cancelled */
 		'timeCreated': sDateTimeRequired,	/* time created */
@@ -700,11 +716,12 @@ sBktConfigs['health'] = {
  */
 sBktConfigs['job'] = {
     'options': {
-	'version': 2
+	'version': 3
     },
     'index': {
 	'jobId':		{ 'type': 'string', 'unique': true },
 	'name':			{ 'type': 'string' },
+	'transient':		{ 'type': 'boolean'},
 	'owner':		{ 'type': 'string' },
 	'state':		{ 'type': 'string' },
 	'worker':		{ 'type': 'string' },

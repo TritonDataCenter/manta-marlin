@@ -719,6 +719,29 @@ exports.jobMerrorEnc = {
 };
 
 /*
+ * This job also tests that assets with names that require encoding also work.
+ */
+exports.jobRassetEncoding = {
+    'job': {
+	'assets': {
+	    '/%user%/stor/hello 1': '1234'
+	},
+        'phases': [ {
+	    'type': 'reduce',
+	    'assets': [ '/%user%/stor/hello 1' ],
+	    'exec': 'find /assets -type f'
+	} ],
+    },
+    'inputs': [],
+    'timeout': 30 * 1000,
+    'errors': [],
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/reduce.0./ ],
+    'expected_output_content': [ '/assets/%user%/stor/hello 1\n' ]
+};
+
+
+
+/*
  * This test relies on the fact that the systems where we run the test suite
  * don't support even a single task with this much memory.
  */
@@ -1208,6 +1231,32 @@ exports.jobMerrorBadImage = {
     } ]
 };
 
+/*
+ * We set fs_allowed=- to disallow users from mounting HSFS, NFS, and other
+ * filesystems because we believe it may be possible to do bad things to the
+ * system if one is allowed to mount these filesystems.  (At least, we haven't
+ * proved to ourselves that it's safe.)
+ */
+exports.jobMerrorHsfs = {
+    'job': {
+	'phases': [ {
+	    'type': 'map',
+	    'exec': 'mkisofs -o /my.iso /manta && ' +
+		'mkdir -p /mnt2 && ' +
+		'mount -F hsfs /my.iso /mnt2 2>&1; echo $?; find /mnt2'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 20 * 1000,
+    'errors': [],
+    'expected_outputs': [ 
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
+    ],
+    'expected_output_content': [
+        'mount: insufficient privileges\n33\n/mnt2\n'
+    ]
+};
+
 exports.jobR0inputs = {
     'job': {
 	'phases': [ {
@@ -1637,6 +1686,7 @@ exports.jobsMain = [
     exports.jobMmjob,
     exports.jobMRnormalize,
     exports.jobMMRenc,
+    exports.jobRassetEncoding,
     exports.jobMkill,
     exports.jobMerrorEnc,
     exports.jobMerrorMemoryTooBig,
@@ -1655,6 +1705,7 @@ exports.jobsMain = [
     exports.jobMerrorMuskieRetryMpipe,
     exports.jobMerrorMpipeMkdirp,
     exports.jobMerrorBadImage,
+    exports.jobMerrorHsfs,
     exports.jobMenv,
     exports.jobRenv,
     exports.jobMmeterCheckpoints,
@@ -2058,7 +2109,7 @@ function jobTestVerifyFetchObjectsFound(verify, callback)
 	var cmd = mod_path.join(__dirname,
 	    '../../node_modules/manta/bin/mfind');
 
-	mod_child.execFile(cmd, ['-i', '-t', 'o',
+	mod_child.execFile(process.execPath, [ cmd, '-i', '-t', 'o',
 	    replaceParams('/%user%/jobs/' + verify['jobid'] + '/stor') ],
 	    function (err, stdout, stderr) {
 		if (err) {

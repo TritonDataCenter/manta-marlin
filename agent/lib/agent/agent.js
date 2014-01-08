@@ -570,6 +570,21 @@ mAgent.prototype.init = function ()
 		}
 	});
 
+	this.ma_spawner.aspawn([ 'priocntl', '-s', '-c', 'RT',
+	    process.pid.toString() ], function (err, stdout, stderr) {
+		if (err) {
+			agent.ma_log.error(err,
+			    'failed to place self into RT scheduling class; ' +
+			    'agent may be subject to CPU starvation',
+			    { 'pid': process.pid, 'stdout': stdout,
+			    'stderr': stderr });
+		} else {
+			agent.ma_log.info(
+			    'placed self into RT scheduling class',
+			    { 'pid': process.pid });
+		}
+	});
+
 	this.ma_dtrace.enable();
 	this.ma_dtrace.fire('agent-started', function () {
 		return ([ agent.ma_conf['mantaComputeId'] ]);
@@ -642,7 +657,7 @@ mAgent.prototype.initHttp = function ()
 	var server = this.ma_server;
 
 	server.use(function (request, response, next) {
-		agent.ma_requests[request.id] = request;
+		agent.ma_requests[request.id()] = request;
 		next();
 	});
 
@@ -657,7 +672,7 @@ mAgent.prototype.initHttp = function ()
 	}));
 
 	server.on('after', function (request, response) {
-		delete (agent.ma_requests[request.id]);
+		delete (agent.ma_requests[request.id()]);
 	});
 
 	server.on('error', function (err) {
@@ -2579,6 +2594,7 @@ function maTaskStreamLoadAsset(agent, stream, asset, callback)
 	var group = stream.s_group;
 	var zone = agent.ma_zones[stream.s_machine];
 	var dstpath = mod_path.join(zone.z_root, 'assets', asset);
+	var uripath = asset.split('/').map(encodeURIComponent).join('/');
 
 	mod_mkdirp(mod_path.dirname(dstpath), function (err) {
 		if (err) {
@@ -2596,7 +2612,7 @@ function maTaskStreamLoadAsset(agent, stream, asset, callback)
 			    'host': agent.ma_dns_cache.lookupv4(
 				agent.ma_manta_host),
 			    'port': agent.ma_manta_port,
-			    'path': asset,
+			    'path': uripath,
 			    'headers': {
 				'authorization': sprintf('Token %s',
 				    group.g_token)
@@ -3976,9 +3992,16 @@ function maJob(jobid)
 
 maJob.prototype.kangState = function ()
 {
+	var record = mod_jsprim.deepCopy(this.j_record);
+
+	if (record) {
+		delete (record['value']['auth']['token']);
+		delete (record['value']['authToken']);
+	}
+
 	return ({
 	    'jobid': this.j_id,
-	    'record': this.j_record,
+	    'record': record,
 	    'groups': Object.keys(this.j_groups)
 	});
 };
@@ -4067,7 +4090,6 @@ maTaskGroup.prototype.kangState = function (agent)
 	    'jobid': this.g_jobid,
 	    'phasei': this.g_phasei,
 	    'phase': this.g_phase,
-	    'token': this.g_token,
 	    'login': this.g_login,
 	    'intermediate': this.g_intermediate,
 	    'mapKeys': this.g_map_keys,
@@ -4465,7 +4487,7 @@ function maKangGetObject(type, id)
 		var request = agent.ma_requests[id];
 
 		return ({
-		    'id': request.id,
+		    'id': request.id(),
 		    'method': request.method,
 		    'url': request.url,
 		    'time': request.time

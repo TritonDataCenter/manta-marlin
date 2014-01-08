@@ -209,8 +209,7 @@ function main()
 	    '/opt/local/bin',
 	    '/opt/local/sbin',
 	    process.env['PATH'],
-	    mod_path.join(base, 'node_modules/manta/bin'),
-	    mod_path.join(base, 'node_modules/manta-compute-bin/bin')
+	    mod_path.join(base, 'ubin')
 	].join(':');
 
 	/*
@@ -895,7 +894,7 @@ function mazParentRequest(opname, expected_code, makerequest, callback,
  */
 function mazApiProxy(request, response, next)
 {
-	var uuid = request.id;
+	var uuid = request.id();
 
 	if (request.method.toLowerCase() == 'put' &&
 	    !mod_jsprim.startsWith(request.url, '/my/jobs/task/') &&
