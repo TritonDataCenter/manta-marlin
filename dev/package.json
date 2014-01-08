@@ -20,7 +20,7 @@
 		"fuzzstream": "0.0.1",
 		"httpstream": "0.0.4",
 		"hyprlofs": "0.0.3",
-		"illumos_contract": "0.1.0",
+		"illumos_contract": "1.0.1",
 		"jsprim": "0.5.0",
 		"kang": "0.0.5",
 		"kstat": "0.4.0",
