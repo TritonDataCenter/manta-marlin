@@ -14,7 +14,7 @@
 	<service_fmri value="svc:/system/filesystem/local" />
 </dependency>
 
-<exec_method type="method" name="start" exec="/opt/marlin/build/node/bin/node /opt/marlin/lib/agent/lackey.js /var/run/.marlin.$(zonename).sock &amp;" timeout_seconds="30" />
+<exec_method type="method" name="start" exec="/opt/marlin/build/node/bin/node --abort-on-uncaught-exception /opt/marlin/lib/agent/lackey.js /var/run/.marlin.$(zonename).sock &amp;" timeout_seconds="30" />
 <exec_method type="method" name="stop" exec=":kill" timeout_seconds="30" />
 
 <instance name="default" enabled="true" />
