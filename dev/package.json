@@ -23,7 +23,7 @@
 		"illumos_contract": "1.0.1",
 		"jsprim": "0.5.0",
 		"kang": "0.0.5",
-		"kstat": "0.4.0",
+		"kstat": "0.5.0",
 		"libmanta": "git+ssh://git@git.joyent.com:node-libmanta.git#master",
 		"lstream": "0.0.3",
 		"manta": "git+ssh://git@github.com:joyent/node-manta.git#master",
