@@ -991,7 +991,7 @@ exports.jobMerrorLackeyCrash = {
     'job': {
 	'phases': [ {
 	    'type': 'map',
-	    'exec': 'pkill -f lackey'
+	    'exec': 'pkill -c $(svcs -Hoctid lackey)'
 	} ]
     },
     'inputs': [ '/%user%/stor/obj1' ],
@@ -1613,7 +1613,7 @@ exports.jobMinitKill = {
     'job': {
 	'phases': [ {
 	    'type': 'map',
-	    'init': 'pkill -f lackey',
+	    'init': 'pkill -c $(svcs -Hoctid lackey)',
 	    'exec': 'wc'
 	} ]
     },
@@ -1645,7 +1645,7 @@ exports.jobMinitKillAfter = {
 		 * "init".
 		 */
 		'rm -f /var/tmp/.marlin_task_started\n' +
-		'pkill -f lackey\n' +
+		'pkill -c $(svcs -Hoctid lackey)\n' +
 		'fi'
 	} ]
     },
