@@ -206,10 +206,10 @@ function main()
 	 */
 	var base = mod_path.normalize(mod_path.join(__dirname, '../..'));
 	mazTaskPath = [
+	    mod_path.join(base, 'ubin'),
 	    '/opt/local/bin',
 	    '/opt/local/sbin',
-	    process.env['PATH'],
-	    mod_path.join(base, 'ubin')
+	    process.env['PATH']
 	].join(':');
 
 	/*
