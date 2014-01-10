@@ -150,6 +150,7 @@ function maHttpProxy(args, callback)
 			request.resume();
 		});
 	} else {
+		request.pause();
 		request.pipe(subrequest);
 		request.resume();
 	}

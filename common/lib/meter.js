@@ -9,7 +9,7 @@ var mod_assertplus = require('assert-plus');
 var mod_events = require('events');
 var mod_util = require('util');
 
-var mod_carrier = require('carrier');
+var mod_lstream = require('lstream');
 var mod_jsprim = require('jsprim');
 var mod_verror = require('verror');
 
@@ -642,13 +642,9 @@ MeterAggregator.prototype.data = function ()
 };
 
 /*
- * Pre-0.10-style stream-like object that reads lines from a stream and emits
- * an 'entry' event for each well-formed log entry.  The only argument for the
- * event is the parsed JSON record.
- *
- * This implementation does not support flow control because the only consumer
- * at the moment is an aggregator, which doesn't need it.  We should build this
- * abstraction using Node 0.10 streams.
+ * Stream-like object that reads lines from a stream and emits an 'entry' event
+ * for each well-formed log entry.  The only argument for the event is the
+ * parsed JSON record.
  */
 function BunyanReader(stream)
 {
@@ -660,9 +656,9 @@ function BunyanReader(stream)
 	this.br_linenum = 0;
 	this.br_nonjson = 0;
 	this.br_malformed = 0;
-	this.br_carrier = mod_carrier.carry(stream);
-	this.br_carrier.on('end', function () { reader.emit('end'); });
-	this.br_carrier.on('line', function (line) {
+	this.br_lstream = new mod_lstream();
+	this.br_lstream.on('end', function () { reader.emit('end'); });
+	this.br_lstream.on('line', function (line) {
 		++reader.br_linenum;
 
 		if (line[0] != '{') {
@@ -683,7 +679,7 @@ function BunyanReader(stream)
 		reader.emit('entry', entry);
 	});
 
-	stream.resume();
+	stream.pipe(this.br_lstream);
 }
 
 mod_util.inherits(BunyanReader, EventEmitter);
