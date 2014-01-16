@@ -47,8 +47,14 @@ var msUsage = [
     'USAGE: mrjob subcmd [options] [arguments]',
     '       mrjob [-h | -? | --help]',
     '',
+    'BASIC JOB INSPECTION',
+    '',
     '       mrjob list     [-H] [-o field1[,field2...]] [-c] [-s state]',
     '                      [-t sec] [-u user] [-w worker]',
+    '       mrjob get      [-ipt] [-l limit] jobid',
+    '',
+    'JOB ADMINISTRATION',
+    '',
     '       mrjob submit   [-a asset] [-c count] [-d size] [-i image]',
     '                      [-n name] [-s disk] [-t authToken] [--transient]',
     '                      [-x option=value ...] [-z init] ',
@@ -56,17 +62,17 @@ var msUsage = [
     '       mrjob addkeys  jobid [key ...]',
     '       mrjob cancel   jobid',
     '       mrjob endinput jobid',
+    '       mrjob delete   jobid',
+    '       mrjob taskdone [-c code] [-e message] [-o noutput] taskid',
+    '',
+    'DETAILED JOB INSPECTION',
     '',
     '       mrjob errors   jobid',
     '       mrjob failed   jobid',
-    '       mrjob get      [-ipt] [-l limit] jobid',
     '       mrjob inputs   jobid',
     '       mrjob log      jobid',
     '       mrjob outputs  jobid',
-    '       mrjob retries  jobid',
-    '       mrjob delete   jobid',
-    '       mrjob taskdone [-c code] [-e message] [-o noutput] taskid',
-    '       mrjob tocommit taskid'
+    '       mrjob retries  jobid'
 ].join('\n');
 
 var msHelp = [
@@ -75,10 +81,46 @@ var msHelp = [
     '',
     'SUBCOMMANDS',
     '',
+    '   list [-H] [-o field1[,field2...]] [-c] [-s state] [-t sec] [-u user]',
+    '        [-T] [-w worker]',
+    '',
+    '       Lists jobs.  The default output mode is a human-readable, unstable',
+    '       output format.  With -H, the output is a simple table with no ',
+    '       header row.  Individual columns may be selected using -o',
+    '       as with ps(1) and other tools.  -o implies -H.',
+    '',
+    '       Other options control filtering:',
+    '',
+    '           -c              only cancelled jobs',
+    '           -s state        only jobs in state "state" ' +
+	'(default: "running")',
+    '                           "all" may be used to select all jobs.',
+    '           -t sec          only jobs completed in last "sec" seconds',
+    '           -u user         only jobs owned by "user"',
+    '           -w worker       only jobs currently run by worker "worker"',
+    '           -T              only non-transient jobs',
+    '',
+    '   get [-ipt] [-l limit] jobid',
+    '',
+    '       Fetch basic information about a job.',
+    '',
+    '           -i         list job input objects (see -l)',
+    '           -p         list detailed information about each phase',
+    '           -t         list detailed information about job tasks (see -l)',
+    '',
+    '       If -i or -t is used, additional job records must be fetched. By ',
+    '       default, only 20 records of each type are fetched, and the output',
+    '       will indicate that the results are incomplete.  You can specify ',
+    '       the number of records requested for each type with -l, but beware',
+    '       of the database impact of requesting more records. (In general,',
+    '       up to 1000 is considered safe.  Larger numbers are okay for one-',
+    '       time events but should be avoided when possible.)',
+    '',
     '   submit [-a asset] [-c count] [-d size] [-i image] [-n name] [-t token]',
     '          [--transient] [-x option=value] [-m exec] [-r exec] ...',
     '',
-    '      Submit a new job without ending input.  These options are available',
+    '       Submit a new job without ending input.  These options are ' +
+	'available',
     '',
     '          -a asset        Append the named asset to the following task',
     '          -c count        Use "count" concurrent reducers for the next ' +
@@ -98,81 +140,30 @@ var msHelp = [
     '                                           metering records',
     '          -z init         Per-zone init script for next phase',
     '',
-    '      along with any number of -m and -r options:',
+    '       along with any number of -m and -r options:',
     '',
     '          -m exec        Append a map phase with body "exec"',
     '          -r exec        Append a reduce phase with body "exec"',
     '',
-    '      With no -m or -r options, the job gets one map phase.',
+    '       With no -m or -r options, the job gets one map phase.',
     '',
     '   addkeys jobid [key ...]',
     '',
     '       Submit new keys for a job (which may or may not already exist).',
     '',
-    '   inputs jobid',
+    '   cancel jobid',
     '',
-    '       Lists all keys submitted for a job.',
+    '       Mark a job job cancelled.',
     '',
     '   endinput jobid',
     '',
     '       Indicate that no further keys will be added for a job.',
     '',
-    '   cancel jobid',
+    '   delete jobid',
     '',
-    '       Mark a job job cancelled.',
-    '',
-    '   outputs jobid',
-    '',
-    '       List objects emitted by a job.',
-    '',
-    '   failed jobid',
-    '',
-    '       Lists job input keys whose processing failed, either during the ',
-    '       first phase or a subsequent phase.  Note that failures during or ',
-    '       after any reduce phase cannot be tracked back to the original ',
-    '       input key, so such failures will not be represented in this ',
-    '       output.',
-    '',
-    '   errors jobid',
-    '',
-    '       Lists errors that occurred while processing the given job.',
-    '',
-    '   list [-H] [-o field1[,field2...]] [-c] [-s state] [-t sec] [-u user]',
-    '        [-T] [-w worker]',
-    '',
-    '       Lists all jobs.  The default output mode is a human-readable, ',
-    '       unstable output format.  With -H, the output is a simple table ',
-    '       with no header row.  Individual columns may be selected using -o',
-    '       as with ps(1) and other tools.  -o implies -H.',
-    '',
-    '       Other options control filtering:',
-    '',
-    '           -c              only cancelled jobs',
-    '           -s state        only jobs in state "state"',
-    '           -t sec          only jobs completed in last "sec" seconds',
-    '           -u user         only jobs owned by "user"',
-    '           -w worker       only jobs currently run by worker "worker"',
-    '           -T              only non-transient jobs',
-    '',
-    '   get [-ipt] [-l limit] jobid',
-    '',
-    '       Fetch basic information about a job.',
-    '',
-    '       -i            list job input objects (see -l)',
-    '       -p            list detailed information about each phase',
-    '       -t            list detailed information about job tasks (see -l)',
-    '',
-    '       If -i or -t is used, additional job records must be fetched. By ',
-    '       default, only 20 records of each type are fetched, and the output',
-    '       will indicate that the results are incomplete.  You can specify ',
-    '       the number of records requested for each type with -l, but beware',
-    '       of the database impact of requesting more records. (In general,',
-    '       up to 1000 is considered safe.  Larger numbers are okay for one-',
-    '       time events but should be avoided when possible.)',
-    '',
-    '   log jobid',
-    '',
-    '       Fetch history about the given job.',
+    '       Completely removes all job-related records from Moray.  This ',
+    '       should be used with extreme care, as the impact on Marlin is ',
+    '       undefined if any components know about the job.',
     '',
     '   taskdone [-c code] [-e message] [-o noutputs] taskid',
     '',
@@ -186,9 +177,33 @@ var msHelp = [
     '       -e message          Mark the task "failed" with the given message',
     '       -o noutputs         Mark the task "ok" with "noutputs" outputs',
     '',
-    '   tocommit taskid',
+    '   errors jobid',
     '',
-    '       For development only.',
+    '       Lists errors that occurred while processing the given job.',
+    '',
+    '   failed jobid',
+    '',
+    '       Lists job input keys whose processing failed, either during the ',
+    '       first phase or a subsequent phase.  Note that failures during or ',
+    '       after any reduce phase cannot be tracked back to the original ',
+    '       input key, so such failures will not be represented in this ',
+    '       output.',
+    '',
+    '   inputs jobid',
+    '',
+    '       Lists all keys submitted for a job.',
+    '',
+    '   log jobid',
+    '',
+    '       Fetch history about the given job.',
+    '',
+    '   outputs jobid',
+    '',
+    '       List objects emitted by a job.',
+    '',
+    '   retries jobid',
+    '',
+    '       Lists retried errors that occurred while processing the given job.',
     '',
     'MORAY',
     '',
@@ -241,8 +256,7 @@ var msCommands = {
     'log': cmdLog,
     'retries': cmdRetries,
     'delete': cmdDelete,
-    'taskdone': cmdTaskdone,
-    'tocommit': cmdTocommit
+    'taskdone': cmdTaskdone
 };
 
 /* default set of columns for list-of-jobs */
@@ -857,7 +871,9 @@ function cmdList()
 
 	argv = process.argv.slice(1);
 	parser = new mod_getopt.BasicParser('Ho:cs:Tt:u:w:', argv);
-	options = {};
+	options = {
+	    'state': 'running'
+	};
 
 	while ((option = parser.getopt()) !== undefined) {
 		switch (option.option) {
@@ -866,7 +882,10 @@ function cmdList()
 			break;
 
 		case 's':
-			options['state'] = option.optarg;
+			if (option.optarg == 'all')
+				options['state'] = undefined;
+			else
+				options['state'] = option.optarg;
 			break;
 
 		case 'T':
@@ -1542,57 +1561,6 @@ function cmdTaskdone()
 
 			clientFini();
 		    });
-	});
-}
-
-function cmdTocommit()
-{
-	if (process.argv.length != 4)
-		usage();
-
-	var taskid = process.argv[3];
-
-	/*
-	 * We're not going to pretend like this is a useful API; it's completely
-	 * a stop-gap until we have batch update from Moray.
-	 */
-	clientInit(function (api) {
-		var client = api.ma_client;
-		var bucket = api.ma_buckets['taskoutput'];
-		var req, barrier;
-
-		barrier = mod_vasync.barrier();
-		barrier.start('find');
-		req = client.findObjects(bucket, '(taskId=' + taskid + ')',
-		    { 'noCache': true });
-
-		req.on('error', function (err) {
-			console.error('%s: failed to fetch records: %s',
-			    msArg0, err.mesage);
-			process.exit(1);
-		});
-
-		req.on('record', function (record) {
-			barrier.start(record['key']);
-			record['value']['timeCommitted'] =
-			    mod_jsprim.iso8601(Date.now());
-
-			client.putObject(record['bucket'], record['key'],
-			    record['value'], { 'etag': record['_etag'] },
-			    function (err) {
-				barrier.done(record['key']);
-				if (err)
-					console.error('%s: write %s: %s',
-					    msArg0, record['key'], err.message);
-				else
-					console.log('updated %s',
-					    record['key']);
-			    });
-		});
-
-		req.on('end', function () { barrier.done('find'); });
-
-		barrier.on('drain', clientFini);
 	});
 }
 
