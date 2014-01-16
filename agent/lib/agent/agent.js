@@ -285,6 +285,14 @@ var maCancelError = {
 };
 
 /*
+ * These fields of task records may be changed by the supervisor after we've
+ * read the record.  When we merge our own changes, we must be sure to preserve
+ * these.
+ */
+var maTaskSupervisorFields = [ 'nInputs', 'timeCancelled',
+    'timeDispatchDone', 'timeInputDone' ];
+
+/*
  * Kstats filters.  The instance numbers of the corresponding kstats must
  * correspond to the zoneids of the corresponding zone.
  */
@@ -1125,8 +1133,10 @@ mAgent.prototype.onRecordTask = function (record, barrier)
 		group.g_log.debug('task "%s": cancelled');
 
 		task.t_cancelled = true;
-		task.t_record['value']['timeCancelled'] =
-		    record['value']['timeCancelled'];
+		maTaskSupervisorFields.forEach(function (f) {
+			if (record['value'][f] !== undefined)
+				task.t_record['value'][f] = record['value'][f];
+		});
 		task.t_record['_etag'] = record['_etag'];
 		barrier.start(task.t_id);
 		this.taskMarkFailed(task, Date.now(), maCancelError, barrier);
@@ -1765,12 +1775,7 @@ mAgent.prototype.taskDirty = function (task, related, barrier)
 
 	this.ma_bus.putBatch(records, {
 	    'retryConflict': function (oldrec, newrec) {
-		return (mod_bus.mergeRecords([
-			'nInputs',
-			'timeCancelled',
-			'timeDispatchDone',
-			'timeInputDone'
-		    ], [
+		return (mod_bus.mergeRecords(maTaskSupervisorFields, [
 			'machine',
 			'nOutputs',
 			'result',
