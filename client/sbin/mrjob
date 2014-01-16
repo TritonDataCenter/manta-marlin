@@ -59,7 +59,7 @@ var msUsage = [
     '',
     '       mrjob errors   jobid',
     '       mrjob failed   jobid',
-    '       mrjob get      [-v] jobid',
+    '       mrjob get      [-ipt] [-l limit] jobid',
     '       mrjob inputs   jobid',
     '       mrjob log      jobid',
     '       mrjob outputs  jobid',
@@ -154,11 +154,21 @@ var msHelp = [
     '           -w worker       only jobs currently run by worker "worker"',
     '           -T              only non-transient jobs',
     '',
-    '   get [-v] jobid',
+    '   get [-ipt] [-l limit] jobid',
     '',
-    '       Fetch details about the given job.  With -v, fetch additional ',
-    '       details that require fetching a potentially large number of ',
-    '       records from Moray.',
+    '       Fetch basic information about a job.',
+    '',
+    '       -i            list job input objects (see -l)',
+    '       -p            list detailed information about each phase',
+    '       -t            list detailed information about job tasks (see -l)',
+    '',
+    '       If -i or -t is used, additional job records must be fetched. By ',
+    '       default, only 20 records of each type are fetched, and the output',
+    '       will indicate that the results are incomplete.  You can specify ',
+    '       the number of records requested for each type with -l, but beware',
+    '       of the database impact of requesting more records. (In general,',
+    '       up to 1000 is considered safe.  Larger numbers are okay for one-',
+    '       time events but should be avoided when possible.)',
     '',
     '   log jobid',
     '',
@@ -212,7 +222,6 @@ var msJobId = mod_uuid.v4();
 var msAuthToken;
 var msMorayUrl = process.env['MORAY_URL'];
 var msParseable = false;		/* whether output should be parseable */
-var msVerbose = 0;			/* whether output should be verbose */
 var msRecordLimit = 10;			/* max nr of Moray records per bucket */
 var msColumns;				/* user-specified list of columns */
 
@@ -1027,13 +1036,24 @@ function makeJobRow(job, mtime)
 
 function cmdGet()
 {
-	var argv, parser, option;
+	var argv, parser, option, printopts, needextra;
 
 	argv = process.argv.slice(1);
-	parser = new mod_getopt.BasicParser('l:v', argv);
+	parser = new mod_getopt.BasicParser('il:pt', argv);
+	needextra = false;
+	printopts = {
+	    'inputs': false,
+	    'phasedetails': false,
+	    'tasks': false
+	};
 
 	while ((option = parser.getopt()) !== undefined) {
 		switch (option.option) {
+		case 'i':
+			printopts.inputs = true;
+			needextra = true;
+			break;
+
 		case 'l':
 			msRecordLimit = parseInt(option.optarg, 10);
 			if (isNaN(msRecordLimit) || msRecordLimit < 1) {
@@ -1044,8 +1064,14 @@ function cmdGet()
 			}
 			break;
 
-		case 'v':
-			msVerbose++;
+		case 'p':
+			printopts.phasedetails = true;
+			needextra = true;
+			break;
+
+		case 't':
+			printopts.tasks = true;
+			needextra = true;
 			break;
 
 		default:
@@ -1062,7 +1088,7 @@ function cmdGet()
 	msJobId = argv[parser.optind()];
 
 	clientInit(function (api) {
-		api.jobFetchDetails(msJobId, msVerbose > 0, msRecordLimit,
+		api.jobFetchDetails(msJobId, needextra, msRecordLimit,
 		    function (err, records) {
 			if (err) {
 				console.error('%s: %s', msArg0, err.message);
@@ -1071,13 +1097,13 @@ function cmdGet()
 					process.exit(1);
 			}
 
-			printJobDetails(records);
+			printJobDetails(records, printopts);
 			clientFini();
 		    });
 	});
 }
 
-function printJobDetails(records)
+function printJobDetails(records, options)
 {
 	var job = records['job']['value'];
 	var mtime = records['job']['_mtime'];
@@ -1085,7 +1111,7 @@ function printJobDetails(records)
 	var nout = 0, nerr = 0, ninter = 0, nuncommitted = 0;
 	var table, row;
 
-	if (msVerbose > 0) {
+	if (options.tasks) {
 		taskinputs = {};
 		records['taskinput'].forEach(function (record) {
 			var taskid = record['value']['taskId'];
@@ -1141,60 +1167,89 @@ function printJobDetails(records)
 
 	row = makeJobRow(job, mod_jsprim.iso8601(new Date(mtime)));
 
-	println('%-7s %-36s (created  %s)', 'JOB', row['JOBID'],
-	    row['CREATED']);
-	println('%-7s %-36s (modified %s)', 'WORKER', row['WORKER'],
-	    row['MODIFIED']);
-	println('%-7s %-36s "%s"', 'USER', job['auth']['uuid'],
-	    job['auth']['login']);
-	println('%-7s %-9s %d outputs, %d errors, %d retries, %d tasks, ' +
-	    '%d committed', 'STATE', job['state'],
-	    job['stats'] ? job['stats']['nJobOutputs'] : '-',
-	    job['stats'] ? job['stats']['nErrors'] : '-',
-	    job['stats'] && job['stats']['nRetries'] !== undefined ?
-	    job['stats']['nRetries'] : 0,
-	    job['stats'] ? job['stats']['nTasksDispatched'] : '-',
-	    job['stats'] ? job['stats']['nTasksCommittedOk'] +
-	        job['stats']['nTasksCommittedFail'] : '-');
+	println('%10s %s', 'Job', row['JOBID']);
+	if (job['name'])
+		println('%10s %s', 'Job name', job['name']);
+	println('%10s %s (%s)', 'User', job['auth']['login'],
+	    job['auth']['uuid']);
+	println('%10s %s', 'State', job['state']);
+	println('%10s %s', 'Supervisor', row['WORKER']);
+	println('%10s %s (%s ago)', 'Created', row['CREATED'],
+	    formatDuration(Date.now() - Date.parse(row['CREATED'])));
+	if (row['DONE']) {
+		println('%10s %s (%s total)', 'Done', row['DONE'],
+		    formatDuration(
+		    Date.parse(row['DONE']) - Date.parse(row['CREATED'])));
+		/*
+		 * The archive start time is unreliable due to MANTA-1757,
+		 * so we just print a summary here.
+		 */
+		println('%10s %s', 'Archived',
+		    job['timeArchiveDone'] ?
+		    (job['timeArchiveDone'] + ' (' + formatDuration(
+		        Date.now() - Date.parse(job['timeArchiveDone'])) +
+			' ago)') :
+			job['timeArchiveStarted'] ? 'started' : 'no');
+	}
+
+	println('%10s %d inputs read, %d tasks dispatched, ' +
+	    '%d tasks committed', 'Progress',
+	    job['stats']['nInputsRead'],
+	    job['stats']['nTasksDispatched'],
+	    job['stats']['nTasksCommittedOk'] +
+	    job['stats']['nTasksCommittedFail']);
+	println('%10s %d outputs, %d errors, %d retries', 'Results',
+	    job['stats']['nJobOutputs'],
+	    job['stats']['nErrors'],
+	    job['stats']['nRetries']);
 
 	if (records['task'].length < msRecordLimit)
-		println('%-7s (%d uncommitted done, %d intermediate objects)',
-		    '', nuncommitted, ninter);
+		println('%10s %d uncommitted done, %d intermediate objects',
+		    'Pending', nuncommitted, ninter);
 
 	job['phases'].forEach(function (phase, i) {
-		var label = i === 0 ? 'PHASE' : '';
 		var type = phase['type'] || 'map';
 		if (type == 'reduce')
 			type += ' (' + (phase['count'] || 1) + ')';
-		println('%-7s %2d %-11s %s', label, i, type,
-		    JSON.stringify(phase['exec']));
+		println('%10s %s', 'Phase ' + i, type);
+		if (options.phasedetails) {
+			if (phase['assets']) {
+				phase['assets'].forEach(function (a) {
+					println('%10s %s', 'asset', a);
+				});
+			}
+			if (phase['init'])
+				println('%10s %s', 'init',
+				    JSON.stringify(phase['init']));
+			println('%10s %s', 'exec',
+			    JSON.stringify(phase['exec']));
+		}
 	});
 
-	records['jobinput'].sort(function (a, b) {
-		return (a['value']['input'] < b['value']['input'] ? -1 :
-		    b['value']['input'] > a['value']['input'] ? 1 : 0);
-	});
-
-	if (records['jobinput'].length === 0) {
-		println('INPUTS');
-	} else {
-		records['jobinput'].forEach(function (input, i) {
-			var label = i === 0 ? 'INPUTS' : '';
-			println('%-7s %s', label, input['value']['input']);
+	if (options.inputs) {
+		records['jobinput'].sort(function (a, b) {
+			return (a['value']['input'] < b['value']['input'] ? -1 :
+			    b['value']['input'] > a['value']['input'] ? 1 : 0);
 		});
 
-		if (records['jobinput'].length >= msRecordLimit)
-			println('%-7s ...', '');
+		if (records['jobinput'].length === 0) {
+			println('%10s', 'Inputs');
+		} else {
+			records['jobinput'].forEach(function (input, i) {
+				var label = i === 0 ? 'Inputs' : '';
+				println('%10s %s', label,
+				    input['value']['input']);
+			});
+
+			if (records['jobinput'].length >= msRecordLimit)
+				println('%-10s ...', '');
+		}
 	}
 
 	if (job['timeCancelled'])
 		println('NOTE: Cancelled at %s', job['timeCancelled']);
 	else if (!job['input'] && !job['timeInputDone'])
 		println('NOTE: Job is waiting for user input');
-
-	if (job['input'])
-		println('NOTE: Job\'s input is piped from job "%s"',
-		    job['input']);
 
 	if (records['error'].length < msRecordLimit &&
 	    job['stats'] !== undefined && job['stats']['nErrors'] != nerr)
@@ -1206,8 +1261,6 @@ function printJobDetails(records)
 	    job['stats']['nJobOutputs'] != nout)
 		println('WARN: found %d outputs, but job reports %d outputs',
 		    nout, job['stats']['nJobOutputs']);
-
-	println('');
 
 	if (globalerrors.length > 0) {
 		println('DISPATCH ERRORS');
@@ -1225,6 +1278,11 @@ function printJobDetails(records)
 
 		println('');
 	}
+
+	if (!options.tasks)
+		return;
+
+	println('');
 
 	records['task'].sort(function (a, b) {
 		var r1 = a['value']['phaseNum'] - b['value']['phaseNum'];
@@ -1262,7 +1320,7 @@ function printJobDetails(records)
 
 	records['task'].forEach(function (record, j) {
 		var taskid = record['value']['taskId'];
-		var internal;
+		var internal, reducelabel;
 
 		if (j !== 0)
 			println('');
@@ -1276,35 +1334,39 @@ function printJobDetails(records)
 		]);
 
 		if (record['value']['input']) {
-			println('    INPUT:  %s', record['value']['input']);
-		} else if (taskinputs && taskinputs[taskid]) {
-			println('    INPUT:  %d inputs',
-			    taskinputs[taskid].length);
-		} else if (msVerbose > 0) {
-			println('    INPUT:  0 inputs');
-		} else if (record['value']['nInputs']) {
-			println('    INPUT:  expects %d inputs',
-			    record['value']['nInputs']);
+			println('%10s %s', 'Input', record['value']['input']);
 		} else {
-			println('    INPUT:  unknown');
-		}
+			reducelabel = [];
+			if (taskinputs && taskinputs[taskid])
+				reducelabel.push(taskinputs[taskid].length +
+				    ' found');
+			if (record['value']['nInputs'])
+				reducelabel.push(record['value']['nInputs'] +
+				    ' total');
+			if (reducelabel.length > 0)
+				println('%10s %s inputs', 'Inputs',
+				    reducelabel.join(', '));
+			else
+				println('%10s %s', 'Inputs', 'unknown');
 
-		if (taskinputs && taskinputs[taskid])
-			taskinputs[taskid].forEach(function (rec) {
-				println('    INPUT:  %s',
-				    rec['value']['input']);
-			});
+			if (taskinputs && taskinputs[taskid])
+				taskinputs[taskid].forEach(function (rec) {
+					println('%10s %s', 'Input',
+					    rec['value']['input']);
+				});
+		}
 
 		var outs = (taskoutputs && taskoutputs[taskid] ?
 		    taskoutputs[taskid] : []).map(
 		    function (rec) { return (rec['value']['output']); });
 
 		outs.forEach(function (out) {
-			println('    OUTPUT: %s', out);
+			println('%10s %s', 'Output', out);
 		});
 
 		if (record['value']['nOutputs'] > outs.length)
-			println('    ...', '');
+			println('%10s %d total outputs', 'Outputs',
+			    record['value']['nOutputs']);
 
 		if (taskerrors[taskid]) {
 			taskerrors[taskid].forEach(function (error) {
@@ -1314,16 +1376,16 @@ function printJobDetails(records)
 
 				internal = value['errorMessageInternal'];
 
-				println('    ERROR:  %s', message);
+				println('%10s %s', 'Error', message);
 
 				if (internal)
-					println('            internal error: ' +
-					    '%s', internal);
+					println('%10s     internal error: ' +
+					    '%s', '', internal);
 			});
 		}
 
 		if (record['value']['stderr'])
-			println('    STDERR: %s', record['value']['stderr']);
+			println('%10s %s', 'stderr', record['value']['stderr']);
 	});
 
 	if (records['task'].length >= msRecordLimit)
@@ -1527,17 +1589,45 @@ function cmdTocommit()
 	});
 }
 
-function formatDuration(millis)
+function formatDuration(ms)
 {
-	if (millis < 60000)
-		return (sprintf('%d.%03d', Math.floor(millis / 1000),
-		    millis % 1000));
+	var hour, min, sec, rv;
 
-	var minutes = Math.floor(millis / 60000);
-	millis %= 60000;
+	/* compute totals in each unit */
+	sec = Math.floor(ms / 1000);
+	min = Math.floor(sec / 60);
+	hour = Math.floor(min / 60);
 
-	return (sprintf('%d:%02d.%03ds', minutes,
-	    Math.floor(millis / 1000), millis % 1000));
+	/* compute offsets for each unit */
+	ms %= 1000;
+	sec %= 60;
+	min %= 60;
+
+	rv = '';
+	if (hour > 0)
+		rv += hour + 'h';
+
+	if (hour > 0 || min > 0) {
+		if (hour > 0 && min < 10)
+			rv += '0' + min + 'm';
+		else
+			rv += min + 'm';
+	}
+
+	if ((hour > 0 || min > 0) && sec < 10)
+		rv += '0' + sec;
+	else
+		rv += sec;
+
+	if (ms < 10)
+		rv += '.00' + ms;
+	else if (ms < 100)
+		rv += '.0' + ms;
+	else
+		rv += '.' + ms;
+
+	rv += 's';
+	return (rv);
 }
 
 function sortStable(list, comparator)
