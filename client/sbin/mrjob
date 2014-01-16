@@ -222,7 +222,7 @@ var msJobId = mod_uuid.v4();
 var msAuthToken;
 var msMorayUrl = process.env['MORAY_URL'];
 var msParseable = false;		/* whether output should be parseable */
-var msRecordLimit = 10;			/* max nr of Moray records per bucket */
+var msRecordLimit = 20;			/* max nr of Moray records per bucket */
 var msColumns;				/* user-specified list of columns */
 
 var msApi;	/* marlin api */
@@ -1108,7 +1108,7 @@ function printJobDetails(records, options)
 	var job = records['job']['value'];
 	var mtime = records['job']['_mtime'];
 	var taskinputs, taskoutputs, globalerrors, taskerrors;
-	var nout = 0, nerr = 0, ninter = 0, nuncommitted = 0;
+	var nout = 0, nerr = 0, nretr = 0, ninter = 0, nuncommitted = 0;
 	var table, row;
 
 	if (options.tasks) {
@@ -1136,10 +1136,14 @@ function printJobDetails(records, options)
 	globalerrors = [];
 	taskerrors = {};
 	records['error'].forEach(function (record) {
-		nerr++;
+		if (record['value']['retried'] == 'true')
+			nretr++;
+		else {
+			nerr++;
 
-		if (!record['value']['taskId'])
-			globalerrors.push(record['value']);
+			if (!record['value']['taskId'])
+				globalerrors.push(record['value']);
+		}
 
 		var taskid = record['value']['taskId'];
 		if (!taskerrors[taskid])
@@ -1176,7 +1180,7 @@ function printJobDetails(records, options)
 	println('%10s %s', 'Supervisor', row['WORKER']);
 	println('%10s %s (%s ago)', 'Created', row['CREATED'],
 	    formatDuration(Date.now() - Date.parse(row['CREATED'])));
-	if (row['DONE']) {
+	if (job['timeDone']) {
 		println('%10s %s (%s total)', 'Done', row['DONE'],
 		    formatDuration(
 		    Date.parse(row['DONE']) - Date.parse(row['CREATED'])));
@@ -1246,15 +1250,14 @@ function printJobDetails(records, options)
 		}
 	}
 
-	if (job['timeCancelled'])
-		println('NOTE: Cancelled at %s', job['timeCancelled']);
-	else if (!job['input'] && !job['timeInputDone'])
-		println('NOTE: Job is waiting for user input');
-
-	if (records['error'].length < msRecordLimit &&
-	    job['stats'] !== undefined && job['stats']['nErrors'] != nerr)
-		println('WARN: found %d errors, but job reports %d errors',
-		    nerr, job['stats']['nErrors']);
+	if (records['error'].length < msRecordLimit) {
+		if (job['stats']['nErrors'] != nerr)
+			println('WARN: found %d errors, but job reports ' +
+			    '%d errors', nerr, job['stats']['nErrors']);
+		if (job['stats']['nRetries'] != nretr)
+			println('WARN: found %d retries, but job reports ' +
+			    '%d retries', nretr, job['stats']['nRetries']);
+	}
 
 	if (records['taskoutput'].length < msRecordLimit &&
 	    job['stats'] !== undefined &&
@@ -1263,13 +1266,11 @@ function printJobDetails(records, options)
 		    nout, job['stats']['nJobOutputs']);
 
 	if (globalerrors.length > 0) {
-		println('DISPATCH ERRORS');
-
 		globalerrors.forEach(function (error) {
-			println('phase %2d: %s',
+			println('%10s phase %d: %s', 'Error',
 			    error['phaseNum'], error['errorMessage']);
 			if (error['errorMessageInternal'])
-				println('    (internal: %s)',
+				println('%10s     (internal: %s)',
 				    error['errorMessageInternal']);
 		});
 
@@ -1278,6 +1279,12 @@ function printJobDetails(records, options)
 
 		println('');
 	}
+
+	if (job['timeCancelled'])
+		println('NOTE: Cancelled at %s', job['timeCancelled']);
+	else if (!job['input'] && !job['timeInputDone'])
+		println('NOTE: Job is waiting for user input');
+
 
 	if (!options.tasks)
 		return;
@@ -1347,7 +1354,7 @@ function printJobDetails(records, options)
 				println('%10s %s inputs', 'Inputs',
 				    reducelabel.join(', '));
 			else
-				println('%10s %s', 'Inputs', 'unknown');
+				println('%10s %s', 'Inputs', 'not yet known');
 
 			if (taskinputs && taskinputs[taskid])
 				taskinputs[taskid].forEach(function (rec) {
