@@ -96,6 +96,42 @@ Use `mrjob list -t 60`, where "60" is the number of seconds back to look:
     JOBID                                LOGIN          S NOUT NERR NRET NDISP NCOMM
     ed4eff3c-5e2e-4fcb-ad67-3ac09629056f jason          D    1    0    0   485   485
 
+## Fetch details about a job
+
+Use `mrjob get`:
+
+    $ mrjob get a2922490-c8de-e4b3-abbc-f3367464b651 
+           Job a2922490-c8de-e4b3-abbc-f3367464b651
+      Job name interactive compute job
+          User thoth (aed35417-4c53-4d6c-a127-fd8a6e55723b)
+         State running
+    Supervisor dd55ea98-9dc9-4b57-84ab-380ba5252fed
+       Created 2014-01-16T22:22:49.173Z (1h10m12.679s ago)
+      Progress 1 inputs read, 1 tasks dispatched, 0 tasks committed
+       Results 0 outputs, 0 errors, 0 retries
+       Pending 0 uncommitted done, 0 intermediate objects
+       Phase 0 map
+
+You can use `-p` to get details about what the job runs in each phase:
+
+    $ mrjob get -p a2922490-c8de-e4b3-abbc-f3367464b651 
+           Job a2922490-c8de-e4b3-abbc-f3367464b651
+      Job name interactive compute job
+          User thoth (aed35417-4c53-4d6c-a127-fd8a6e55723b)
+         State running
+    Supervisor dd55ea98-9dc9-4b57-84ab-380ba5252fed
+       Created 2014-01-16T22:22:49.173Z (1h11m00.527s ago)
+      Progress 1 inputs read, 1 tasks dispatched, 0 tasks committed
+       Results 0 outputs, 0 errors, 0 retries
+       Pending 0 uncommitted done, 0 intermediate objects
+       Phase 0 map
+         asset /poseidon/public/medusa/agent.sh
+         asset /thoth/stor/medusa-config-fa937d4b-f699-4f1b-bea5-69147fa97977.json
+         asset /thoth/stor/thoth/analyzers/.thoth.87707.1389910968.355
+          exec "/assets/poseidon/public/medusa/agent.sh"
+
+See `mrjob --help` for more options.
+
 ## List job inputs, outputs, retries, and errors (as a user would see them)
 
 All of these are capped at 1000 results by default.
@@ -108,10 +144,32 @@ All of these are capped at 1000 results by default.
 
 `mrjob retries JOBID`: list retries from a job (capped at 1000)
 
-## Fetch summary of errors for a job:
+## Fetch summary of errors for a job
 
 Use `mrerrors -j JOBID`.  The output includes internal error messages and
 retried errors, which are not exposed to end users.
+
+## List tasks not-yet-completed for a given job (and see where they're running)
+
+Use `mrjob where` to list uncompleted tasks and see where they're running:
+
+    $ mrjob where e493ab87-fcf0-e991-8b82-8f649696d197
+    TASKID                               PH       NIN SERVER                        
+    6ce64b78-691b-4703-970a-de2fb84b69f1  0         - 1.cn.us-east.joyent.us        
+         map: /dap/stor/mdb.log
+
+Note that physical storage nodes in Manta are identified by mantaComputeId
+rather than server\_uuid or hostname.  You need to translate this to figure out
+which physical server that corresponds to.
+
+## Translating from mantaComputeId to hostname
+
+The mapping from mantaComputeId to server name is stored in SAPI metadata for
+the "manta" application, but there's a cache in a text file on each of the
+us-east-{1,2,3} headnodes.  You can look up CNs using `manta-cn`:
+
+    [root@headnode (us-east-2) ~]# /var/tmp/common/manta-cn -h 25.cn.us-east.joyent.us
+    MS08214
 
 ## Using the Moray tools to fetch detailed state
 
@@ -147,60 +205,6 @@ another.  You can check this with:
 This case indicates that the supervisor is functioning normally.  If one
 supervisor takes over for another, you'll see an "operatedBy" field with the
 uuid of the supervisor that's taken over for this supervisor.
-
-
-## List tasks not-yet-completed for a given job (and see where they're running)
-
-For example, you can list tasks for a given job which haven't been completed yet:
-
-    $ findobjects marlin_tasks_v2 '(&(jobId='$jobid')(!(state=done)))'
-    {
-      "bucket": "marlin_tasks_v2",
-      "key": "52ed89fe-50ac-4835-ab64-5b9170719aa8",
-      "value": {
-        "jobId": "e746e500-c813-45ba-b9f5-652ff94fa15a",
-        "taskId": "52ed89fe-50ac-4835-ab64-5b9170719aa8",
-        "phaseNum": 0,
-        "state": "accepted",
-        "timeDispatched": "2013-07-02T22:13:41.657Z",
-        "domain": "c958cb5b-a65f-4615-bea7-a13dd605cc17",
-        "input": "/dap/stor/datasets/cmd/cmd/devfsadm/devfsadm.c",
-        "p0input": "/dap/stor/datasets/cmd/cmd/devfsadm/devfsadm.c",
-        "account": "ddb63097-4093-4a74-b8e8-56b23eb253e0",
-        "objectid": "78f104ab-6399-4f7d-81a7-7da26d991d88",
-        "mantaComputeId": "20.cn.us-east.joyent.us",
-        "agentGeneration": "2013-07-02T16:43:20.350Z",
-        "zonename": "00c3e6bd-b8bc-4300-919b-bf36d4cd8920",
-        "prevRecordType": "jobinput",
-        "prevRecordId": "9570c45c-e485-4750-8628-d12a253a93dd",
-        "nattempts": 1,
-        "timeAccepted": "2013-07-02T22:13:41.788Z"
-      },
-      "_id": 1980763,
-      "_etag": "6419CAE7",
-      "_mtime": 1372803221792,
-      "_txn_snap": null,
-      "_count": 117
-    }
-
-and, of course, summarize the results with json(1):
-
-    $ findobjects marlin_tasks_v2 '(&(jobId='$jobid')(!(state=done)))' | \
-        json -ga value.taskId value.mantaComputeId
-    1e8de5f3-561a-4211-9855-b90690994e35 25.cn.us-east.joyent.us
-
-Note that physical storage nodes in Manta are identified by mantaComputeId
-rather than server\_uuid or hostname.  You need to translate this to figure out
-which physical server that corresponds to.
-
-## Translating from mantaComputeId to hostname
-
-The mapping from mantaComputeId to server name is stored in SAPI metadata for
-the "manta" application, but there's a cache in a text file on each of the
-us-east-{1,2,3} headnodes.  You can look up CNs using `manta-cn`:
-
-    [root@headnode (us-east-2) ~]# /var/tmp/common/manta-cn -h 25.cn.us-east.joyent.us
-    MS08214
 
 
 # Debugging Marlin (common tasks): On the storage nodes

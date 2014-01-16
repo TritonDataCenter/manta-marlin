@@ -64,6 +64,7 @@ exports.MarlinMeterReader = mod_meter.MarlinMeterReader;
  *    jobFetchRetries		Fetch all retried failures from a job
  *    jobFetchInputs		Fetch a job's input keys
  *    jobFetchOutputs		Fetch a job's output keys
+ *    jobFetchPendingTasks	Fetch job tasks not yet completed
  *    jobFetchFailedJobInputs	Fetch the job input keys that failed
  *    jobArchiveStart		Start a job archival (wrasse only)
  *    jobArchiveDone		Complete a job archival (wrasse only)
@@ -240,6 +241,7 @@ function MarlinApi(args)
 	    jobFetchInputs,
 	    jobFetchLog,
 	    jobFetchOutputs,
+	    jobFetchPendingTasks,
 	    jobFetchRetries,
 	    jobArchiveStart,
 	    jobArchiveDone,
@@ -925,6 +927,69 @@ function jobFetchOutputs(api, jobid, pi, options)
 
 	req.on('end', function () {
 		log.debug('job "%s": fetched taskoutputs', jobid);
+		rv.emit('end');
+	});
+
+	return (rv);
+}
+
+/*
+ * jobFetchPendingTasks(jobid, options): Fetch tasks for a given job that are
+ * not yet completed.  Returns an event emitter that emits "error", "task", and
+ * "end" events.
+ *
+ * In addition to the jobid parameter, 'options' may also take a 'marker', which
+ * indicates where to start the search, as well as a limit, which indicates how
+ * many results can come back in a single fetch operation.  The marker is
+ * just the taskid.
+ */
+function jobFetchPendingTasks(api, jobid, options)
+{
+	var bucket = api.ma_buckets['task'];
+	var filter = '(&(jobId=' + jobid + ')(!(state=done))';
+	var rv, req;
+	var log = options.log ? options.log : api.ma_log;
+	var moray_opts = jobMorayOptions(options);
+	var copyfields = [
+	    'taskId',
+	    'phaseNum',
+	    'state',
+	    'timeDispatched',
+	    'timeAccepted',
+	    'rIdx',
+	    'mantaComputeId',
+	    'nattempts',
+	    'input',
+	    'nInputs'
+	];
+
+	rv = new mod_events.EventEmitter();
+
+	if (options && options.marker)
+		filter += '(_id>=' + options.marker + ')';
+
+	filter += ')';
+
+	log.debug('job "%s": fetching pending tasks', jobid, filter);
+	req = api.ma_client.findObjects(bucket, filter, moray_opts);
+	req.on('error', function (err) {
+		log.warn(err, 'job "%s": error fetching pending tasks', jobid);
+		rv.emit('error', err);
+	});
+
+	req.on('record', function (record) {
+		var task = {
+		    'id': record['_id']
+		};
+		copyfields.forEach(function (f) {
+			if (record['value'].hasOwnProperty(f))
+				task[f] = record['value'][f];
+		});
+		rv.emit('task', task);
+	});
+
+	req.on('end', function () {
+		log.debug('job "%s": fetched pending tasks', jobid);
 		rv.emit('end');
 	});
 

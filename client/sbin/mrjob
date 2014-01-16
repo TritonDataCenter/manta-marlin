@@ -52,6 +52,7 @@ var msUsage = [
     '       mrjob list     [-H] [-o field1[,field2...]] [-c] [-s state]',
     '                      [-t sec] [-u user] [-w worker]',
     '       mrjob get      [-ipt] [-l limit] jobid',
+    '       mrjob where    jobid',
     '',
     'JOB ADMINISTRATION',
     '',
@@ -115,6 +116,11 @@ var msHelp = [
     '       of the database impact of requesting more records. (In general,',
     '       up to 1000 is considered safe.  Larger numbers are okay for one-',
     '       time events but should be avoided when possible.)',
+    '',
+    '   where jobid',
+    '',
+    '       List outstanding tasks for the given job and where each one is ',
+    '       running or enqueued.',
     '',
     '   submit [-a asset] [-c count] [-d size] [-i image] [-n name] [-t token]',
     '          [--transient] [-x option=value] [-m exec] [-r exec] ...',
@@ -253,6 +259,7 @@ var msCommands = {
     'errors': cmdErrors,
     'failed': cmdFailed,
     'get': cmdGet,
+    'where': cmdWhere,
     'log': cmdLog,
     'retries': cmdRetries,
     'delete': cmdDelete,
@@ -1119,6 +1126,70 @@ function cmdGet()
 			printJobDetails(records, printopts);
 			clientFini();
 		    });
+	});
+}
+
+function cmdWhere()
+{
+	if (process.argv.length != 4)
+		usage();
+
+	var jobid = process.argv[3];
+	var table = new mod_tab.TableOutputStream({
+	    'columns': [ {
+		'label': 'TASKID',
+		'width': 36
+	    }, {
+		'label': 'PH',
+		'align': 'right',
+		'width': 2
+	    }, {
+	        'label': 'NIN',
+		'align': 'right',
+		'width': 9
+	    }, {
+		'label': 'SERVER',
+		'width': 30
+	    } ]
+	});
+
+	clientInit(function (api) {
+		var rv = api.jobFetchPendingTasks(jobid, {});
+		var tasks = [];
+
+		rv.on('error', function (err) {
+			console.error('%s: job "%s": failed to list ' +
+			    'pending tasks: %s', msArg0, jobid, err.message);
+			process.exit(1);
+		});
+
+		rv.on('task', function (task) {
+			tasks.push(task);
+		});
+
+		rv.on('end', function () {
+			tasks.sort(function (t1, t2) {
+				var c = t1['phaseNum'] - t2['phaseNum'];
+				if (c === 0)
+					c = t1['taskId'].localeCompare(
+					    t2['taskId']);
+				return (c);
+			});
+			tasks.forEach(function (t) {
+				var nin;
+				nin = t['input'] ? '-' : (t['nInputs'] || '?');
+
+				table.writeRow([
+				    t['taskId'],
+				    t['phaseNum'],
+				    nin,
+				    t['mantaComputeId']
+				]);
+				if (t['input'])
+					console.log('     map: %s', t['input']);
+			});
+			clientFini();
+		});
 	});
 }
 
