@@ -72,6 +72,7 @@ exports.MarlinMeterReader = mod_meter.MarlinMeterReader;
  *    jobValidate		Validate job input
  *    jobsList			List jobs matching criteria
  *    taskDone			Mark a task finished (dev only)
+ *    taskFetchHistory		Fetch history of a given task
  *
  *    close			Close all open clients.
  *
@@ -248,7 +249,8 @@ function MarlinApi(args)
 	    jobArchiveHeartbeat,
 	    jobValidate,
 	    jobsList,
-	    taskDone
+	    taskDone,
+	    taskFetchHistory
 	];
 
 	methods.forEach(function (func) {
@@ -1578,4 +1580,310 @@ function taskDoneWriteTask(arg, callback)
 
 	client.putObject(bucket, key, task, { 'etag': arg.record['_etag'] },
 	    callback);
+}
+
+function taskFetchHistory(api, taskid, callback)
+{
+	var taskhistory = {
+	    'th_api': api,
+	    'th_barrier': mod_vasync.barrier(),
+	    'th_client': api.ma_client,
+	    'th_errors': [],
+	    'th_log': api.ma_log,
+	    'th_jobid': null,
+	    'th_objects': {
+		'error': {},
+		'jobinput': {},
+	        'task': {},
+		'taskinput': {},
+		'taskoutput': {}
+	    }
+	};
+
+	taskHistoryGet(taskhistory, 'task', taskid);
+
+	taskhistory.th_barrier.on('drain', function () {
+		if (taskhistory.th_errors.length > 0)
+			callback(taskhistory.th_errors[0]);
+		else
+			callback(null, taskHistoryAssemble(taskhistory));
+	});
+}
+
+function taskHistoryWalk(taskhistory, type, key, value)
+{
+	if (taskhistory.th_objects[type].hasOwnProperty(key))
+		return;
+
+	taskhistory.th_objects[type][key] = value;
+
+	if (taskhistory.th_jobid === null)
+		taskhistory.th_jobid = value['jobId'];
+
+	if (value.hasOwnProperty('prevRecordType')) {
+		taskhistory.th_log.debug('want prev for %s %s', type, key);
+		taskHistoryGet(taskhistory,
+		    value['prevRecordType'],
+		    value['prevRecordId']);
+	}
+
+	if (value.hasOwnProperty('nextRecordType')) {
+		taskhistory.th_log.debug('want next for %s %s', type, key);
+		taskHistoryGet(taskhistory,
+		    value['nextRecordType'],
+		    value['nextRecordId']);
+	}
+
+	/*
+	 * We only walk taskoutputs for "map" tasks.
+	 */
+	if (type == 'task' && value['input'] && value['result'] == 'ok') {
+		taskhistory.th_log.debug('want outputs for %s %s', type, key);
+		taskHistoryFind(taskhistory, 'taskoutput',
+		    sprintf('(taskId=%s)', key));
+	}
+
+	/*
+	 * The way Marlin maintains links for retries for map and reduce tasks
+	 * is unfortunately different.
+	 *
+	 * For map tasks, the retry has prevRecord{Type,Id} fields that point
+	 * back at the original task.  So if we're given the retry, we
+	 * follow that pointer back to the previous attempt (above).  If we're
+	 * given the first attempt, we do a "find" to find the retry (below).
+	 *
+	 * For reduce tasks, the original task has a retryTaskId property that
+	 * points to the retry.  So if we're given the first attempt, we follow
+	 * that pointer to the retry (below).  If we're given the retry, we do a
+	 * "find" below to find the original (also below).
+	 *
+	 * This should be normalized, but this tool needs to work with the
+	 * existing mechanism anyway.
+	 */
+	if (type == 'task' && value['timeRetried']) {
+		if (value['retryTaskId']) {
+			taskhistory.th_log.debug('want retry task for %s %s',
+			    type, key);
+			taskHistoryGet(taskhistory, 'task',
+			    value['retryTaskId']);
+		} else {
+			taskhistory.th_log.debug('want retry task for %s %s',
+			    type, key);
+			taskHistoryFind(taskhistory, 'task',
+			    sprintf('(prevRecordType=task)(prevRecordId=%s)',
+			    key));
+		}
+	}
+
+	if (type == 'task' && !value['input'] && value['nattempts'] > 1) {
+		taskhistory.th_log.debug('want previous task for %s %s',
+		    type, key);
+		taskHistoryFind(taskhistory, 'task',
+		    sprintf('(retryTaskId=%s)', value['taskId']));
+	}
+
+	if (type == 'taskinput' || type == 'taskoutput') {
+		taskhistory.th_log.debug('want task for %s %s', type, key);
+		taskHistoryGet(taskhistory, 'task', value['taskId']);
+	}
+}
+
+function taskHistoryGet(taskhistory, type, key)
+{
+	if (taskhistory.th_objects[type].hasOwnProperty(key))
+		return;
+
+	var bucket = taskhistory.th_api.ma_buckets[type];
+	var barrier = taskhistory.th_barrier;
+
+	taskhistory.th_log.debug('fetching %s %s', type, key);
+	barrier.start(type + ' ' + key);
+
+	taskhistory.th_client.getObject(bucket, key, function (err, record) {
+		if (err)
+			taskhistory.th_errors.push(err);
+		else
+			taskHistoryWalk(taskhistory, type, key,
+			    record['value']);
+
+		barrier.done(type + ' ' + key);
+	});
+}
+
+function taskHistoryFind(taskhistory, type, subfilter)
+{
+	var bucket = taskhistory.th_api.ma_buckets[type];
+	var barrier = taskhistory.th_barrier;
+	var filter, req;
+
+	taskhistory.th_log.debug('fetching %s for %s', type, subfilter);
+	mod_assert.ok(taskhistory.th_jobid !== null);
+	barrier.start('find ' + type + ' ' + subfilter);
+
+	filter = sprintf('(&(jobId=%s)%s)', taskhistory.th_jobid, subfilter);
+	req = taskhistory.th_client.findObjects(bucket, filter);
+
+	req.on('error', function (err) {
+		taskhistory.th_errors.push(err);
+		barrier.done('find ' + type + ' ' + subfilter);
+	});
+
+	req.on('record', function (record) {
+		taskHistoryWalk(taskhistory, type, record['key'],
+		    record['value']);
+	});
+
+	req.on('end', function () {
+		barrier.done('find ' + type + ' ' + subfilter);
+	});
+}
+
+/*
+ * Sort all of the objects, first by phase, and then by order of records within
+ * a phase: jobinputs, taskinputs, tasks, taskoutputs, errors.
+ */
+function taskHistoryAssemble(taskhistory)
+{
+	var bucketorder = [ 'jobinput', 'taskinput', 'task',
+	    'taskoutput', 'error' ];
+	var rv = [];
+	var type, key;
+
+	for (type in taskhistory.th_objects) {
+		for (key in taskhistory.th_objects[type]) {
+			rv.push({
+			    'type': type,
+			    'key': key,
+			    'value': taskhistory.th_objects[type][key]
+			});
+		}
+	}
+
+	rv.sort(function (o1, o2) {
+		var diff, b1, b2;
+
+		/*
+		 * Job inputs are always first, and they're sorted by input
+		 * object name.
+		 */
+		if (o1.type == 'jobinput') {
+			if (o2.type == 'jobinput')
+				return (o1.value['input'].localeCompare(
+				    o2.value['input']));
+			return (-1);
+		}
+
+		if (o2.type == 'jobinput')
+			return (1);
+
+		/*
+		 * Next, all records are sorted by phase number.
+		 */
+		mod_assert.ok(o1.value.hasOwnProperty('phaseNum'));
+		mod_assert.ok(o2.value.hasOwnProperty('phaseNum'));
+		diff = o1.value['phaseNum'] - o2.value['phaseNum'];
+		if (diff !== 0)
+			return (diff);
+
+		/*
+		 * Tasks in the same phase are sorted by the retry count.
+		 */
+		if (o1.type == 'task' && o2.type == 'task')
+			return (o1.value['nattempts'] - o2.value['nattempts']);
+
+		/*
+		 * Taskinputs, taskoutputs, and errors are next sorted by their
+		 * task's nattempts (since they're in the same phase).
+		 */
+		b1 = o1.type == 'error' ?
+		    o1.value['prevRecordId'] : o1.value['taskId'];
+		b1 = taskhistory.th_objects['task'][b1]['nattempts'];
+		b2 = o2.type == 'error' ?
+		    o2.value['prevRecordId'] : o2.value['taskId'];
+		b2 = taskhistory.th_objects['task'][b2]['nattempts'];
+		diff = b1 - b2;
+		if (diff !== 0)
+			return (diff);
+
+		/*
+		 * Within a task, sort records by the bucket sort order listed
+		 * above.
+		 */
+		b1 = bucketorder.indexOf(o1.type);
+		mod_assert.ok(b1 != -1);
+		b2 = bucketorder.indexOf(o2.type);
+		mod_assert.ok(b2 != -1);
+		diff = b1 - b2;
+		if (diff !== 0)
+			return (diff);
+
+		/*
+		 * Within a task, taskoutputs are sorted by output object name.
+		 */
+		mod_assert.equal(o1.type, o2.type);
+		if (o1.type == 'taskoutput')
+			return (o1.value['output'].localeCompare(
+			    o2.value['output']));
+
+		/*
+		 * Within a task, taskinputs are sorted by input object name.
+		 */
+		if (o1.type == 'taskinput')
+			return (o1.value['input'].localeCompare(
+			    o2.value['input']));
+
+		/*
+		 * At this point, we should be looking at two errors, and we
+		 * don't currently define a sort order for them.
+		 */
+		mod_assert.equal(o1.type, 'error');
+		return (0);
+	});
+
+	return (rv.map(taskHistorySanitize));
+}
+
+function taskHistorySanitize(entry)
+{
+	var allowed, rv;
+
+	allowed = [
+	    'jobId',
+	    'taskId',
+	    'taskInputId',
+	    'phaseNum',
+	    'state',
+	    'result',
+	    'timeDispatched',
+	    'timeCreated',
+	    'rIdx',
+	    'mantaComputeId',
+	    'nattempts',
+	    'timeDispatchDone',
+	    'timeAccepted',
+	    'timeInputDone',
+	    'nInputs',
+	    'input',
+	    'output',
+	    'timeStarted',
+	    'timeDone',
+	    'machine',
+	    'timeCommitted',
+	    'errorCode',
+	    'errorMessage',
+	    'errorMessageInternal'
+	];
+
+	rv = {
+	    'type': entry['type'],
+	    'key': entry['key'],
+	    'value': {}
+	};
+
+	allowed.forEach(function (f) {
+		if (entry['value'].hasOwnProperty(f))
+			rv['value'][f] = entry['value'][f];
+	});
+
+	return (rv);
 }

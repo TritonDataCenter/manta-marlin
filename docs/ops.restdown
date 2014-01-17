@@ -171,6 +171,187 @@ us-east-{1,2,3} headnodes.  You can look up CNs using `manta-cn`:
     [root@headnode (us-east-2) ~]# /var/tmp/common/manta-cn -h 25.cn.us-east.joyent.us
     MS08214
 
+## See the history of a given task
+
+You may find a task through `mrjob get` or `mrjob where` and want to know its
+history: what inputs or previous-phase tasks caused this task to be created?  Is
+it a retry of a previous task?  How many times was it retried, and on which
+hosts?  `mrjob taskhistory` helps answer these questions.
+
+The point of this tool is to show two things: how a given input moved through
+multiple phases in Marlin, and how individual tasks are retried.  The goal is
+that given any taskid, it will find predecessors in previous phases,
+predecessors in the same phase (retries), successors in the same phase
+(retries), and successors in subsequent phases.  The main thing it doesn't do
+is go *through* reduce phases, because that's usually counter-productive and in
+general it's not possible to correlate inputs with outputs across a reduce
+phase.
+
+Here's an example usage.  I ran this job (note the phases):
+
+
+    $ mrjob get -p ea784e03-a735-cd29-d913-b1b9cb5f0503
+           Job ea784e03-a735-cd29-d913-b1b9cb5f0503
+          User dap (ddb63097-4093-4a74-b8e8-56b23eb253e0)
+         State done
+    Supervisor eff884b4-f678-4069-8522-1bbe2e4fcb90
+       Created 2014-01-17T19:22:02.326Z (16m38.446s ago)
+          Done 2014-01-17T19:22:35.110Z (32.784s total)
+      Archived 2014-01-17T19:22:38.064Z (16m02.708s ago)
+      Progress 100 inputs read, 242 tasks dispatched, 242 tasks committed
+       Results 15 outputs, 0 errors, 12 retries
+       Phase 0 map
+          exec "wc"
+       Phase 1 map
+          exec "wc"
+       Phase 2 reduce (15)
+          exec "wc"
+       Phase 3 map
+          exec "wc"
+
+
+So it's 100 inputs -> map -> map -> 15 reducers -> map.  Because Marlin is
+currently disabled on 9.stor in production, there were retries in both map
+phases and reduce phases, so this is a good example to show what
+`mrjob taskhistory` does.  I used `mrjob get -t` to find some of these tasks,
+although if a job was currently stuck, you could also use `mrjob where`.
+
+Here's a normal history for one of the first phase tasks:
+
+
+    $ mrjob taskhistory 33b7f617-141e-4673-8056-a27a6f511b60
+    2014-01-17T19:22:02.814Z  jobinput   318ed0ad-8aed-4f74-af90-a7cfefc87880
+        /dap/stor/datasets/cmd/cmd/acct/acctcms.c
+    
+    2014-01-17T19:22:03.746Z  map task   33b7f617-141e-4673-8056-a27a6f511b60
+                                         (attempt 1, host 11.cn.us-east.joyent.us)
+        /dap/stor/datasets/cmd/cmd/acct/acctcms.c
+    
+    2014-01-17T19:22:04.142Z  taskoutput b9bb82de-416d-4ac3-a962-09f75a140932
+        /dap/jobs/ea784e03-a735-cd29-d913-b1b9cb5f0503/stor/dap/stor/datasets/cmd/cmd/acct/acctcms.c.0.33b7f617-141e-4673-8056-a27a6f511b60
+    
+    2014-01-17T19:22:08.663Z  map task   1b370599-90b3-4c03-a388-c8967798d396
+                                         (attempt 1, host 25.cn.us-east.joyent.us)
+    
+    2014-01-17T19:22:09.078Z  taskoutput c98b68d1-1b76-4adf-845c-f7392d860694
+        /dap/jobs/ea784e03-a735-cd29-d913-b1b9cb5f0503/stor/dap/stor/datasets/cmd/cmd/acct/acctcms.c.1.1b370599-90b3-4c03-a388-c8967798d396
+    
+    2014-01-17T19:22:13.398Z  taskinput  1d4cf4de-9c4c-4841-b801-0595f69b2ff0
+        /dap/jobs/ea784e03-a735-cd29-d913-b1b9cb5f0503/stor/dap/stor/datasets/cmd/cmd/acct/acctcms.c.1.1b370599-90b3-4c03-a388-c8967798d396
+    
+    2014-01-17T19:22:02.447Z  reducer    015f6dbb-8bb3-4b07-b806-12bdf46fd8a8
+                                         (attempt 1, host 11.cn.us-east.joyent.us)
+                                         4 inputs
+
+This shows the jobinput that created the task, the output from the task that
+created the next map task, the output from that task that becamse a taskinput
+for the reducer, and the reducer.  For each task, it shows the host assigned to
+run it.  You'd get the exact same output if you specified tasks
+1b370599-90b3-4c03-a388-c8967798d396 or 015f6dbb-8bb3-4b07-b806-12bdf46fd8a8.
+
+Here's an example where one of the early phase map tasks failed and had to be retried:
+
+
+    $ mrjob taskhistory a322ebe6-3279-40ee-8c7e-88130def17b4
+    2014-01-17T19:22:03.220Z  jobinput   5f72c373-9155-459e-9032-0ac18ecaef6a
+        /dap/stor/datasets/cmd/cmd/addbadsec/addbadsec.c
+    
+    2014-01-17T19:22:03.660Z  map task   a322ebe6-3279-40ee-8c7e-88130def17b4
+                                         (attempt 1, host 9.cn.us-east.joyent.us)
+        /dap/stor/datasets/cmd/cmd/addbadsec/addbadsec.c
+    
+    2014-01-17T19:22:06.411Z  error      bb08a232-75d6-4b59-a80c-3f369f84d64a
+                                         InternalError
+                                         internal error: agent timed out
+    
+    2014-01-17T19:22:07.551Z  map task   e4c80edb-5302-4f6f-af19-336be9834e92
+                                         (attempt 2, host 26.cn.us-east.joyent.us)
+        /dap/stor/datasets/cmd/cmd/addbadsec/addbadsec.c
+    
+    2014-01-17T19:22:07.679Z  taskoutput c79dc94d-5800-4e59-b808-998c94024c2f
+        /dap/jobs/ea784e03-a735-cd29-d913-b1b9cb5f0503/stor/dap/stor/datasets/cmd/cmd/addbadsec/addbadsec.c.0.e4c80edb-5302-4f6f-af19-336be9834e92
+    
+    2014-01-17T19:22:12.279Z  map task   c6cbe67f-2c9d-4c50-ae0c-53590303f544
+                                         (attempt 1, host 19.cn.us-east.joyent.us)
+    
+    2014-01-17T19:22:12.529Z  taskoutput 70275969-c92f-4700-96c2-9564158be0b2
+        /dap/jobs/ea784e03-a735-cd29-d913-b1b9cb5f0503/stor/dap/stor/datasets/cmd/cmd/addbadsec/addbadsec.c.1.c6cbe67f-2c9d-4c50-ae0c-53590303f544
+    
+    2014-01-17T19:22:15.271Z  taskinput  22b96b55-86f2-43a1-9271-9a9334726a61
+        /dap/jobs/ea784e03-a735-cd29-d913-b1b9cb5f0503/stor/dap/stor/datasets/cmd/cmd/addbadsec/addbadsec.c.1.c6cbe67f-2c9d-4c50-ae0c-53590303f544
+    
+    2014-01-17T19:22:02.447Z  reducer    6e009faa-a0d8-478a-9b66-ae82852fbf45
+                                         (attempt 1, host 25.cn.us-east.joyent.us)
+                                         7 inputs
+
+In this case, we see the map task we asked about, the error it produced, and the map retry task below it on a different host.
+
+Here's what happens when we select a reducer that failed:
+
+    $ mrjob taskhistory 3ac67932-75ba-4ce0-891e-1b295949a3be
+    2014-01-17T19:22:02.447Z  reducer    3ac67932-75ba-4ce0-891e-1b295949a3be
+                                         (attempt 1, host 9.cn.us-east.joyent.us)
+                                         input stream open
+    
+    2014-01-17T19:22:06.424Z  error      c3923a5f-93ea-425e-92c3-694b6bf08b3d
+                                         InternalError
+                                         internal error: agent timed out
+    
+    2014-01-17T19:22:07.542Z  reducer    c98bd373-6c08-4032-b405-bf0a0e18f820
+                                         (attempt 2, host 12.cn.us-east.joyent.us)
+                                         9 inputs
+
+We don't see any of the previous or subsequent phase tasks because
+"taskhistory" doesn't cross reduce phases.  (That would usually degenerate to
+showing everything in the job, which isn't useful here.)
+
+Here's a particularly complicated case.  The input went through two normal map
+phases, then became a taskinput to the *second* attempt for a reducer.  We
+still show the first reducer here in the output, but it shows up before the
+taskinput, indicating that the first reducer failed logically before this
+object was assigned to the reducer, so it was assigned directly to the second
+attempt:
+
+    $ mrjob taskhistory 94851372-49b9-48fd-b5ca-b51b330561ab
+    2014-01-17T19:22:03.024Z  jobinput   237d6925-75e4-4a0a-9186-cd214b510e6a
+        /dap/stor/datasets/cmd/cmd/acct/acctwtmp.c
+    
+    2014-01-17T19:22:03.633Z  map task   4906e7b9-c65e-4655-95d0-5bdcbda62b39
+                                         (attempt 1, host 26.cn.us-east.joyent.us)
+        /dap/stor/datasets/cmd/cmd/acct/acctwtmp.c
+    
+    2014-01-17T19:22:04.164Z  taskoutput 41dd8fac-2923-42ec-a893-43318596472b
+        /dap/jobs/ea784e03-a735-cd29-d913-b1b9cb5f0503/stor/dap/stor/datasets/cmd/cmd/acct/acctwtmp.c.0.4906e7b9-c65e-4655-95d0-5bdcbda62b39
+    
+    2014-01-17T19:22:07.380Z  map task   94851372-49b9-48fd-b5ca-b51b330561ab
+                                         (attempt 1, host 293.cn.us-east.joyent.us)
+    
+    2014-01-17T19:22:07.604Z  taskoutput 5cbb34ab-a0f4-4144-9629-629d323cc1f0
+        /dap/jobs/ea784e03-a735-cd29-d913-b1b9cb5f0503/stor/dap/stor/datasets/cmd/cmd/acct/acctwtmp.c.1.94851372-49b9-48fd-b5ca-b51b330561ab
+    
+    2014-01-17T19:22:02.447Z  reducer    660f7838-4055-49b3-8376-dec9648ec2a5
+                                         (attempt 1, host 9.cn.us-east.joyent.us)
+                                         input stream open
+    
+    2014-01-17T19:22:06.397Z  error      4263bcc0-3a5e-433b-9460-b5970044cb51
+                                         InternalError
+                                         internal error: agent timed out
+    
+    2014-01-17T19:22:12.279Z  taskinput  686236b8-1de2-4ef6-aa6b-e4f908c2497a
+        /dap/jobs/ea784e03-a735-cd29-d913-b1b9cb5f0503/stor/dap/stor/datasets/cmd/cmd/acct/acctwtmp.c.1.94851372-49b9-48fd-b5ca-b51b330561ab
+    
+    2014-01-17T19:22:07.539Z  reducer    318b47e5-a234-4fa0-b11e-e80701cfc90d
+                                         (attempt 2, host 9.cn.us-east.joyent.us)
+                                         input stream open
+    
+    2014-01-17T19:22:11.437Z  error      681faf97-2ae5-4938-89a8-d422e7156d11
+                                         InternalError
+                                         internal error: agent timed out
+    
+    2014-01-17T19:22:12.689Z  reducer    721187a7-5df1-4ce1-9c3b-9e54ffd71cce
+                                         (attempt 3, host 20.cn.us-east.joyent.us)
+                                         6 inputs
+
 ## Using the Moray tools to fetch detailed state
 
 Sometimes it's necessary to dig into the Moray state directly because "mrjob"

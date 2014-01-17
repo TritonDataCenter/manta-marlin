@@ -68,12 +68,13 @@ var msUsage = [
     '',
     'DETAILED JOB INSPECTION',
     '',
-    '       mrjob errors   jobid',
-    '       mrjob failed   jobid',
-    '       mrjob inputs   jobid',
-    '       mrjob log      jobid',
-    '       mrjob outputs  jobid',
-    '       mrjob retries  jobid'
+    '       mrjob errors      jobid',
+    '       mrjob failed      jobid',
+    '       mrjob inputs      jobid',
+    '       mrjob log         jobid',
+    '       mrjob outputs     jobid',
+    '       mrjob retries     jobid',
+    '       mrjob taskhistory taskid'
 ].join('\n');
 
 var msHelp = [
@@ -211,6 +212,10 @@ var msHelp = [
     '',
     '       Lists retried errors that occurred while processing the given job.',
     '',
+    '   taskhistory taskid',
+    '',
+    '       Lists information about the given task and its retries.',
+    '',
     'MORAY',
     '',
     '   The remote Moray instance to use must be specified via the MORAY_URL ',
@@ -263,7 +268,8 @@ var msCommands = {
     'log': cmdLog,
     'retries': cmdRetries,
     'delete': cmdDelete,
-    'taskdone': cmdTaskdone
+    'taskdone': cmdTaskdone,
+    'taskhistory': cmdTaskhistory
 };
 
 /* default set of columns for list-of-jobs */
@@ -1707,6 +1713,90 @@ function sortStable(list, comparator)
 		list[j] = tosort[j];
 
 	return (list);
+}
+
+function cmdTaskhistory()
+{
+	if (process.argv.length != 4)
+		usage();
+
+	var taskid = process.argv[3];
+
+	clientInit(function (api) {
+		api.taskFetchHistory(taskid, function (err, history) {
+			if (err) {
+				console.error('%s: task "%s": failed to ' +
+				    'fetch history: %s', msArg0, taskid,
+				    err.message);
+				process.exit(1);
+			}
+
+			history.forEach(taskHistoryPrint);
+			clientFini();
+		});
+	});
+}
+
+function taskHistoryPrint(entry)
+{
+	var v = entry['value'];
+
+	switch (entry.type) {
+	case 'jobinput':
+		println('%24s  %-10s %s', v['timeCreated'],
+		    entry.type, entry.key);
+		println('    %s', v['input']);
+		break;
+
+	case 'taskinput':
+		println('%24s  %-10s %s', v['timeDispatched'],
+		    entry.type, entry.key);
+		println('    %s', v['input']);
+		break;
+
+	case 'taskoutput':
+		println('%24s  %-10s %s', v['timeCreated'],
+		    entry.type, entry.key);
+		println('    %s', v['output']);
+		break;
+
+	case 'task':
+		if (v['input']) {
+			println('%24s  %-10s %s', v['timeDispatched'],
+			    'map task', entry.key);
+			println('%24s  %10s (attempt %s, host %s)', '', '',
+			    v['nattempts'], v['mantaComputeId']);
+			if (v['phaseNum'] === 0)
+				println('    %s', v['input']);
+		} else {
+			println('%24s  %-10s %s', v['timeDispatched'],
+			    'reducer', entry.key);
+			println('%24s  %10s (attempt %s, host %s)', '', '',
+			    v['nattempts'], v['mantaComputeId']);
+			println('%24s  %10s %s', '', '',
+			    v['nInputs'] !== undefined ?
+			    v['nInputs'] + ' inputs' : 'input stream open');
+		}
+
+		break;
+
+	case 'error':
+		println('%24s  %-10s %s', v['timeCommitted'],
+		    entry.type, entry.key);
+		println('%24s  %10s %s', '', '', v['errorCode']);
+		if (v['errorMessageInternal'])
+			println('%24s  %10s internal error: %s', '', '',
+			    v['errorMessageInternal']);
+		else
+			println('%24s  %10s %s', '', '', v['errorMessage']);
+		break;
+
+	default:
+		console.log(entry);
+		break;
+	}
+
+	println('');
 }
 
 main();
