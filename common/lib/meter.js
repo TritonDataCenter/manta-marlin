@@ -28,31 +28,47 @@ exports.MarlinMeterReader = MarlinMeterReader;
  */
 var maKstatCumulativeFields = {};
 [
-    '100ms_ops',
-    '10ms_ops',
-    '10s_ops',
-    '1s_ops',
-    'anon_alloc_fail',
-    'anonpgin',
-    'delay_cnt',
-    'execpgin',
-    'fspgin',
-    'n_pf_throttle',
-    'nover',
-    'nread',
-    'nwritten',
+    /* cpu */
     'nsec_user',
     'nsec_sys',
     'nsec_waitrq',
+    'forkfail_cap',
+    'forkfail_noproc',
+    'forkfail_nomem',
+    'forkfail_misc',
+
+    /* memory */
+    'nover',
     'pagedout',
     'pgpgin',
+    'anonpgin',
+    'execpgin',
+    'fspgin',
+    'anon_alloc_fail',
+    'n_pf_throttle',
+
+    /* I/O (fields used by both VFS and ZFS) */
+    'nread',
     'reads',
-    'rlentime',
     'rtime',
-    'waittime',
-    'wlentime',
+    'rlentime',
+    'nwritten',
     'writes',
     'wtime',
+    'wlentime',
+    'waittime',
+    '10ms_ops',
+    '100ms_ops',
+    '1s_ops',
+    '10s_ops',
+    'delay_cnt',
+
+    /* net */
+    'ierrors',
+    'rbytes64',
+    'ipackets64',
+    'obytes64',
+    'opackets64',
 
     /* non-kstat fields */
     'nrecords',
@@ -680,6 +696,7 @@ function BunyanReader(stream)
 	});
 
 	stream.pipe(this.br_lstream);
+	this.br_lstream.resume();
 }
 
 mod_util.inherits(BunyanReader, EventEmitter);
