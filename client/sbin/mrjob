@@ -906,6 +906,7 @@ function cmdList()
 			break;
 
 		case 't':
+			options['state'] = undefined;
 			options['doneSince'] = parseInt(option.optarg, 10);
 			if (isNaN(options['doneSince']) ||
 			    options['doneSince'] === 0) {
