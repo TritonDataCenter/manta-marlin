@@ -1,0 +1,48 @@
+#!/bin/bash
+
+#
+# mragentconf
+# Disables the marlin agent and removes all configuration
+#
+
+mac_arg0=$(basename $0)
+
+function usage
+{
+	echo "usage: $mac_arg0 -f" >&2
+        echo "Note this will disable the marlin agent and remove all "
+        echo "configuration.  Use at your own peril."
+	exit 2
+}
+
+function fail
+{
+	echo "$*" >&2
+	exit 1
+}
+
+[[ $# -eq 1 ]] || usage
+[[ $1 == "-f" ]] || usage
+
+PATH=$PATH:/usr/sbin
+
+mac_root=$(dirname $0)/..
+mac_marlindir=/opt/smartdc/marlin
+mac_smfdir=/opt/smartdc/agents/smf
+
+# Disable the marlin agent
+svcadm disable -s marlin-agent || fail "failed to disable marlin-agent"
+svccfg export marlin-agent > $mac_smfdir/marlin-agent.xml || \
+    fail "failed to save marlin-agent manifest"
+echo "disabled the marlin agent ($mac_smfdir/marlin-agent.xml)"
+
+# Remove crontab entries
+mac_tmpfile=/var/tmp/$mac_arg0.$$
+crontab -l | grep -v "$mac_root" > $mac_tmpfile
+crontab $mac_tmpfile || fail "failed to clean cron $mac_tmpfile"
+rm -f $mac_tmpfile
+echo "removed crontab entries"
+
+# Remove the marlin agent configuration
+rm -rf "$mac_marlindir" || fail "failed to remove $mac_marlindir"
+echo "removed marlin configuration directory ($mac_marlindir)"

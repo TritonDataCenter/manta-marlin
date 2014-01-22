@@ -83,6 +83,7 @@ BASH_FILES	 = \
     agent/npm/preuninstall.sh		\
     agent/sbin/logpush.sh		\
     agent/sbin/mragentconf		\
+    agent/sbin/mragentdestroy		\
     agent/sbin/mrdeploycompute		\
     agent/sbin/mrgroups			\
     agent/sbin/mrlogexpire.sh		\
