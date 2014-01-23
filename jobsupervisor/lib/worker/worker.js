@@ -438,6 +438,7 @@ function Worker(args)
 
 	this.w_mahi = undefined;
 	this.w_logthrottle = new mod_mautil.EventThrottler(60 * 1000);
+	this.w_longlogthrottle = new mod_mautil.EventThrottler(60 * 60 * 1000);
 	this.w_dtrace = mod_provider.createProvider(mwProviderDefinition);
 
 	/* throttling state */
@@ -954,6 +955,7 @@ Worker.prototype.tick = function ()
 		this.jobTick(this.w_jobs[jobid]);
 
 	this.w_logthrottle.flush(now);
+	this.w_longlogthrottle.flush(now);
 	this.heartbeat();
 
 	this.w_tick_done = new Date();
@@ -1219,7 +1221,8 @@ Worker.prototype.onRecordJobInput = function (record, barrier)
 	    'd_auths': [],
 	    'd_locates': [],
 	    'd_login': undefined,
-	    'd_account': undefined,
+	    'd_owner': undefined,
+	    'd_creator': undefined,
 	    'd_objname_internal': undefined,
 	    'd_objectid': undefined,
 	    'd_locations': undefined,
@@ -1838,7 +1841,8 @@ Worker.prototype.taskRetryMap = function (record, barrier, job, phase, now)
 	    'd_auths': [],
 	    'd_locates': [],
 	    'd_login': undefined,
-	    'd_account': undefined,
+	    'd_owner': undefined,
+	    'd_creator': undefined,
 	    'd_objname_internal': undefined,
 	    'd_objectid': undefined,
 	    'd_locations': undefined,
@@ -1904,6 +1908,7 @@ Worker.prototype.onRecordTaskInput = function (record, barrier)
 	    'input': record['value']['input'],
 	    'p0input': record['value']['p0input'],
 	    'account': record['value']['account'],
+	    'creator': record['value']['creator'],
 	    'objectid': record['value']['objectid'],
 	    'servers': record['value']['servers'],
 	    'timeDispatched': now,
@@ -1984,7 +1989,8 @@ Worker.prototype.onRecordTaskOutput = function (record, barrier)
 	    'd_auths': [],
 	    'd_locates': [],
 	    'd_login': undefined,
-	    'd_account': undefined,
+	    'd_owner': undefined,
+	    'd_creator': undefined,
 	    'd_objname_internal': undefined,
 	    'd_objectid': undefined,
 	    'd_locations': undefined,
@@ -3405,7 +3411,7 @@ Worker.prototype.processQueues = function ()
 		}
 
 		if (dispatch.d_error === undefined && !isAuthorized(
-		    job, dispatch.d_account, dispatch.d_objname)) {
+		    job, dispatch.d_owner, dispatch.d_objname)) {
 			dispatch.d_error = {
 			    'code': EM_AUTHORIZATION,
 			    'message': sprintf('permission denied: "%s"',
@@ -3565,15 +3571,18 @@ Worker.prototype.taskPostDispatchCheck = function (task)
  *    d_login			object owner's login
  *    (see dispResolveUser)	(derived directly from d_objname)
  *
- *    d_account			object owner's account uuid
+ *    d_owner			object owner's account uuid
  *    (see dispResolveUser)
  *
  *    d_objname_internal	object name as known to Moray
  *    (see dispResolveUser)	(derived by replacing d_login
- *    				with d_account in d_objname)
+ *    				with d_owner in d_objname)
  *
  *    d_auths			piggy-backed auth requests
  *    (see dispResolveUser)
+ *
+ *    d_creator			object creator's account uuid
+ *    (see dispLocate)
  *
  *    d_objectid		unique object identifier, or
  *    (see dispLocate)		'/dev/null' for zero-byte objects
@@ -3652,7 +3661,7 @@ Worker.prototype.dispResolveUser = function (dispatch)
 			};
 		} else {
 			dispatch.d_login = login;
-			dispatch.d_account = record['uuid'];
+			dispatch.d_owner = record['uuid'];
 		}
 
 		worker.w_auths_in.push(dispatch);
@@ -3660,7 +3669,7 @@ Worker.prototype.dispResolveUser = function (dispatch)
 		dispatch.d_auths.forEach(function (odispatch) {
 			odispatch.d_error = dispatch.d_error;
 			odispatch.d_login = dispatch.d_login;
-			odispatch.d_account = dispatch.d_account;
+			odispatch.d_owner = dispatch.d_owner;
 			worker.w_auths_in.push(odispatch);
 		});
 
@@ -3678,7 +3687,7 @@ Worker.prototype.dispLocate = function (dispatch)
 	var objname;
 
 	job.j_nlocates++;
-	objname = pathSwapFirst(dispatch.d_objname, dispatch.d_account);
+	objname = pathSwapFirst(dispatch.d_objname, dispatch.d_owner);
 	dispatch.d_objname_internal = objname;
 
 	if (this.w_locates_pending.hasOwnProperty(objname)) {
@@ -3698,7 +3707,7 @@ Worker.prototype.dispLocate = function (dispatch)
  */
 Worker.prototype.dispLocateResponse = function (dispatches, err, locations)
 {
-	var dispatch, iobjname, i, code, message;
+	var dispatch, iobjname, i, code, message, l;
 	var worker = this;
 
 	for (i = 0; i < dispatches.length; i++) {
@@ -3734,12 +3743,14 @@ Worker.prototype.dispLocateResponse = function (dispatches, err, locations)
 				};
 			}
 		} else {
-			dispatch.d_objectid = locations[iobjname].length > 0 ?
-			    locations[iobjname][0]['objectid'] : '/dev/null';
-			dispatch.d_locations = locations[iobjname].filter(
+			l = locations[iobjname];
+			dispatch.d_creator = l['creator'];
+			dispatch.d_objectid = l['contentLength'] === 0 ?
+			    '/dev/null' : l['objectid'];
+			dispatch.d_locations = l['sharks'].filter(
 			    function (loc) {
-				return (worker.w_agents.hasOwnProperty(
-				    loc['mantaComputeId']));
+				return (worker.dispLocateValidLoc(
+				    iobjname, loc));
 			    });
 			this.w_dtrace.fire('locate-done', function () {
 				return ([ dispatch.d_objname_internal, '' ]);
@@ -3760,6 +3771,45 @@ Worker.prototype.dispLocateResponse = function (dispatches, err, locations)
 	}
 
 	this.processQueues();
+};
+
+/*
+ * Given a "shark" as returned by the locator, determine whether we can run a
+ * job at that location.  If not, log a warning explaining why, but throttle
+ * that so we don't log it too often.
+ */
+Worker.prototype.dispLocateValidLoc = function (input, loc)
+{
+	var logkey;
+
+	mod_assert.ok(loc.hasOwnProperty('mantaComputeId'));
+	mod_assert.ok(loc.hasOwnProperty('mantaStorageId'));
+	mod_assert.ok(loc['mantaStorageId']);
+
+	if (loc['mantaComputeId'] === null) {
+		logkey = sprintf('missing mapping for mantaStorageId %s',
+		    loc['mantaStorageId']);
+		if (!this.w_longlogthrottle.throttle(logkey))
+			this.w_log.warn({
+			    'mantaStorageId': loc['mantaStorageId'],
+			    'input': input
+			}, 'missing mantaStorageId mapping');
+		return (false);
+	}
+
+	if (!this.w_agents.hasOwnProperty(loc['mantaComputeId'])) {
+		logkey = sprintf('missing agent for mantaComputeId %s',
+		    loc['mantaComputeId']);
+		if (!this.w_longlogthrottle.throttle(logkey))
+			this.w_log.warn({
+			    'mantaStorageId': loc['mantaStorageId'],
+			    'mantaComputeId': loc['mantaComputeId'],
+			    'input': input
+			}, 'missing agent');
+		return (false);
+	}
+
+	return (true);
 };
 
 Worker.prototype.dispDispatch = function (dispatch)
@@ -3835,7 +3885,8 @@ Worker.prototype.dispMap = function (dispatch)
 	value['input'] = dispatch.d_objname;
 	value['p0input'] = dispatch.d_pi === 0 ? dispatch.d_objname :
 	    dispatch.d_origin['value']['p0input'];
-	value['account'] = dispatch.d_account;
+	value['account'] = dispatch.d_owner;
+	value['creator'] = dispatch.d_creator;
 	value['objectid'] = dispatch.d_objectid;
 	value['mantaComputeId'] = this.w_agents[instance].
 	    a_record['value']['instance'];
@@ -3972,7 +4023,8 @@ Worker.prototype.dispReduce = function (dispatch)
 		task.t_value['mantaComputeId']].a_record['value']['generation'],
 	    'input': dispatch.d_objname,
 	    'p0input': dispatch.d_p0objname,
-	    'account': dispatch.d_account,
+	    'account': dispatch.d_owner,
+	    'creator': dispatch.d_creator,
 	    'objectid': dispatch.d_objectid,
 	    'servers': dispatch.d_locations.map(function (l) {
 		return ({

@@ -22,13 +22,19 @@ var mod_marlin = require('../../lib/marlin');
 var mod_testcommon = require('../common');
 var mod_schema = require('../../lib/schema');
 
-/* jsl:import ../../lib/errors.js */
+/* jsl:import ../../../common/lib/errors.js */
 require('../../lib/errors');
 
 var sprintf = mod_extsprintf.sprintf;
 var VError = mod_verror.VError;
 var exnAsync = mod_testcommon.exnAsync;
 var log = mod_testcommon.log;
+
+/*
+ * MANTA_USER should be set to an operator (e.g., "poseidon") in order to run
+ * the tests, but most of the tests will run as DEFAULT_USER.
+ */
+var DEFAULT_USER = 'marlin_test';
 
 exports.jobSubmit = jobSubmit;
 exports.jobTestRun = jobTestRun;
@@ -51,6 +57,59 @@ exports.jobM = {
 	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
 	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj2\.0\./,
 	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj3\.0\./
+    ],
+    'errors': []
+};
+
+exports.jobMcrossAccountLink = {
+    'pre_submit': function (api, callback) {
+	var user1 = 'marlin_test_user_xacct';
+	var user2 = DEFAULT_USER;
+	var srckey = sprintf('/%s/public/xacctobj', user1);
+	var dstdir = sprintf('/%s/stor/subdir', user2);
+	var dstkey = sprintf('%s/obj_link', dstdir);
+
+	log.info('setting up cross-account link test');
+	mod_vasync.pipeline({
+	    'funcs': [
+		function ensureUser1(_, subcb) {
+			mod_testcommon.ensureUser(user1, subcb);
+		},
+		function ensureUser2(_, subcb) {
+			mod_testcommon.ensureUser(user2, subcb);
+		},
+		function populateSource(_, subcb) {
+			var data = 'auto-generated snaplink source content';
+			var stream = new StringInputStream(data);
+			log.info('PUT key "%s"', srckey);
+			api.manta.put(srckey, stream, { 'size': data.length },
+			    subcb);
+		},
+		function mkdirDst(_, subcb) {
+			log.info('creating destination directory');
+			api.manta.mkdirp(dstdir, subcb);
+		},
+		function mklinkDist(_, subcb) {
+			log.info('creating snaplink');
+			api.manta.ln(srckey, dstkey, subcb);
+		}
+	    ]
+	}, function (err) {
+		if (err)
+			log.error(err, 'failed to set up test');
+		else
+			log.info('test is ready');
+		callback(err);
+	});
+    },
+    'job': {
+	'phases': [ { 'type': 'map', 'exec': 'wc' } ]
+    },
+    'inputs': [],
+    'extra_inputs': [ '/%user%/stor/subdir/obj_link' ],
+    'timeout': 30 * 1000,
+    'expected_outputs': [
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/subdir\/obj_link\.0\./
     ],
     'errors': []
 };
@@ -726,11 +785,11 @@ exports.jobRassetEncoding = {
 	'assets': {
 	    '/%user%/stor/hello 1': '1234'
 	},
-        'phases': [ {
+	'phases': [ {
 	    'type': 'reduce',
 	    'assets': [ '/%user%/stor/hello 1' ],
 	    'exec': 'find /assets -type f'
-	} ],
+	} ]
     },
     'inputs': [],
     'timeout': 30 * 1000,
@@ -1174,7 +1233,7 @@ exports.jobRerrorMuskieRetry = {
 	    'exec': 'wc'
 	} ]
     },
-    'inputs': [ '/poseidon/stor/obj1' ],
+    'inputs': [ '/%user%/stor/obj1' ],
     'timeout': 60 * 1000,
     'expected_outputs': [],
     'errors': [ {
@@ -1249,11 +1308,11 @@ exports.jobMerrorHsfs = {
     'inputs': [ '/%user%/stor/obj1' ],
     'timeout': 20 * 1000,
     'errors': [],
-    'expected_outputs': [ 
-	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./,
+    'expected_outputs': [
+	/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
     ],
     'expected_output_content': [
-        'mount: insufficient privileges\n33\n/mnt2\n'
+	'mount: insufficient privileges\n33\n/mnt2\n'
     ]
 };
 
@@ -1284,9 +1343,9 @@ exports.jobRcatbin = {
 	} ]
     },
     'inputs': [
-	'/poseidon/stor/obj1',
-	'/poseidon/stor/obj2',
-	'/poseidon/stor/obj3'
+	'/%user%/stor/obj1',
+	'/%user%/stor/obj2',
+	'/%user%/stor/obj3'
     ],
     'timeout': 60 * 1000,
     'expected_outputs': [ /\/%user%\/jobs\/.*\/stor\/reduce\.1\./ ],
@@ -1658,6 +1717,7 @@ exports.jobMinitKillAfter = {
 
 exports.jobsMain = [
     exports.jobM,
+    exports.jobMcrossAccountLink,
     exports.jobMimage,
     exports.jobMX,
     exports.jobMqparams,
@@ -1729,7 +1789,7 @@ exports.jobsCornerCases = [
     exports.jobMerrorLackeyOom,
     exports.jobMerrorMuskieRetry,
     exports.jobRmuskieRetry,
-    exports.jobRerrorMuskieRetry,
+    exports.jobRerrorMuskieRetry
 ];
 
 exports.jobsAll = exports.jobsCornerCases.concat(exports.jobsMain);
@@ -1775,9 +1835,10 @@ function initJobs()
 	    exports.jobMerrorMuskieRetry['inputs'];
 }
 
-function replaceParams(str)
+function replaceParams(testspec, str)
 {
-	var user = process.env['MANTA_USER'];
+	mod_assert.ok(arguments.length >= 2);
+	var user = DEFAULT_USER;
 
 	if (typeof (str) == 'string')
 		return (str.replace(/%user%/g, user));
@@ -1804,7 +1865,7 @@ function jobSubmit(api, testspec, callback)
 {
 	var jobdef, login, url, funcs, private_key, signed_path, jobid;
 
-	login = process.env['MANTA_USER'];
+	login = DEFAULT_USER;
 	url = mod_url.parse(process.env['MANTA_URL']);
 
 	if (!login) {
@@ -1818,7 +1879,7 @@ function jobSubmit(api, testspec, callback)
 	jobdef = {
 	    'auth': {
 		'login': login,
-		'groups': [ 'operators' ] /* XXX */
+		'groups': []
 	    },
 	    'phases': testspec['job']['phases'],
 	    'name': 'marlin test suite job',
@@ -1828,9 +1889,10 @@ function jobSubmit(api, testspec, callback)
 	};
 
 	jobdef['phases'].forEach(function (p) {
-		p['exec'] = replaceParams(p['exec']);
+		p['exec'] = replaceParams(testspec, p['exec']);
 		if (p['assets'])
-			p['assets'] = p['assets'].map(replaceParams);
+			p['assets'] = p['assets'].map(
+			    replaceParams.bind(null, testspec));
 	});
 
 	funcs = [
@@ -1910,17 +1972,18 @@ function jobSubmit(api, testspec, callback)
 	    },
 	    function (_, stepcb) {
 		log.info('submitting job', jobdef);
-		api.jobCreate(jobdef, function (err, result) {
+		api.jobCreate(jobdef, { 'istest': true },
+		    function (err, result) {
 			jobid = result;
 			stepcb(err);
-		});
+		    });
 	    }
 	];
 
 	if (testspec['job']['assets']) {
 		mod_jsprim.forEachKey(testspec['job']['assets'],
 		    function (key, content) {
-			key = replaceParams(key);
+			key = replaceParams(testspec, key);
 			funcs.push(function (_, stepcb) {
 				log.info('submitting asset "%s"', key);
 				var stream = new mod_memorystream(content,
@@ -1934,7 +1997,9 @@ function jobSubmit(api, testspec, callback)
 	funcs.push(function (_, stepcb) {
 		var final_err;
 
-		if (testspec['inputs'].length === 0) {
+		if (testspec['inputs'].length === 0 &&
+		    (!testspec['extra_inputs'] ||
+		    testspec['extra_inputs'].length === 0)) {
 			stepcb();
 			return;
 		}
@@ -1959,8 +2024,14 @@ function jobSubmit(api, testspec, callback)
 		});
 
 		testspec['inputs'].forEach(function (key) {
-			queue.push(replaceParams(key));
+			queue.push(replaceParams(testspec, key));
 		});
+
+		if (testspec['extra_inputs']) {
+			testspec['extra_inputs'].forEach(function (key) {
+				queue.push(replaceParams(testspec, key));
+			});
+		}
 
 		queue.drain = function () { stepcb(final_err); };
 	});
@@ -1973,7 +2044,10 @@ function jobSubmit(api, testspec, callback)
 		});
 	}
 
-	mod_vasync.pipeline({ 'funcs': funcs }, function (err) {
+	if (testspec['pre_submit'])
+		funcs.unshift(testspec['pre_submit']);
+
+	mod_vasync.pipeline({ 'funcs': funcs, 'arg': api }, function (err) {
 		if (!err)
 			log.info('job "%s": job submission complete', jobid);
 		callback(err, jobid);
@@ -2110,7 +2184,8 @@ function jobTestVerifyFetchObjectsFound(verify, callback)
 	    '../../node_modules/manta/bin/mfind');
 
 	mod_child.execFile(process.execPath, [ cmd, '-i', '-t', 'o',
-	    replaceParams('/%user%/jobs/' + verify['jobid'] + '/stor') ],
+	    replaceParams(verify['testspec'],
+	        '/%user%/jobs/' + verify['jobid'] + '/stor') ],
 	    function (err, stdout, stderr) {
 		if (err) {
 			callback(new VError(err, 'failed to list job ' +
@@ -2207,7 +2282,12 @@ function jobTestVerifyResultSync(verify)
 
 	/* verify jobSubmit, jobFetch, jobFetchInputs */
 	mod_assert.deepEqual(testspec['job']['phases'], job['phases']);
-	expected_inputs = testspec['inputs'].map(replaceParams);
+	expected_inputs = testspec['inputs'].map(
+	    replaceParams.bind(null, testspec));
+	if (testspec['extra_inputs'])
+		expected_inputs = expected_inputs.concat(
+		    testspec['extra_inputs'].map(
+		    replaceParams.bind(null, testspec)));
 
 	/*
 	 * We don't really need to verify this for very large jobs, and it's
@@ -2230,7 +2310,7 @@ function jobTestVerifyResultSync(verify)
 	 */
 	if (testspec['expected_outputs']) {
 		var expected_outputs = testspec['expected_outputs'].map(
-		    replaceParams).sort();
+		    replaceParams.bind(null, testspec)).sort();
 		outputs.sort();
 		mod_assert.equal(outputs.length, expected_outputs.length);
 
@@ -2269,7 +2349,8 @@ function jobTestVerifyResultSync(verify)
 			var exp;
 
 			for (var k in expected_error) {
-				exp = replaceParams(expected_error[k]);
+				exp = replaceParams(
+				    testspec, expected_error[k]);
 				if (typeof (expected_error[k]) == 'string') {
 					/*
 					 * In non-strict modes, cancelled jobs
@@ -2285,7 +2366,7 @@ function jobTestVerifyResultSync(verify)
 						    'but got %s, which is ' +
 						    'okay in non-strict mode',
 						    exp[k], actual_error[k]);
-					    	continue;
+						continue;
 					}
 					if (actual_error[k] !== exp) {
 						match = false;
@@ -2475,7 +2556,7 @@ function jobTestVerifyResultSync(verify)
 		else
 			n = new RegExp(o.source.replace(
 			    /\$jobid/g, verify['jobid']));
-	        return (replaceParams(n));
+	        return (replaceParams(testspec, n));
 	});
 	bodies.sort();
 	expected.sort();
@@ -2497,12 +2578,16 @@ function jobTestVerifyResultSync(verify)
 	}
 }
 
-function populateData(manta, keys, callback)
+function populateData(manta, testspec, keys, callback)
 {
+	var login = DEFAULT_USER;
+
 	log.info('populating keys', keys);
 
 	if (keys.length === 0) {
-		callback();
+		mod_testcommon.ensureUser(login, function (err) {
+			callback(err);
+		});
 		return;
 	}
 
@@ -2527,7 +2612,7 @@ function populateData(manta, keys, callback)
 		    }
 
 		    done[key] = true;
-		    key = replaceParams(key);
+		    key = replaceParams(testspec, key);
 
 		    if (mod_jsprim.endsWith(key, 'dir')) {
 			manta.mkdir(key, function (err) {
@@ -2575,12 +2660,18 @@ function populateData(manta, keys, callback)
 		});
 	};
 
-	if (dirs.length > 0) {
-		putKeys(dirs);
-	} else {
-		putKeys(keys);
-		keys = [];
-	}
+	mod_testcommon.ensureUser(login, function (err) {
+		if (err) {
+			callback(err);
+		} else {
+			if (dirs.length > 0) {
+				putKeys(dirs);
+			} else {
+				putKeys(keys);
+				keys = [];
+			}
+		}
+	});
 
 	queue.drain = function () {
 		if (keys.length > 0) {

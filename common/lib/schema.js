@@ -370,6 +370,7 @@ var sMorayTask = {
 		'p0input': sString,		/* phase 0 input object name */
 		'zonename': sString,		/* mako zone with the object */
 		'account': sString,		/* object's owner's uuid */
+		'creator': sString,		/* object's creator's uuid */
 		'objectid': sString,		/* object's internal objectid */
 		'prevRecordType': sString,	/* previous record */
 		'prevRecordId': sString,	/* (for debugging) */
@@ -549,6 +550,7 @@ var sMorayTaskInput = {
 		'input': sStringRequiredNonEmpty,	/* input object name */
 		'p0input': sString,			/* p0 object, if any */
 		'account': sStringRequiredNonEmpty,	/* object's owner */
+		'creator': sString,			/* object's creator */
 		'objectid': sDateTimeRequired,		/* object uuid */
 		'servers': {				/* object's locations */
 			'required': true,

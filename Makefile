@@ -107,8 +107,7 @@ JSON_DIRS	+= $(COMPONENT_DIRS:%=%/sapi_manifests)
 JSON_FILES	:= $(shell find $(JSON_DIRS) -name '*.json' 2>/dev/null)
 JSON_FILES	+= jobsupervisor/sapi_manifests/marlin/template
 
-JS_DIRS		 = $(COMPONENT_DIRS:%=%/lib)
-JS_DIRS		+= $(COMPONENT_DIRS:%=%/dev)
+JS_DIRS		 = $(COMPONENT_DIRS)
 JS_FILES	:= $(shell find $(JS_DIRS) -name '*.js' 2>/dev/null)
 JS_FILES	+= \
     client/sbin/mrerrorsummary	\

@@ -84,7 +84,8 @@ function runTests(_, next)
 
 function runOneTest(testjob, callback)
 {
-	jobs.populateData(client.manta, testjob['inputs'], function (err) {
+	jobs.populateData(client.manta, testjob,
+	    testjob['inputs'], function (err) {
 		if (err)
 			callback(err);
 		else

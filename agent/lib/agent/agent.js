@@ -2796,8 +2796,9 @@ mAgent.prototype.taskStreamAdvance = function (stream, callback)
 		rootkeypath = maZeroByteFilename;
 	} else {
 		rootkeypath = sprintf('/zones/%s/root/manta/%s/%s',
-		taskvalue['zonename'], taskvalue['account'],
-		taskvalue['objectid']);
+		    taskvalue['zonename'],
+		    taskvalue['creator'] || taskvalue['account'],
+		    taskvalue['objectid']);
 	}
 
 	stream.s_pending = true;

@@ -1233,16 +1233,20 @@ function printJobDetails(records, options)
 	globalerrors = [];
 	taskerrors = {};
 	records['error'].forEach(function (record) {
-		if (record['value']['retried'] == 'true')
+		if (record['value']['retried'] == 'true') {
 			nretr++;
-		else {
+		} else {
 			nerr++;
 
-			if (!record['value']['taskId'])
+			if (!record['value']['taskId'] &&
+			    record['value']['prevRecordType'] != 'task') {
 				globalerrors.push(record['value']);
+				return;
+			}
 		}
 
-		var taskid = record['value']['taskId'];
+		var taskid = record['value']['taskId'] ||
+		    record['value']['prevRecordId'];
 		if (!taskerrors[taskid])
 			taskerrors[taskid] = [];
 
@@ -1367,7 +1371,7 @@ function printJobDetails(records, options)
 			println('%10s phase %d: %s', 'Error',
 			    error['phaseNum'], error['errorMessage']);
 			if (error['errorMessageInternal'])
-				println('%10s     (internal: %s)',
+				println('%10s     (internal: %s)', '',
 				    error['errorMessageInternal']);
 		});
 

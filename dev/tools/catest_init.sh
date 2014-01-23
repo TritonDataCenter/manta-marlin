@@ -67,7 +67,7 @@ function catest_init_global
 	[[ -z $MANTA_USER ]] && export MANTA_USER="poseidon"
 	[[ -z $MANTA_KEY_ID ]] && export MANTA_KEY_ID="$(sdc-ldap search -b \
 	    "$(sdc-ldap search login=poseidon | head -1 | cut -c5-)" \
-	    objectclass=sdckey | awk '/^fingerprint:/{ print $2 }')"
+	    objectclass=sdckey | awk '/^fingerprint:/{ print $2 }' | tail -1)"
 
 	#
 	# The mahi URL is trickier because it's not actually in the agent
@@ -80,6 +80,16 @@ function catest_init_global
 	    export MAHI_URL=$(resolve $nameserver \
 		$(json manta.url < $agentconfig | sed -Ee \
 		"s#$sedreg#$sedrep#"))
+
+	#
+	# To resolve the UFDS URL, we must use the SDC resolver.
+	#
+	local dcname search nameserver
+	dcname="$(sysinfo | json "Datacenter Name")"
+	search="$(awk '$1 == "search"{ print $2; exit }' /etc/resolv.conf)"
+	nameserver="$(awk '$1 == "nameserver"{ print $2; exit }' \
+	    /etc/resolv.conf)"
+	export UFDS_URL="$(resolve $nameserver ldaps://ufds.$dcname.$search:636)"
 
 	export MARLIN_METERING_LOG="$(svcs -L marlin-agent)"
 	echo "done."
@@ -134,6 +144,7 @@ function catest_init
 	echo "MANTA_URL    = $MANTA_URL"
 	echo "MANTA_USER   = $MANTA_USER"
 	echo "MORAY_URL    = $MORAY_URL"
+	echo "UFDS_URL     = $UFDS_URL"
 
 	export PATH="$PWD/build/node/bin:$PATH"
 }

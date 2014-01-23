@@ -32,21 +32,33 @@ exports.createLocator = createLocator;
  *
  * "keys" is an array of Manta object keys.  "callback" is invoked later as
  * callback(err, results), where "results" is an object mapping the input keys
- * to an array of values describing one copy of the object on the storage tier:
+ * to a JS object describing the Manta object, including all copies of the
+ * object on the storage tier.  The object has:
+ *
+ *      creator			The account that originally created the object,
+ *      			or "owner" if "creator" isn't present in Moray.
+ *
+ *      owner			The account that owns this name for the object.
  *
  *      objectid		Unique identifier for this object.  This value
  *      			is the same for all copies of this object.
  *
- *	manta_compute_id	Unique identifier for the physical server on
- *				which this copy resides.  This is not
- *				necessarily a hostname, but a static identifier
- *				for the server.
+ *      contentLength		The size of this object.
  *
- *	manta_storage_id	Unique identifier for the logical zone on which
- *				this copy resides.
+ *      sharks			Array of locations for this object.  Each
+ *      			element will have:
  *
- *	zonename		Unique identifier for the physical zone on
- *				which this copy resides.
+ *      	mantaStorageId	identifier for the shark containing the object
+ *
+ *          Elements MAY also have the following:
+ *
+ *              mantaComputeId	identifier for the agent that can operate on
+ *              		this copy of the object.  If null, that
+ *              		identifier is unkown.
+ *
+ *              zonename	zonename for the shark, which is necessary to
+ *              		tell the agent where the object is actually
+ *              		stored.  If null, the zone name is unknown.
  *
  * We currently only implement a Manta-based locator which is used for standard
  * deployments.  This locator takes a ring of Moray shards as input and uses
@@ -106,7 +118,6 @@ mod_util.inherits(MantaLocator, mod_events.EventEmitter);
 
 /*
  * Guarantees that the shark data always contains:
- *    objectid
  *    zonename
  *    mantaComputeId
  *    mantaStorageId
@@ -114,10 +125,9 @@ mod_util.inherits(MantaLocator, mod_events.EventEmitter);
 function populateSharkData(locator, result, shark) {
 	var rec = locator.ml_storage_map[shark['manta_storage_id']];
 	return ({
-		'objectid': result['objectId'],
-		'mantaStorageId': rec['manta_storage_id'],
-		'mantaComputeId': rec['manta_compute_id'],
-		'zonename': rec['zone_uuid']
+		'mantaStorageId': shark['manta_storage_id'],
+		'mantaComputeId': rec ? rec['manta_compute_id'] : null,
+		'zonename': rec ? rec['zone_uuid'] : null
 	});
 }
 
@@ -171,9 +181,15 @@ MantaLocator.prototype.locate = function (keys, callback)
 				return;
 			}
 
-			subcallback(null, result['sharks'].map(function (s) {
+			subcallback(null, {
+			    'creator': result['creator'] || result['owner'],
+			    'owner': result['owner'],
+			    'objectid': result['objectId'],
+			    'contentLength': result['contentLength'],
+			    'sharks': result['sharks'].map(function (s) {
 				return (populateSharkData(loc, result, s));
-			}));
+			    })
+			});
 		    });
 	    }
 	}, function (err, result) {
