@@ -310,7 +310,7 @@ $(PROTO_USER_TOOLS_MCB): $(PROTO_USER_TOOLS_ROOT)/%: dev/stub_template
 # Some tools were historically delivered in "tools", but really belong on
 # "sbin".  We moved these to "sbin", but we add symlinks into "tools".
 #
-LINKS_AGENT_BIN = mragentconf mrdeploycompute mrzone mrzoneremove
+LINKS_AGENT_BIN = mragentconf mragentdestroy mrdeploycompute mrzone mrzoneremove
 PROTO_LINKS_AGENT_BIN = $(LINKS_AGENT_BIN:%=$(PROTO_MARLIN_ROOT)/tools/%)
 PROTO_MARLIN_FILES += $(PROTO_LINKS_AGENT_BIN)
 $(PROTO_MARLIN_ROOT)/tools/%: | agent/sbin/%
