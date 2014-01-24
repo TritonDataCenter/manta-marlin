@@ -1629,9 +1629,25 @@ Worker.prototype.taskRetryReduce = function (record, barrier, job, phase, now)
 	var worker = this;
 	var task = this.taskCreate(job, record['value']['phaseNum'], now);
 	var value = task.t_value;
-	var instance = mod_jsprim.randElt(Object.keys(this.w_agents));
-	var agent = this.w_agents[instance];
+	var avoidme, instance, agent;
 
+	avoidme = record['value']['mantaComputeId'];
+	instance = this.reduceSelectAgent(avoidme);
+
+	/*
+	 * If there's literally no healthy agent available to run this task,
+	 * we're pretty much hosed.  We could issue an EM_SERVICEUNAVAILABLE
+	 * error directly here, but we may as well try again on the agent we
+	 * know about, in case its problem was transient.  This is unlikely to
+	 * succeed, but the only alternative is failure anyway.
+	 */
+	if (instance === null) {
+		job.j_log.warn('no healthy agents available to retry task ' +
+		    '"%s", so using the same one', record['key']);
+		instance = avoidme;
+	}
+
+	agent = this.w_agents[instance];
 	job.j_log.info('retrying reduce task "%s" as "%s"',
 	    record['key'], task.t_id);
 	task.t_ninput = 0;
@@ -2672,6 +2688,40 @@ Worker.prototype.agentAbandonTasks = function (instance, job, timestamp, extra,
 };
 
 /*
+ * Given a list "agents" of agent identifiers and an agent identifier "avoidme",
+ * select an agent from "agents" at random that is healthy and return the
+ * corresponding index into "agents".  Avoid using "avoidme" if possible.
+ * Returns -1 if there is no healthy agent.
+ */
+Worker.prototype.agentSelectHealthyFrom = function (agents, avoidme)
+{
+	var available = [];
+	var fallback = -1;
+	var i, instance, agent;
+
+	for (i = 0; i < agents.length; i++) {
+		instance = agents[i];
+		mod_assert.equal(typeof (instance), 'string');
+		agent = this.w_agents[instance];
+
+		if (agent.a_timedout)
+			continue;
+
+		if (instance === avoidme) {
+			fallback = i;
+			continue;
+		}
+
+		available.push(i);
+	}
+
+	if (available.length > 0)
+		return (mod_jsprim.randElt(available));
+
+	return (fallback);
+};
+
+/*
  * Invoked when we receive a new job record that we don't already own.
  */
 Worker.prototype.jobCreate = function (record, barrier)
@@ -3020,7 +3070,10 @@ Worker.prototype.jobLoaded = function (job)
 			return;
 
 		phase.p_reducers.forEach(function (reducer, ri) {
-			if (mod_jsprim.isEmpty(worker.w_agents)) {
+			var task, value;
+			var instance = worker.reduceSelectAgent();
+
+			if (instance === null) {
 				worker.jobError(job, pi, now,
 				    EM_SERVICEUNAVAILABLE,
 				    sprintf('no servers available for ' +
@@ -3030,10 +3083,6 @@ Worker.prototype.jobLoaded = function (job)
 
 			if (reducer.r_task !== undefined)
 				return;
-
-			var task, value;
-			var instance = mod_jsprim.randElt(
-			    Object.keys(worker.w_agents));
 
 			task = worker.taskCreate(job, pi, now);
 			reducer.r_task = task;
@@ -3831,47 +3880,17 @@ Worker.prototype.dispDispatch = function (dispatch)
 };
 
 /*
- * Implementation of keyDispatch() for map phases.  This is simple because we
- * always dispatch a new task.
+ * Dispatch an object for a map phase.  This always produces a new task (or an
+ * error).
  */
 Worker.prototype.dispMap = function (dispatch)
 {
 	var worker = this;
-	var which, instance, zonename, task, value, origin_value, phase;
-	var isretry, locs;
+	var which, agent, task, value, origin_value, phase;
+	var isretry;
 
-	/*
-	 * Figure out where to run this task.  For non-zero-byte objects, run
-	 * the task on one of the systems where the object is stored.
-	 * Otherwise, pick a compute instance at random that we know about.
-	 */
-	if (dispatch.d_objectid == '/dev/null' &&
-	    !mod_jsprim.isEmpty(this.w_agents)) {
-		instance = mod_jsprim.randElt(Object.keys(this.w_agents));
-		zonename = '';
-	} else if (dispatch.d_objectid != '/dev/null' &&
-	    dispatch.d_locations.length > 0) {
-		locs = dispatch.d_locations;
-
-		if (dispatch.d_origin['bucket'] == this.w_buckets['task']) {
-			/*
-			 * This is a retry.  Prefer a location that's different
-			 * than the one we just tried.
-			 */
-			locs = locs.filter(function (loc) {
-				var v = dispatch.d_origin['value'];
-				return (loc['mantaComputeId'] !=
-				    v['mantaComputeId']);
-			});
-
-			if (locs.length === 0)
-				locs = dispatch.d_locations;
-		}
-
-		which = mod_jsprim.randElt(locs);
-		instance = which['mantaComputeId'];
-		zonename = which['zonename'];
-	} else {
+	which = this.dispMapSelectShark(dispatch);
+	if (which === null) {
 		dispatch.d_error = {
 		    'code': EM_SERVICEUNAVAILABLE,
 		    'message': 'no servers available to run task'
@@ -3880,6 +3899,7 @@ Worker.prototype.dispMap = function (dispatch)
 		return;
 	}
 
+	agent = this.w_agents[which['instance']];
 	task = this.taskCreate(dispatch.d_job, dispatch.d_pi, dispatch.d_time);
 	value = task.t_value;
 	value['input'] = dispatch.d_objname;
@@ -3888,11 +3908,9 @@ Worker.prototype.dispMap = function (dispatch)
 	value['account'] = dispatch.d_owner;
 	value['creator'] = dispatch.d_creator;
 	value['objectid'] = dispatch.d_objectid;
-	value['mantaComputeId'] = this.w_agents[instance].
-	    a_record['value']['instance'];
-	value['agentGeneration'] = this.w_agents[instance].
-	    a_record['value']['generation'];
-	value['zonename'] = zonename;
+	value['mantaComputeId'] = agent.a_record['value']['instance'];
+	value['agentGeneration'] = agent.a_record['value']['generation'];
+	value['zonename'] = which['zonename'];
 	value['timeDispatchDone'] = value['timeDispatched'];
 
 	if (dispatch.d_origin['bucket'] == this.w_buckets['jobinput']) {
@@ -3982,8 +4000,55 @@ Worker.prototype.dispMap = function (dispatch)
 };
 
 /*
- * Implementation of keyDispatch() for reduce phases.  Write a taskinput record
- * for this key.
+ * Select a system to which to dispatch this map task.  Returns an object with
+ * "instance" (a mantaComputeId) and "zonename", or null if there are no healthy
+ * locations.
+ *
+ * Tasks on zero-byte objects can be run anywhere.  Other tasks must be run at
+ * one of the locations we already found for this object.  Of the available
+ * systems, exclude any that aren't healthy, and avoid using the same one we
+ * used for the previous attempt of this task.
+ */
+Worker.prototype.dispMapSelectShark = function (dispatch)
+{
+	var avoidme, agents, which;
+
+	if (dispatch.d_origin['bucket'] == this.w_buckets['task'])
+		avoidme = dispatch.d_origin['value']['mantaComputeId'];
+
+	if (dispatch.d_objectid == '/dev/null') {
+		agents = Object.keys(this.w_agents);
+	} else {
+		agents = dispatch.d_locations.map(
+		    function (l) { return (l['mantaComputeId']); });
+	}
+
+	which = this.agentSelectHealthyFrom(agents, avoidme);
+	if (which == -1)
+		return (null);
+
+	return ({
+	    'instance': agents[which],
+	    'zonename': dispatch.d_objectid == '/dev/null' ?
+	        '' : dispatch.d_locations[which]['zonename']
+	});
+};
+
+/*
+ * Select a system to which to dispatch this reduce task.  Returns the
+ * mantaComputeId, or null if none is available.  We select randomly from the
+ * set of healthy systems, avoiding "avoidme" if necessary.
+ */
+Worker.prototype.reduceSelectAgent = function (avoidme)
+{
+	var agents = Object.keys(this.w_agents);
+	var which = this.agentSelectHealthyFrom(agents, avoidme);
+	return (which != -1 ? agents[which] : null);
+};
+
+/*
+ * Dispatch an object for a reduce phase.  This produces a new taskinput (or an
+ * error).
  */
 Worker.prototype.dispReduce = function (dispatch)
 {
