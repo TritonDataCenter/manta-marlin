@@ -343,13 +343,22 @@ MorayBus.prototype.pollOne = function (subscrip, nowdate)
  * The separate "options" argument (as opposed to the per-record one) may
  * contain any of the following properties:
  *
- *    dbgDelay			If specified, the outgoing request will be
+ *    dbgDelayStart		If specified, the outgoing request will be
  *    				delayed by the specified number of milliseconds
  *    				using setTimeout.  Internally, the request is
  *    				processed as normal, but the outgoing message is
  *    				not issued until the delay has elapsed.  This is
  *    				intended for testing only to help blow open race
  *    				condition windows.
+ *
+ *    dbgDelayDone		If specified, response processing will be
+ *    				delayed by the specified number of milliseconds
+ *    				using setTimeout.  Internally, the request is
+ *    				processed as normal until the response is
+ *    				received, at which point all response processing
+ *    				is delayed as specified.  This is intended for
+ *    				testing only to blow open race condition
+ *    				windows.
  *
  *    retryConflict		If specified, and if an EtagConflict error is
  *    				encountered in processing this request, the
@@ -485,28 +494,41 @@ MorayBus.prototype.txnPut = function (client, txn, now)
 	var bus = this;
 	var objects = txn.tx_records.slice(0);
 	var doput = function () {
-		if (txn.tx_delay !== null) {
-			mod_assert.ok(txn.tx_delaying);
-			txn.tx_delaying = false;
+		if (txn.tx_delay_start !== null) {
+			mod_assert.ok(txn.tx_delaying_start);
+			txn.tx_delaying_start = false;
 		}
 
 		client.batch(objects, {}, function (err, meta) {
-			--bus.mb_npendingputs;
-			txn.tx_issued = undefined;
-
-			if (err)
-				bus.txnHandleError(txn, err);
-			else
-				bus.txnFini(txn, null, meta);
+			if (txn.tx_delay_done !== null) {
+				txn.tx_delaying_done = Date.now();
+				setTimeout(done, txn.tx_delay_done, err, meta);
+			} else {
+				done(err, meta);
+			}
 		});
+	};
+	var done = function (err, meta) {
+		if (txn.tx_delay_done !== null) {
+			mod_assert.ok(txn.tx_delaying_done);
+			txn.tx_delaying_done = false;
+		}
+
+		--bus.mb_npendingputs;
+		txn.tx_issued = undefined;
+
+		if (err)
+			bus.txnHandleError(txn, err);
+		else
+			bus.txnFini(txn, null, meta);
 	};
 
 	txn.tx_issued = now;
 	this.mb_npendingputs++;
-	mod_assert.ok(txn.tx_delaying === null);
-	if (txn.tx_delay !== null) {
-		txn.tx_delaying = Date.now();
-		setTimeout(doput, txn.tx_delay);
+	mod_assert.ok(txn.tx_delaying_start === null);
+	if (txn.tx_delay_start !== null) {
+		txn.tx_delaying_start = Date.now();
+		setTimeout(doput, txn.tx_delay_start);
 	} else {
 		doput();
 	}
@@ -864,13 +886,22 @@ function MorayBusTransaction(records, options, callback)
 	this.tx_callback = callback;			/* "done" callback */
 	this.tx_dependents = [];			/* dependent txns */
 
-	if (options && options.hasOwnProperty('dbgDelay')) {
-		mod_assert.equal(typeof (options['dbgDelay']), 'number');
-		this.tx_delay = options['dbgDelay'];
-		this.tx_delaying = null;
+	if (options && options.hasOwnProperty('dbgDelayStart')) {
+		mod_assert.equal(typeof (options['dbgDelayStart']), 'number');
+		this.tx_delay_start = options['dbgDelayStart'];
+		this.tx_delaying_start = null;
 	} else {
-		this.tx_delay = null;
-		this.tx_delaying = null;
+		this.tx_delay_start = null;
+		this.tx_delaying_start = null;
+	}
+
+	if (options && options.hasOwnProperty('dbgDelayDone')) {
+		mod_assert.equal(typeof (options['dbgDelayDone']), 'number');
+		this.tx_delay_done = options['dbgDelayDone'];
+		this.tx_delaying_done = null;
+	} else {
+		this.tx_delay_done = null;
+		this.tx_delaying_done = null;
 	}
 
 	/* retry options */

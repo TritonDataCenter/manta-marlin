@@ -225,6 +225,8 @@ function JobState(args)
 	this.j_nlocates = 0;			/* nr of pending locates */
 	this.j_nauths = 0;			/* nr of pending auths */
 	this.j_ndeletes = 0;			/* nr of records to delete */
+	this.j_ndelslop = 0;			/* nr of possibly outstanding */
+						/* deletes */
 
 	this.j_phases = j['phases'].map(
 	    function (phase) { return (new JobPhase(phase)); });
@@ -1520,9 +1522,12 @@ Worker.prototype.onRecordTaskMarkOutputs = function (record, barrier, job,
 			}
 		}
 
+		job.j_ndelslop += ndeletes;
 		worker.w_bus.batch([[ 'update', record['bucket'],
 		    sprintf('(taskId=%s)', record['key']), taskchanges,
 		    { 'limit': 1 } ]], {}, function (err2) {
+			job.j_ndelslop -= ndeletes;
+
 			if (err2) {
 				job.j_log.warn(err2,
 				    'task "%s": failed to mark outputs',
@@ -1560,8 +1565,11 @@ Worker.prototype.onRecordTaskMarkInputsCleanup = function (record, barrier, job,
 	update = [ 'update', this.w_buckets['taskinput'], filter, changes,
 	    this.w_update_options ];
 	worker = this;
+	job.j_ndelslop += limit;
 	this.w_bus.batch([ update ], {}, function (err, meta) {
 		var nupdated, taskchanges;
+
+		job.j_ndelslop -= limit;
 
 		if (err) {
 			job.j_log.warn(err,
@@ -2219,8 +2227,25 @@ Worker.prototype.taskRecordCleanupFini = function (record, barrier, job,
 			worker.w_log.warn(err,
 			    'failed to mark task for cleanup');
 		} else if (job !== null) {
-			mod_assert.ok(job.j_ndeletes > 0);
-			if (--job.j_ndeletes === 0)
+			/*
+			 * Update j_ndeletes.  If j_ndeletes > 0, there are more
+			 * deletes pending, and there's nothing else to do now.
+			 * If j_ndelslop > 0, there's an operating pending that
+			 * may trigger more deletes, and there's also nothing
+			 * else to do now.  If both are zero, then this was the
+			 * last delete, so we call jobTick() to check whether
+			 * the job is complete.
+			 *
+			 * Note that j_ndeletes may go negative because we may
+			 * discover records to delete and delete them before the
+			 * operation that created them (and bumps j_ndeletes)
+			 * completes.  However, the sum of j_ndeletes and
+			 * j_ndelslop must never be negative, as that would
+			 * indicate a refcount bug.
+			 */
+			job.j_ndeletes--;
+			mod_assert.ok(job.j_ndeletes + job.j_ndelslop >= 0);
+			if (job.j_ndelslop === 0 && job.j_ndeletes === 0)
 				worker.jobTick(job);
 		}
 
@@ -3422,6 +3447,7 @@ Worker.prototype.jobDone = function (job)
 			return (false);
 	}
 
+	mod_assert.ok(job.j_ndelslop === 0);
 	return (true);
 };
 
