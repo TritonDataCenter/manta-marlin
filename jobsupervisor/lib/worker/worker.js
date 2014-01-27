@@ -4350,14 +4350,58 @@ Worker.prototype.jobPropagateEnd = function (job, now)
 			break;
 	}
 
-	if (pi < job.j_phases.length &&
-	    job.j_phases[pi].p_reducers !== undefined &&
-	    job.j_phases[pi].p_ndispatches === 0 &&
-	    job.j_phases[pi].p_ninretryneeded === 0) {
-		if (now === null)
-			now = mod_jsprim.iso8601(new Date());
-		this.reduceEndInput(job, pi, now);
+	if (pi == job.j_phases.length) {
+		/*
+		 * There's no more work to do at all.  This job is done, and
+		 * we'll detect that shortly.
+		 */
+		return;
 	}
+
+	phase = job.j_phases[pi];
+	if (phase.p_reducers === undefined) {
+		/*
+		 * There's more work to do in a map phase, so there's no
+		 * end-of-input to propagate.
+		 */
+		return;
+	}
+
+	/*
+	 * At this point, we're looking at a reduce phase where all previous
+	 * phases have completed.  However, we cannot mark input "done" for any
+	 * of these tasks until we know how many inputs there will be.  In the
+	 * normal case, this just means that there are no pending dispatches for
+	 * this phase (p_ndispatches > 0).
+	 *
+	 * We also need to be careful about retries.  If we're retrying a task
+	 * that did not have input "done", then in addition to making sure that
+	 * p_ndispatches === 0, we must be sure that we've marked all of the
+	 * origin task's taskinputs for retry *and* finished retrying them.  We
+	 * require p_nunmarked_retry === 0 and p_ninretryneeded === 0.  This is
+	 * a little conservative, since it's possible that non-zero
+	 * retry-related counters are for other tasks in the same phase, but
+	 * retries should be relatively uncommon and quick.  Moreover, we cannot
+	 * deadlock as a result of being overly conservative here because if
+	 * either of these are non-zero, lack of "input done" for this phase
+	 * is not what's blocking the corresponding operations from completing.
+	 *
+	 * Finally, note that we don't have to worry about p_nuncommitted > 0
+	 * (which obviously wouldn't work anyway) because if there's an
+	 * outstanding reduce task that needs to be committed and retried, then
+	 * by definition its retry hasn't been written yet, so we won't be
+	 * prematurely marking its input "done".  Similarly, we don't have to
+	 * worry about p_nretryneeded > 0 because we haven't updated r_task for
+	 * the corresponding reducers yet, so we won't be marking it done yet.
+	 */
+	if (phase.p_ndispatches !== 0 ||
+	    phase.p_nunmarked_retry !== 0 ||
+	    phase.p_ninretryneeded !== 0)
+		return;
+
+	if (now === null)
+		now = mod_jsprim.iso8601(new Date());
+	this.reduceEndInput(job, pi, now);
 };
 
 Worker.prototype.reduceEndInput = function (job, i, now)

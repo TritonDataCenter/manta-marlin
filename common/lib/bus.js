@@ -341,19 +341,32 @@ MorayBus.prototype.pollOne = function (subscrip, nowdate)
  * predicate the write.
  *
  * The separate "options" argument (as opposed to the per-record one) may
- * contain "retryConflict", which may refer to a function "merge":
+ * contain any of the following properties:
  *
- *     merge(old, new)		on EtagConflict, fetch the current value,
- *     (function)		invoke "merge" to merge the result, and
- *     				retry predicated on the new etag
+ *    dbgDelay			If specified, the outgoing request will be
+ *    				delayed by the specified number of milliseconds
+ *    				using setTimeout.  Internally, the request is
+ *    				processed as normal, but the outgoing message is
+ *    				not issued until the delay has elapsed.  This is
+ *    				intended for testing only to help blow open race
+ *    				condition windows.
  *
- * If options.retryConflict is not specified, EtagConflict errors will not be
- * retried.
+ *    retryConflict		If specified, and if an EtagConflict error is
+ *    				encountered in processing this request, the
+ *    				current value of the conflicting record will be
+ *    				fetched and retryConflict will be invoked as
+ *    				retryConflict(old, new) to merge the result.
+ *    				The request will then be retried conditional on
+ *    				the new etag.
  *
- * The other supported option is "urgent", a boolean indicating whether this
- * request should be moved to the head of the queue (instead of the back, by
- * default).  This should only be used for very small numbers of time-critical
- * writes (like heartbeats).
+ *    				If an EtagConflict error is encountered and
+ *    				retryConflict is not specified, the error will
+ *    				not be retried.
+ *
+ *    urgent			If true, the request will be moved to the head
+ *    				of the pending queue instead of the back.  This
+ *    				should only be used for a very small number of
+ *    				time-critical writes (like heartbeats).
  *
  * The callback is invoked as callback(error, etags), where "etags" is an array
  * of the etags resulting from the update operations.
@@ -471,18 +484,32 @@ MorayBus.prototype.txnPut = function (client, txn, now)
 {
 	var bus = this;
 	var objects = txn.tx_records.slice(0);
+	var doput = function () {
+		if (txn.tx_delay !== null) {
+			mod_assert.ok(txn.tx_delaying);
+			txn.tx_delaying = false;
+		}
+
+		client.batch(objects, {}, function (err, meta) {
+			--bus.mb_npendingputs;
+			txn.tx_issued = undefined;
+
+			if (err)
+				bus.txnHandleError(txn, err);
+			else
+				bus.txnFini(txn, null, meta);
+		});
+	};
 
 	txn.tx_issued = now;
 	this.mb_npendingputs++;
-	client.batch(objects, {}, function (err, meta) {
-		--bus.mb_npendingputs;
-		txn.tx_issued = undefined;
-
-		if (err)
-			bus.txnHandleError(txn, err);
-		else
-			bus.txnFini(txn, null, meta);
-	});
+	mod_assert.ok(txn.tx_delaying === null);
+	if (txn.tx_delay !== null) {
+		txn.tx_delaying = Date.now();
+		setTimeout(doput, txn.tx_delay);
+	} else {
+		doput();
+	}
 };
 
 MorayBus.prototype.txnHandleError = function (txn, err)
@@ -836,6 +863,15 @@ function MorayBusTransaction(records, options, callback)
 	this.tx_issued = undefined;			/* request start time */
 	this.tx_callback = callback;			/* "done" callback */
 	this.tx_dependents = [];			/* dependent txns */
+
+	if (options && options.hasOwnProperty('dbgDelay')) {
+		mod_assert.equal(typeof (options['dbgDelay']), 'number');
+		this.tx_delay = options['dbgDelay'];
+		this.tx_delaying = null;
+	} else {
+		this.tx_delay = null;
+		this.tx_delaying = null;
+	}
 
 	/* retry options */
 	this.tx_retry_conflict = options ? options['retryConflict'] : undefined;
