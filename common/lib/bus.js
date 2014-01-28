@@ -562,12 +562,13 @@ MorayBus.prototype.txnHandleError = function (txn, err)
 
 	/*
 	 * To deal with the EtagConflictError, we need to know which record
-	 * conflicted.  MANTA-966 will include this information with the error,
-	 * but in the meantime, we try to handle the cases where it's obvious
-	 * here.  This code should be cleaned up once MANTA-966 is generally
-	 * available.
+	 * conflicted.  This should be on "err.context", but if not, we deduce
+	 * what it must have been.
 	 */
-	if (!err.bucket || !err.key) {
+	if (!err.context || !err.context.bucket || !err.context.key) {
+		this.mb_log.warn('got EtagConflict without context details',
+		    err);
+
 		var conditional = txn.tx_records.filter(function (record) {
 			return (record['operation'] == 'put' &&
 			    record['options']['etag'] !== undefined);
@@ -581,16 +582,18 @@ MorayBus.prototype.txnHandleError = function (txn, err)
 			return;
 		}
 
-		err.bucket = conditional[0]['bucket'];
-		err.key = conditional[0]['key'];
+		if (!err.context)
+			err.context = {};
+		err.context.bucket = conditional[0]['bucket'];
+		err.context.key = conditional[0]['key'];
 	}
 
 	var bus = this;
 	var i, rec;
 
 	for (i = 0; i < txn.tx_records.length; i++) {
-		if (txn.tx_records[i]['bucket'] == err.bucket &&
-		    txn.tx_records[i]['key'] == err.key)
+		if (txn.tx_records[i]['bucket'] == err.context.bucket &&
+		    txn.tx_records[i]['key'] == err.context.key)
 			break;
 	}
 
