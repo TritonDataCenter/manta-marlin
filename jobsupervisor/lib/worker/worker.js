@@ -4322,17 +4322,28 @@ Worker.prototype.doDelete = function (delete_request, now)
 	this.w_manta.unlink(key, options, function (err) {
 		worker.w_pending_deletes--;
 
-		if (err && err['name'] == 'ResourceNotFoundError')
-			err = null;
-
 		if (err) {
+			/*
+			 * We ignore a few errors here: if the user already
+			 * removed the object, there's nothing for us to do.  If
+			 * the user replaced it with a non-empty directory, it's
+			 * up to them to clean that up.
+			 */
 			worker.w_dtrace.fire('delete-done',
 			    function () { return ([ key, err.name ]); });
-			worker.w_log.error(err, 'delete "%s": failed', key);
+			if (err['name'] == 'ResourceNotFoundError' ||
+			    err['name'] == 'DirectoryNotEmptyError') {
+				worker.w_log.warn(err,
+				    'delete "%s": failed', key);
+				err = null;
+			} else {
+				worker.w_log.error(err,
+				    'delete "%s": failed', key);
+			}
 		} else {
+			worker.w_log.debug('delete "%s": okay', key);
 			worker.w_dtrace.fire('delete-done',
 			    function () { return ([ key, '' ]); });
-			worker.w_log.debug('delete "%s": okay', key);
 		}
 
 		mod_assert.ok(worker.w_deletes[key]['time'] == now);

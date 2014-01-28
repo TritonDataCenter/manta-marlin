@@ -396,6 +396,76 @@ exports.jobMRRoutput = {
     'errors': []
 };
 
+/*
+ * The following tests exercise some corner cases in deleting intermediate
+ * objects.  First, verify that everything works normally even if the user
+ * removes an intermediate output object before we get to it.
+ */
+exports.jobMMRIntermedRm = {
+    'job': {
+	'phases': [
+	    { 'type': 'map', 'exec': 'wc' },
+	    { 'type': 'map', 'exec': 'mrm $MANTA_INPUT_OBJECT && echo hello' },
+	    { 'type': 'reduce', 'exec': 'cat' }
+	]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 90 * 1000,
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/stor\/reduce\.2\./ ],
+    'errors': [],
+    'expected_output_content': [ 'hello\n' ]
+};
+
+/*
+ * Next, make sure that everything works even if the user turns the intermediate
+ * object into a directory.
+ */
+exports.jobMMRIntermedDir = {
+    'job': {
+	/*
+	 * The "mrm" isn't currently necessary because of MANTA-1852, but we use
+	 * it here to avoid breaking when that bug is fixed.
+	 */
+	'phases': [
+	    { 'type': 'map', 'exec': 'wc' },
+	    { 'type': 'map', 'exec': 'mrm $MANTA_INPUT_OBJECT && ' +
+	        'mmkdir $MANTA_INPUT_OBJECT && echo hello' },
+	    { 'type': 'reduce', 'exec': 'cat' }
+	]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 90 * 1000,
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/stor\/reduce\.2\./ ],
+    'errors': [],
+    'expected_output_content': [ 'hello\n' ]
+};
+
+/*
+ * Finally, make sure that things continue to work even if the user turns the
+ * intermediate object into a non-empty directory.
+ */
+exports.jobMMRIntermedDirNonEmpty = {
+    'job': {
+	/*
+	 * The "mrm" isn't currently necessary because of MANTA-1852, but we use
+	 * it here to avoid breaking when that bug is fixed.
+	 */
+	'phases': [
+	    { 'type': 'map', 'exec': 'wc' },
+	    { 'type': 'map', 'exec': 'mrm $MANTA_INPUT_OBJECT && ' +
+	        'mmkdir $MANTA_INPUT_OBJECT && ' +
+		'mput $MANTA_INPUT_OBJECT/urd && echo hello' },
+	    { 'type': 'reduce', 'exec': 'cat' }
+	]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 90 * 1000,
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/stor\/reduce\.2\./ ],
+    'errors': [],
+    'expected_output_content': [ 'hello\n' ],
+    'extra_objects': [ /\/%user%\/jobs\/.*stor\/.*urd$/ ]
+};
+
 var asset_body = [
     '#!/bin/bash\n',
     '\n',
@@ -1734,6 +1804,9 @@ exports.jobsMain = [
     exports.jobMR,
     exports.jobMMRR,
     exports.jobMRRoutput,
+    exports.jobMMRIntermedRm,
+    exports.jobMMRIntermedDir,
+    exports.jobMMRIntermedDirNonEmpty,
     exports.jobMcancel,
     exports.jobMasset,
     exports.jobMcore,
@@ -2495,6 +2568,25 @@ function jobTestVerifyResultSync(verify)
 		foundobj = foundobj.filter(function (o) {
 			if (dedup[o])
 				return (false);
+
+			/*
+			 * If the test case explicitly allows some extra
+			 * objects, ignore them here.
+			 */
+			if (testspec['extra_objects']) {
+				var pattern, extra;
+				for (j = 0;
+				    j < testspec['extra_objects'].length; j++) {
+					extra = testspec['extra_objects'][j];
+					pattern = replaceParams(
+					    testspec, extra);
+					if (pattern.test(o)) {
+						log.info(
+						    'ignoring extra object', o);
+						return (false);
+					}
+				}
+			}
 
 			/*
 			 * It's possible to see last-phase output objects that
