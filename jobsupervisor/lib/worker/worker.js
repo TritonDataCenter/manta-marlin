@@ -3287,7 +3287,7 @@ Worker.prototype.jobMarkAllInputs = function (job, callback)
 	changes = { 'domain': job.j_job['worker'] };
 	request = [ 'update', bucket, filter, changes, this.w_update_options ];
 
-	job.j_log.debug('marking inputs');
+	job.j_log.info('marking inputs');
 	this.w_dtrace.fire('job-mark-inputs-start',
 	    function () { return ([ job.j_id ]); });
 
@@ -3296,8 +3296,10 @@ Worker.prototype.jobMarkAllInputs = function (job, callback)
 		job.j_mark_pending = false;
 		worker.w_dtrace.fire('job-mark-inputs-done',
 		    function () { return ([ job.j_id ]); });
-		job.j_log.debug({ 'err': err, 'result': meta },
-		    'marked inputs');
+		job.j_log.info({
+		    'err': err,
+		    'count': meta ? meta.etags[0].count : null
+		}, 'marked inputs');
 
 		if (meta && meta.etags[0]['count'] >=
 		    worker.w_update_options['limit']) {
