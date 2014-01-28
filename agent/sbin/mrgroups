@@ -86,10 +86,11 @@ if [[ $opt_s == "true" ]]; then
 		    	printf "%8s... %2d %36s %24s\n" ${jobid:0:8} $phasei \
 			    $vm $start
 			if [[ $opt_v == "true" ]]; then
-				ctid=$(svcs -Hoctid -z $vm lackey)
-				if [[ -n "$ctid" ]]; then
-					ptree $(pgrep -d, -c "$ctid") | tail +2
-				fi
+				ctid=$(svcs -Hoctid -z $vm lackey | tr -d ' ')
+				[[ -n "$ctid" && "$ctid" != "-" ]] || continue
+				pids="$(pgrep -d, -c "$ctid")"
+				[[ -n "$pids" ]] || continue
+				ptree "$pids" | tail +2
 			fi
 		    done
 	fi
