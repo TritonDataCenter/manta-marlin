@@ -1023,15 +1023,25 @@ Worker.prototype.onRecord = function (record, barrier, sid)
  */
 Worker.prototype.onRecordJob = function (record, barrier)
 {
-	var job;
+	var job, domain, domainstate;
 
 	/*
 	 * If we don't already know about this job, then this must be new,
 	 * abandoned, or one one of ours and we've just crashed.  Attempt to
-	 * assign it to ourselves.
+	 * assign it to ourselves, if we're still operating this domain.
 	 */
 	if (!this.w_jobs.hasOwnProperty(record['value']['jobId'])) {
-		this.jobCreate(record, barrier);
+		domain = record['value']['worker'];
+		domainstate = this.w_ourdomains[domain];
+		if (domain !== undefined &&
+		    (domainstate === undefined ||
+		    typeof (domainstate) == 'string')) {
+			this.w_log.warn('found job for domain we\'re not ' +
+			    'operating', record);
+		} else {
+			this.jobCreate(record, barrier);
+		}
+
 		return;
 	}
 

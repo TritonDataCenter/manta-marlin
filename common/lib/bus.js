@@ -93,6 +93,15 @@ mod_util.inherits(MorayBus, EventEmitter);
  *
  *    limit		maximum number of records to return in one query
  *
+ * "options" may also contain:
+ *
+ *    dbgDelayStart	If non-null, a delay will be inserted of "dbgDelayStart"
+ *    			milliseconds between when each request is scheduled to
+ *    			be made and when it's actually made.  Internally, this
+ *    			behaves as though the request were sent at the scheduled
+ *    			time (e.g., a fence() during this period would make
+ *    			another request).
+ *
  * "onrecord" is invoked for each record found, as onrecord(record, barrier).
  * Subsequent polls will not begin until the configured timeout has elapsed AND
  * the barrier has zero pending operations.  This allows callers to delay
@@ -260,6 +269,9 @@ MorayBus.prototype.pollOne = function (subscrip, nowdate)
 	if (subscrip.mbs_throttle.tooRecent())
 		return;
 
+	if (subscrip.mbs_delaying_start !== null)
+		return;
+
 	/*
 	 * It's a little subtle, but the fact that we save mbs_onsuccesses here
 	 * at the beginning of the poll is critical to satisfy the
@@ -279,52 +291,71 @@ MorayBus.prototype.pollOne = function (subscrip, nowdate)
 	subscrip.mbs_cur_query = query;
 	subscrip.mbs_cur_nrecs = 0;
 
-	mod_mamoray.poll({
-	    'client': this.mb_client,
-	    'options': {
-		'limit': subscrip.mbs_limit,
-		'noCache': true
-	    },
-	    'now': nowdate.getTime(),
-	    'log': this.mb_log,
-	    'throttle': subscrip.mbs_throttle,
-	    'bucket': subscrip.mbs_bucket,
-	    'filter': query,
-	    'onrecord': subscrip.mbs_onrecord,
-	    'onerr': function () {
-		subscrip.mbs_onsuccesses = subscrip.mbs_onsuccesses.
-		    concat(onsuccesses);
-	    },
-	    'ondone': function () {
-		subscrip.mbs_last_start = subscrip.mbs_cur_start;
-		subscrip.mbs_last_query = subscrip.mbs_cur_query;
-
-		if (subscrip.mbs_cur_nrecs > 0) {
-			subscrip.mbs_last_nonempty_start =
-			    subscrip.mbs_cur_start;
-			subscrip.mbs_last_nonempty_nrecs =
-			    subscrip.mbs_cur_nrecs;
-		} else {
-			subscrip.mbs_nreqs_empty++;
-		}
-
-		var nrecs = subscrip.mbs_cur_nrecs;
-
-		subscrip.mbs_cur_start = undefined;
-		subscrip.mbs_cur_nrecs = undefined;
-		subscrip.mbs_cur_query = undefined;
-
-		if (subscrip.mbs_limit > 1 && nrecs >= subscrip.mbs_limit) {
-			bus.mb_log.warn('moray query overflow (%s)',
-			    subscrip.mbs_id);
+	var doPoll = function () {
+		mod_mamoray.poll({
+		    'client': bus.mb_client,
+		    'options': {
+			'limit': subscrip.mbs_limit,
+			'noCache': true
+		    },
+		    'now': nowdate.getTime(),
+		    'log': bus.mb_log,
+		    'throttle': subscrip.mbs_throttle,
+		    'bucket': subscrip.mbs_bucket,
+		    'filter': query,
+		    'onrecord': subscrip.mbs_onrecord,
+		    'onerr': function () {
 			subscrip.mbs_onsuccesses = subscrip.mbs_onsuccesses.
 			    concat(onsuccesses);
-			return;
-		}
+		    },
+		    'ondone': function () {
+			subscrip.mbs_last_start = subscrip.mbs_cur_start;
+			subscrip.mbs_last_query = subscrip.mbs_cur_query;
 
-		onsuccesses.forEach(function (callback) { callback(); });
-	    }
-	});
+			if (subscrip.mbs_cur_nrecs > 0) {
+				subscrip.mbs_last_nonempty_start =
+				    subscrip.mbs_cur_start;
+				subscrip.mbs_last_nonempty_nrecs =
+				    subscrip.mbs_cur_nrecs;
+			} else {
+				subscrip.mbs_nreqs_empty++;
+			}
+
+			var nrecs = subscrip.mbs_cur_nrecs;
+
+			subscrip.mbs_cur_start = undefined;
+			subscrip.mbs_cur_nrecs = undefined;
+			subscrip.mbs_cur_query = undefined;
+
+			if (subscrip.mbs_limit > 1 &&
+			    nrecs >= subscrip.mbs_limit) {
+				bus.mb_log.warn('moray query overflow (%s)',
+				    subscrip.mbs_id);
+				subscrip.mbs_onsuccesses =
+				    subscrip.mbs_onsuccesses.concat(
+				    onsuccesses);
+				return;
+			}
+
+			onsuccesses.forEach(
+			    function (callback) { callback(); });
+		    }
+		});
+	};
+
+	if (subscrip.mbs_delay_start !== null) {
+		mod_assert.ok(subscrip.mbs_delaying_start === null);
+		subscrip.mbs_delaying_start = Date.now();
+		bus.mb_log.info('dbgDelayStart query delay', query);
+		setTimeout(function () {
+			bus.mb_log.info('dbgDelayStart query run', query);
+			mod_assert.ok(subscrip.mbs_delaying_start !== null);
+			subscrip.mbs_delaying_start = null;
+			doPoll();
+		}, subscrip.mbs_delay_start);
+	} else {
+		doPoll();
+	}
 };
 
 /*
@@ -496,7 +527,7 @@ MorayBus.prototype.txnPut = function (client, txn, now)
 	var doput = function () {
 		if (txn.tx_delay_start !== null) {
 			mod_assert.ok(txn.tx_delaying_start);
-			txn.tx_delaying_start = false;
+			txn.tx_delaying_start = null;
 		}
 
 		client.batch(objects, {}, function (err, meta) {
@@ -833,6 +864,12 @@ function MorayBusSubscription(bucket, query, options, onrecord)
 		onrecord(record, subscrip.mbs_barrier, subscrip.mbs_id);
 	};
 	this.mbs_onsuccesses = [];
+	this.mbs_delay_start = null;
+	this.mbs_delaying_start = null;
+	if (options.hasOwnProperty('dbgDelayStart')) {
+		mod_assert.equal(typeof (options['dbgDelayStart']), 'number');
+		this.mbs_delay_start = options['dbgDelayStart'];
+	}
 
 	/*
 	 * We maintain several additional pieces of state for kang-based
