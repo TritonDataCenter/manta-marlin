@@ -92,6 +92,7 @@ BASH_FILES	 = \
     agent/sbin/mrzoneremove		\
     agent/sbin/mrzones			\
     client/sbin/mrjobreport		\
+    client/sbin/mrereport		\
     client/sbin/mrerrors		\
     client/sbin/mrextractjob		\
     dev/tools/catest			\

@@ -6,6 +6,7 @@
 	"private": true,
 	"main": "common/lib/marlin.js",
 	"bin": {
+		"mrereport": "client/sbin/mrereport",
 		"mrerrors": "client/sbin/mrerrors",
 		"mrerrorsummary": "client/sbin/mrerrorsummary",
 		"mrextractjob": "client/sbin/mrextractjob",
