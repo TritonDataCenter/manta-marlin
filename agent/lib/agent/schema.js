@@ -86,6 +86,8 @@ module.exports = {
 	    }
 	},
 
+	'zoneDefaultImage': mod_schema.sStringRequiredNonEmpty,
+
 	'zoneDefaults': {
 	    'type': 'object',
 	    'required': true

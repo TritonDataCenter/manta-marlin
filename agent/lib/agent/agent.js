@@ -476,12 +476,12 @@ function mAgent(filename)
 	 * The zone and image discovery process is asynchronous, since it
 	 * involves calls to both imgadm and vmadm.  We store information about
 	 * all images in ma_images, but only the supported ones (ones for which
-	 * we have compute zones available) in ma_images_byvers, where the
-	 * images are listed in priority order.
+	 * we have compute zones available) in ma_images_byvers.
 	 */
 	this.ma_zonepools = {};		/* zone pools, by image uuid */
 	this.ma_images = {};		/* image details, by image uuid */
-	this.ma_images_byvers = [];	/* list of images in preference order */
+	this.ma_images_byvers = [];	/* list of images */
+	this.ma_image_default = null;	/* default image */
 	this.ma_discovering = false;	/* currently discovering zones */
 	this.ma_discovery_pending = false;	/* queued discover */
 	this.ma_discovery_callback = null;	/* invoke on discover done */
@@ -2962,12 +2962,8 @@ mAgent.prototype.imageLookup = function (image)
 	 */
 	var i, imageinfo;
 
-	if (image === undefined) {
-		if (this.ma_images_byvers.length === 0)
-			return (null);
-
-		return (this.ma_images_byvers[0]);
-	}
+	if (image === undefined)
+		return (this.ma_image_default);
 
 	mod_assert.equal('string', typeof (image));
 
@@ -3040,7 +3036,7 @@ mAgent.prototype.zonesRefreshImages = function (callback)
 mAgent.prototype.zonesDiscoverFini = function (err, zones)
 {
 	var agent = this;
-	var usedimages;
+	var usedimages, i, imageinfo;
 
 	this.ma_discovering = null;
 
@@ -3099,8 +3095,9 @@ mAgent.prototype.zonesDiscoverFini = function (err, zones)
 	});
 
 	/*
-	 * Finally, create a list of supported images sorted in order of our
-	 * preference for using them.  We prefer newer images first.
+	 * Finally, find the default image and create a list of supported images
+	 * sorted in order of our preference for using them.  We prefer newer
+	 * images first.
 	 */
 	this.ma_images_byvers = Object.keys(usedimages);
 	this.ma_images_byvers.sort(function (a, b) {
@@ -3108,6 +3105,20 @@ mAgent.prototype.zonesDiscoverFini = function (err, zones)
 		    agent.ma_images[a]['version'],
 		    agent.ma_images[b]['version']));
 	});
+
+	for (i = 0; i < this.ma_images_byvers.length; i++) {
+		imageinfo = this.ma_images[this.ma_images_byvers[i]];
+		if (mod_semver.satisfies(imageinfo['version'],
+		    this.ma_conf['zoneDefaultImage'])) {
+			this.ma_image_default = this.ma_images_byvers[i];
+			this.ma_log.info('found default image', imageinfo);
+			break;
+		}
+	}
+
+	if (this.ma_image_default === null)
+		this.ma_log.error('default image not found (%s)',
+		    this.ma_conf['zoneDefaultImage']);
 
 	this.ma_log.info('zone discovery complete');
 
