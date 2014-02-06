@@ -401,8 +401,7 @@ function Worker(args)
 	    function (name, bucket) { worker.w_names[bucket] = name; });
 
 	/* helper objects */
-	this.w_log = args['log'].child(
-	    { 'component': 'Worker-' + this.w_uuid });
+	this.w_log = args['log'];
 
 	this.w_bus = mod_bus.createBus(conf, {
 	    'log': this.w_log.child({ 'component': 'MorayBus' })
@@ -427,14 +426,14 @@ function Worker(args)
 	};
 
 	this.w_locator = mod_locator.createLocator(args['conf'], {
-	    'log': this.w_log.child({ 'component': 'MantaLocator' }),
+	    'log': this.w_log,
 	    'storage_map': this.w_storage_map
 	});
 
 	this.w_manta = mod_manta.createClient({
 	    'connectTimeout': conf['manta']['connectTimeout'],
 	    'url': conf['manta']['url'],
-	    'log': this.w_log.child({ 'component': 'MantaClient' }),
+	    'log': this.w_log.child({ 'component': 'manta' }),
 	    'sign': mod_mautil.mantaSignNull
 	});
 
@@ -638,7 +637,7 @@ Worker.prototype.initRedis = function ()
 	conf = {};
 	for (var k in this.w_conf['auth'])
 		conf[k] = this.w_conf['auth'][k];
-	conf['log'] = this.w_log.child({ 'component': 'MahiClient' });
+	conf['log'] = this.w_log.child({ 'component': 'mahi' });
 
 	this.w_mahi = mahi = mod_libmanta.createMahiClient(conf);
 
@@ -2778,7 +2777,7 @@ Worker.prototype.jobCreate = function (record, barrier)
 	mod_assert.ok(!this.w_jobs.hasOwnProperty(jobid));
 	job = this.w_jobs[jobid] = new JobState({
 	    'conf': this.w_conf,
-	    'log': this.w_log.child({ 'component': 'Job-' + jobid }),
+	    'log': this.w_log.child({ 'job': jobid }),
 	    'record': record
 	});
 

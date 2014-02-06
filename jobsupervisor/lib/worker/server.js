@@ -30,7 +30,7 @@ function main()
 		});
 	}
 
-	log = new mod_bunyan({ 'name': 'MarlinWorker', 'level': mwLogLevel });
+	log = new mod_bunyan({ 'name': 'jobsupervisor', 'level': mwLogLevel });
 	conf = mod_mautil.readConf(log, mod_worker.mwConfSchema,
 	    process.argv[2]);
 

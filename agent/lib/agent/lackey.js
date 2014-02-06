@@ -1055,7 +1055,7 @@ MarlinExecutor.prototype.start = function ()
 		this.mex_cache = new ObjectCache(function (url) {
 			return (mod_restify.createClient({
 			    'socketPath': url,
-			    'log': log.child({ 'component': 'Client-' + url }),
+			    'log': log.child({ 'client': url }),
 			    'version': '*'
 			}));
 		}, log.child({ 'component': 'ObjectCache' }));

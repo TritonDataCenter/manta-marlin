@@ -217,7 +217,7 @@ MorayBus.prototype.connect = function ()
 	client = mod_moray.createClient({
 	    'host': this.mb_host,
 	    'port': this.mb_port,
-	    'log': this.mb_log.child({ 'component': 'MorayClient' }),
+	    'log': this.mb_log.child({ 'component': 'moray' }),
 	    'reconnect': true,
 	    'retry': this.mb_reconnect,
 	    'dns': this.mb_dns

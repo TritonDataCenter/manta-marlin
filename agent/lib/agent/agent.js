@@ -1308,7 +1308,7 @@ mAgent.prototype.taskAcceptFinish = function (record)
 	job.j_groups[groupid] = true;
 
 	group = new maTaskGroup(groupid, job, pi,
-	    this.ma_log.child({ 'component': 'Group-' + groupid }));
+	    this.ma_log.child({ 'job': jobid, 'phase': pi }));
 	group.g_log.debug('created group for job "%s" phase %d ' +
 	    '(from task "%s")', jobid, pi, task.t_id);
 	this.ma_taskgroups[groupid] = group;
@@ -3084,9 +3084,7 @@ mAgent.prototype.zonesDiscoverFini = function (err, zones)
 			agent.ma_taskgroups_queued[image] = [];
 			agent.ma_zonepools[image] =
 			    new mod_agent_zonepool.ZonePool({
-			        'log': agent.ma_log.child({
-				    'component': 'Pool-' + image
-				}),
+			        'log': agent.ma_log.child({ 'pool': 'image' }),
 				'tunables': agent.ma_conf['tunables']
 			    });
 		}
@@ -3345,7 +3343,7 @@ mAgent.prototype.zoneAdd = function (zonename, image)
 	mod_assert.ok(this.ma_zonepools.hasOwnProperty(image));
 	this.ma_log.info('adding zone "%s"', zonename);
 	zone = mod_agent_zone.maZoneAdd(zonename, this.ma_spawner,
-	    this.ma_log.child({ 'component': 'Zone-' + zonename }));
+	    this.ma_log.child({ 'zone': zonename }));
 	zone.z_image = image;
 	this.ma_zones[zonename] = zone;
 	this.ma_counters['zones_added']++;
@@ -4120,7 +4118,7 @@ function maTaskStream(agent, stream_id, group, machine)
 	this.s_machine = machine;	/* assigned zonename */
 
 	/* helper objects */
-	this.s_log = group.g_log.child({ 'component': 'Stream-' + stream_id });
+	this.s_log = group.g_log.child({ 'zone': machine });
 	this.s_stats = new mod_meter.StatAccumulator({
 	    'read': function () { return (agent.streamStats(stream)); }
 	});
