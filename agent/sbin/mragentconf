@@ -106,9 +106,10 @@ echo "wrote logpush.json"
 mac_tmpfile=/var/tmp/$mac_arg0.$$
 if ! crontab -l | grep logpush.json > /dev/null ||
    ! crontab -l | grep mrlogexpire > /dev/null; then
+	crontab -l > $mac_tmpfile
 	echo "1,2,3,4,5 * * * * $mac_root/sbin/logpush.sh " \
 	    "$mac_confdir/logpush.json >> " \
-	    "/var/log/mbackup.log 2>&1" > $mac_tmpfile || \
+	    "/var/log/mbackup.log 2>&1" >> $mac_tmpfile || \
 	    fail "failed to append"
 	echo "0 0 * * * $mac_root/sbin/mrlogexpire.sh " \
 	    ">> /var/log/mrlogexpire.log 2>&1" >> $mac_tmpfile ||
