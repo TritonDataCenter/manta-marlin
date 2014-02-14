@@ -2782,6 +2782,7 @@ function StringInputStream(contents)
 	this.s_data = contents;
 	this.s_paused = false;
 	this.s_done = false;
+	this.readable = true;
 
 	this.scheduleEmit();
 }
