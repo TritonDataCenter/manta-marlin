@@ -10,5 +10,7 @@ function fail
 
 [[ -n "$1" ]] || fail "usage: $(basename $0) zonename"
 
+echo '{ "set_tags": { "manta_compute": "" } }' | vmadm update $1 || \
+    fail "failed to mark zone non-removed"
 exec curl -X POST -is \
     "${AGENT_URL:-http://localhost:9080}/zones?zonename=$1" | json

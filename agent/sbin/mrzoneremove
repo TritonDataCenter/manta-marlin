@@ -10,9 +10,9 @@ shopt -s xpg_echo
 arg0=$(basename $0)
 if [[ -h "$0" ]]; then
 	cd $(dirname $0)
-	. $(dirname $(readlink "$arg0"))/util.sh
+	. $(dirname $(readlink "$arg0"))/../tools/util.sh
 else
-	. $(dirname $0)/util.sh
+	. $(dirname $0)/../tools/util.sh
 fi
 
 function zone_wait_state
@@ -32,8 +32,19 @@ function zone_remove
 {
 	local zonename=$1
 
+	#
+	# The zone must be disabled by the time we set tags.manta_compute.
+	# Otherwise, it's possible that marlin will decide to reset this zone,
+	# rolling back the zone's dataset -- including our change to its tags.
+	#
+	if ! echo '{ "set_tags": { "manta_compute": "removed" } }' | \
+	    vmadm update $zonename; then
+		echo "$arg0: failed to mark zone \"$zonename\" removed" >&2
+		return 1
+	fi
+
 	if ! curlagent /zones/$zonename -XDELETE > /dev/null; then
-		echo "$arg0: failed to disable zone \"$zonename\"" >&2
+		echo "$arg0: failed to remove zone \"$zonename\"" >&2
 		return 1
 	fi
 }

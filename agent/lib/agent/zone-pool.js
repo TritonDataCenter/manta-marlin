@@ -27,7 +27,8 @@ exports.ZonePool = ZonePool;
 function discoverZones(log, callback)
 {
 	var cmd = 'vmadm';
-	var args = [ 'list', '-H', '-o', 'uuid,image_uuid,tags.manta_role' ];
+	var args = [ 'list', '-H', '-o',
+	    'uuid,image_uuid,tags.manta_role,tags.manta_compute' ];
 	runTableCommand(log, cmd, args, function (err, records) {
 		if (err) {
 			callback(err);
@@ -36,9 +37,14 @@ function discoverZones(log, callback)
 
 		var rv = [];
 		records.forEach(function (rec) {
-			var parts = mod_strsplit.strsplit(rec, /\s+/, 3);
-			if (parts.length != 3) {
+			var parts = mod_strsplit.strsplit(rec, /\s+/, 4);
+			if (parts.length != 4) {
 				log.warn('listing images: line garbled: ', rec);
+				return;
+			}
+
+			if (parts[3] == 'removed') {
+				log.info('ignoring removed zone', parts[0]);
 				return;
 			}
 
