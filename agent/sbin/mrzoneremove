@@ -7,6 +7,9 @@
 
 shopt -s xpg_echo
 
+# This program is run under Ur without any useful PATH.
+export PATH=$PATH:/usr/sbin:/opt/smartdc/bin
+
 arg0=$(basename $0)
 if [[ -h "$0" ]]; then
 	cd $(dirname $0)

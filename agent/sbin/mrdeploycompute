@@ -9,6 +9,7 @@
 set -o pipefail
 set -o xtrace
 
+# This program is run under Ur without any useful PATH.
 export PATH=$PATH:/usr/sbin:/opt/smartdc/bin
 
 mdc_arg0="$(basename $0)"
