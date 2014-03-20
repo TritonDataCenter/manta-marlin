@@ -93,7 +93,7 @@ function setup(callback)
 	    'bindDN': 'cn=root',
 	    'bindPassword': 'secret'
 	});
-	ufds_client.on('ready', function () {
+	ufds_client.once('ready', function () {
 		log.info('ufds ready');
 		barrier.done('ufds');
 	});
