@@ -32,6 +32,7 @@ mod_assert.ok(pool.nzones() == 1);
 mod_assert.ok(pool.unreservedCapacity() === 0);
 mod_assert.ok(!pool.hasZoneReady());
 mod_assert.ok(pool.saturated());
+mod_assert.ok(!pool.zoneIsReady('zone-1'));
 
 /* mark the zone ready */
 pool.zoneMarkReady('zone-1');
@@ -40,6 +41,7 @@ mod_assert.ok(pool.nzones() == 1);
 mod_assert.ok(pool.unreservedCapacity() === 0);
 mod_assert.ok(pool.hasZoneReady());
 mod_assert.ok(pool.saturated());
+mod_assert.ok(pool.zoneIsReady('zone-1'));
 
 /* now select it (marking it unready) */
 var zone = pool.zonePick();
@@ -49,6 +51,7 @@ mod_assert.ok(pool.nzones() == 1);
 mod_assert.ok(pool.unreservedCapacity() === 0);
 mod_assert.ok(!pool.hasZoneReady());
 mod_assert.ok(pool.saturated());
+mod_assert.ok(!pool.zoneIsReady('zone-1'));
 
 pool.zoneMarkReady('zone-1');
 mod_assert.ok(pool.ndisabled() === 0);
@@ -56,6 +59,7 @@ mod_assert.ok(pool.nzones() == 1);
 mod_assert.ok(pool.unreservedCapacity() === 0);
 mod_assert.ok(pool.hasZoneReady());
 mod_assert.ok(pool.saturated());
+mod_assert.ok(pool.zoneIsReady('zone-1'));
 
 /* add a bunch more zones and check reserve state */
 for (var i = 0; i < 9; i++) {

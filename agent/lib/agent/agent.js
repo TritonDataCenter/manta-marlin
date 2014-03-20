@@ -3282,6 +3282,15 @@ mAgent.prototype.zoneReady = function (zone, err)
 			agent.ma_slopdisk_used -= giveback;
 		}
 
+		/*
+		 * Check again whether the zone was disabled.
+		 */
+		if (zone.z_quiesced !== undefined) {
+			agent.zoneDisable(zone,
+			    new VError('zone disabled by operator'));
+			return;
+		}
+
 		agent.ma_counters['zones_readied']++;
 		var pool = agent.ma_zonepools[zone.z_image];
 		var startedfull = pool.saturated();
@@ -3408,6 +3417,7 @@ function maHttpZoneDisable(request, response, next)
 {
 	var agent = maAgent;
 	var zonename, zone;
+	var zonepool;
 
 	zonename = request.params['zonename'];
 
@@ -3416,13 +3426,25 @@ function maHttpZoneDisable(request, response, next)
 		return;
 	}
 
+	/*
+	 * If the zone is in state "ready" and already added to the "ready" part
+	 * of the zone pool, then we must remove it from the zone pool and
+	 * disable the zone.  Otherwise, the zone is currently transitioning to
+	 * "ready" and all we do here is set z_quiesced, which we'll check when
+	 * the zone becomes "ready".  (It's possible for the zone to be in the
+	 * "ready" state before it's actually added to the ready zone pool, in
+	 * which case it's still transitioning.)
+	 */
 	zone = agent.ma_zones[zonename];
-	if (zone.z_state == mod_agent_zone.maZone.ZONE_S_READY) {
+	zonepool = agent.ma_zonepools[zone.z_image];
+	if (zone.z_state == mod_agent_zone.maZone.ZONE_S_READY &&
+	    zonepool.zoneIsReady(zonename)) {
 		mod_assert.ok(zone.z_taskstream === undefined);
-		agent.ma_zonepools[zone.z_image].zoneUnready(zonename);
+		zonepool.zoneUnready(zonename);
 		agent.zoneDisable(zone,
 		    new VError('zone disabled by operator'));
-	} else if ((zone.z_state == mod_agent_zone.maZone.ZONE_S_BUSY ||
+	} else if ((zone.z_state == mod_agent_zone.maZone.ZONE_S_READY ||
+	    zone.z_state == mod_agent_zone.maZone.ZONE_S_BUSY ||
 	    zone.z_state == mod_agent_zone.maZone.ZONE_S_UNINIT) &&
 	    !zone.z_quiesced) {
 		zone.z_quiesced = Date.now();

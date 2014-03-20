@@ -166,6 +166,14 @@ ZonePool.prototype.zoneMarkReady = function (zonename)
 };
 
 /*
+ * Check whether the given zone is "ready".
+ */
+ZonePool.prototype.zoneIsReady = function (zonename)
+{
+	return (this.zp_ready.hasOwnProperty(zonename));
+};
+
+/*
  * This is an unusual operation, used only when a ready zone is being removed
  * from service.
  */
