@@ -2282,7 +2282,8 @@ mAgent.prototype.schedGroupOversched = function (group)
 
 	pool = this.ma_zonepools[group.g_poolid];
 	capacity = pool.unreservedCapacity();
-	nzones = Math.ceil(capacity * (ntasks / this.ma_ntasks));
+	nzones = Math.min(ntasks,
+	    Math.ceil(capacity * (ntasks / this.ma_ntasks)));
 	return (Math.max(0, group.g_nstreams - 1 - (capacity - nzones)));
 };
 
