@@ -810,7 +810,8 @@ mAgent.prototype.zoneMaybeTimeout = function (zone, now)
 	 * execute a task stream.
 	 */
 	if (stream === undefined ||
-	    stream.s_state != maTaskStream.TASKSTREAM_S_RUNNING)
+	    stream.s_state != maTaskStream.TASKSTREAM_S_RUNNING ||
+	    stream.s_idle_start !== undefined)
 		return (false);
 
 	if (now - zone.z_last_contact <= this.ma_liveness_interval)
@@ -2674,6 +2675,14 @@ function maTaskStreamDispatch(arg, callback)
 		return;
 	}
 
+	/*
+	 * We set z_last_contact here so to reset the lackey's liveness timer.
+	 * This is especially important for the case where this stream had
+	 * previously been idle for longer than the lackey timeout.  Since
+	 * taskStreamAdvance() clears s_idle_start, zonesCheckLiveness() may
+	 * immediately think the zone has timed out if we didn't act like it had
+	 * heartbeated just now.
+	 */
 	stream.s_stats.zero(stats);
 	zone.z_last_contact = Date.now();
 
