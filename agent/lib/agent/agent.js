@@ -1274,11 +1274,11 @@ mAgent.prototype.taskAccept = function (record, barrier)
 	barrier.start(taskid);
 	this.ma_bus.putBatch([
 	    [ record['bucket'], record['key'], record['value'],
-	      { 'etag': record['_etag'] } ] ], {}, function (err) {
+	      { 'etag': record['_etag'] } ] ], {}, function (err, res) {
 		barrier.done(taskid);
 
 		if (!cancel && !err)
-			agent.taskAcceptFinish(record);
+			agent.taskAcceptFinish(record, res.etags[0]['etag']);
 	    });
 };
 
@@ -1286,12 +1286,13 @@ mAgent.prototype.taskAccept = function (record, barrier)
  * Finish the task accept process by creating a new task object for the given
  * record.  This creates a task group and job record if needed.
  */
-mAgent.prototype.taskAcceptFinish = function (record)
+mAgent.prototype.taskAcceptFinish = function (record, etag)
 {
 	var task, jobid, pi, groupid;
 	var job, group;
 
 	task = new maTask(record, this);
+	task.t_record['_etag'] = etag;
 	this.ma_tasks[record['value']['taskId']] = task;
 	this.ma_ntasks++;
 
