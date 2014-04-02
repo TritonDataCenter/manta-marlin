@@ -56,15 +56,15 @@ function tasktimes
 jr_arg0=$(basename $0)
 jr_datadir=${TMPDIR:-/var/tmp}/jobreport_data		# path to cache data
 jr_tmpfile=/var/tmp/$jr_arg0.$$
+jr_hostargs=
 
 # Arguments
 opt_f=false						# force cache refresh
-opt_m=localhost						# moray server
 
 while getopts ":fm:" c $@; do
 	case "$c" in
 	f)	eval opt_$c=true ;;
-	m)	eval opt_$c=$OPTARG ;;
+	m)	jr_hostargs="-h $OPTARG" ;;
 	h)	usage ;;
 	:)	usage "option requires an argument -- $OPTARG" ;;
 	*)	usage "invalid option: $OPTARG" ;;
@@ -90,7 +90,7 @@ mkdir -p "$jr_datadir" || fail "failed to create \"$jr_datadir\""
 [[ $opt_f == "true" ]] && rm -f $jr_taskfile
 if [[ ! -f $jr_taskfile ]]; then
 	echo "Fetching tasks for job $jr_jobid ... \c "
-	findobjects -h "$opt_m" -H -l10000 marlin_tasks_v2 "jobId=$jr_jobid" \
+	findobjects $jr_hostargs -H -l10000 marlin_tasks_v2 "jobId=$jr_jobid" \
 	    > $jr_taskfile || fail "failed"
 	echo "done."
 
