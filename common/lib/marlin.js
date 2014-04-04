@@ -1188,6 +1188,8 @@ function jobsList(api, options)
 	} else if (options['wrasse'] &&
 	    /^[\d\w-]+$/.test(options['wrasse'])) {
 		filters.push('(wrasse=' + options['wrasse'] + ')');
+	} else if (options['!wrasse']) {
+		filters.push('(!(wrasse=' + options['!wrasse'] + '))');
 	}
 
 	if (options['doneSince']) {
