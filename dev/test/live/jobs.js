@@ -1543,6 +1543,29 @@ exports.jobMcancel = {
     } ]
 };
 
+/*
+ * Tests that there's no tmpfs mounted at /tmp.  Using tmpfs there results in
+ * annoying issues related to memory management for no measurable performance
+ * improvements over ZFS in many cases.  This test exists because we've
+ * inadvertently reintroduced tmpfs a few times.
+ */
+exports.jobMtmpfs = {
+    'job': {
+	'phases': [ {
+	    'type': 'map',
+	    'exec': 'set -o pipefail; set -o errexit; ' +
+	        'df /tmp | awk \'NR == 2{ print $NF }\'; ' +
+	        'mount | awk \'$3 == "swap"{ print $1 }\' | grep ^/tmp || ' +
+		    'echo "okay"'
+	} ]
+    },
+    'inputs': [ '/%user%/stor/obj1' ],
+    'timeout': 30 * 1000,
+    'expected_outputs': [ /\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./ ],
+    'errors': [],
+    'expected_output_content': [ '/\nokay\n' ]
+};
+
 exports.jobMmeterCheckpoints = {
     'job': {
 	'phases': [ { 'type': 'map', 'exec': 'sleep 7' } ]
@@ -1808,6 +1831,7 @@ exports.jobsMain = [
     exports.jobMMRIntermedDir,
     exports.jobMMRIntermedDirNonEmpty,
     exports.jobMcancel,
+    exports.jobMtmpfs,
     exports.jobMasset,
     exports.jobMcore,
     exports.jobMmemoryDefault,
