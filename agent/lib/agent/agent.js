@@ -3232,6 +3232,34 @@ mAgent.prototype.zoneWakeup = function (zone)
 };
 
 /*
+ * Release the slop resources used by this zone.  The total memory and disk
+ * allocated to this zone are given by "oldmem" and "olddisk", so we subtract
+ * the defaults to compute how much slop they were using.
+ */
+mAgent.prototype.zoneReleaseSlop = function (zone, oldmem, olddisk)
+{
+	var giveback;
+	var defaults = this.ma_conf['zoneDefaults'];
+
+	giveback = oldmem - defaults['max_physical_memory'];
+	if (giveback > 0) {
+		zone.z_log.info('giving back %d MB of mem', giveback);
+		mod_assert.ok(giveback <= this.ma_slopmem_used);
+		this.ma_slopmem_used -= giveback;
+	}
+
+	/*
+	 * Ditto for disk.
+	 */
+	giveback = olddisk - defaults['quota'];
+	if (giveback > 0) {
+		zone.z_log.info('giving back %d GB of disk', giveback);
+		mod_assert.ok(giveback <= this.ma_slopdisk_used);
+		this.ma_slopdisk_used -= giveback;
+	}
+};
+
+/*
  * Invoked as a callback when the given zone transitions to the "ready" state
  * (or fails to do so).
  */
@@ -3275,23 +3303,7 @@ mAgent.prototype.zoneReady = function (zone, err)
 		 * memory it had here, but that's okay because we also won't
 		 * remember that that memory was allocated in the first place.
 		 */
-		var giveback;
-		giveback = oldmem - options['max_physical_memory'];
-		if (giveback > 0) {
-			zone.z_log.info('giving back %d MB of mem', giveback);
-			mod_assert.ok(giveback <= agent.ma_slopmem_used);
-			agent.ma_slopmem_used -= giveback;
-		}
-
-		/*
-		 * Ditto for disk.
-		 */
-		giveback = olddisk - options['quota'];
-		if (giveback > 0) {
-			zone.z_log.info('giving back %d GB of disk', giveback);
-			mod_assert.ok(giveback <= agent.ma_slopdisk_used);
-			agent.ma_slopdisk_used -= giveback;
-		}
+		agent.zoneReleaseSlop(zone, oldmem, olddisk);
 
 		/*
 		 * Check again whether the zone was disabled.
@@ -3492,8 +3504,11 @@ function maHttpZoneDelete(request, response, next)
 		}
 
 		var pool = agent.ma_zonepools[zone.z_image];
+		var slopmem = zone.z_options['max_physical_memory'];
+		var slopdisk = zone.z_options['quota'];
 
 		agent.ma_log.info('removing zone "%s"', zonename);
+		agent.zoneReleaseSlop(zone, slopmem, slopdisk);
 		pool.zoneRemove(zonename);
 		delete (agent.ma_zones[zonename]);
 		response.send(204);
