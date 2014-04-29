@@ -50,7 +50,7 @@
 		"zoneReservePercent": 12
 	},
 
-	"zoneDefaultImage": "13.1.0",
+	"zoneDefaultImage": "13.3.5",
 
 	"zoneDefaults": {
 		"max_physical_memory": 1024,
