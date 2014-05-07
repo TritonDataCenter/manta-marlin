@@ -238,7 +238,7 @@ function maZoneMakeReady(zone, callback)
 		if (err) {
 			/* XXX close fd */
 			zone.z_state = maZone.ZONE_S_DISABLED;
-			zone.z_log.error(err, 'failed to make zone ready');
+			zone.z_log.warn(err, 'failed to make zone ready');
 			callback(zone, err);
 			return;
 		}

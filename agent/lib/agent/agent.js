@@ -551,7 +551,7 @@ mAgent.prototype.init = function ()
 	    mod_path.join(__dirname, '../../sbin/mrlogadmconf.sh')
 	], function (err, stdout, stderr) {
 		if (err) {
-			agent.ma_log.error(err,
+			agent.ma_log.warn(err,
 			    'failed to set up logadm: "%s"', stderr);
 		} else {
 			agent.ma_log.info('updated logadm.conf');
@@ -570,7 +570,7 @@ mAgent.prototype.init = function ()
 		}
 
 		if (err) {
-			agent.ma_log.error(err,
+			agent.ma_log.warn(err,
 			    'failed to get datacenter name');
 		} else {
 			agent.ma_dcname = config['Datacenter Name'] || '';
@@ -581,7 +581,7 @@ mAgent.prototype.init = function ()
 	this.ma_spawner.aspawn([ 'priocntl', '-s', '-c', 'RT',
 	    process.pid.toString() ], function (err, stdout, stderr) {
 		if (err) {
-			agent.ma_log.error(err,
+			agent.ma_log.warn(err,
 			    'failed to place self into RT scheduling class; ' +
 			    'agent may be subject to CPU starvation',
 			    { 'pid': process.pid, 'stdout': stdout,
@@ -886,7 +886,7 @@ mAgent.prototype.zonesCheckLiveness = function ()
 				 * report a more specific error and not bother
 				 * taking the zone out of service.
 				 */
-				zone.z_log.error('lackey has timed out ' +
+				zone.z_log.warn('lackey has timed out ' +
 				    '(with anon allocation failures)');
 				taskerror = maOutOfMemoryError;
 			} else if (!err &&
@@ -897,7 +897,7 @@ mAgent.prototype.zonesCheckLiveness = function ()
 				 * can be reasonably sure that's what caused
 				 * the lackey to fail.
 				 */
-				zone.z_log.error('lackey has timed out ' +
+				zone.z_log.warn('lackey has timed out ' +
 				    '(out of disk space)');
 				taskerror = maOutOfDiskError;
 			} else {
@@ -912,7 +912,7 @@ mAgent.prototype.zonesCheckLiveness = function ()
 				 * zone, and a core of any running lackey
 				 * process, and then resetting the zone.
 				 */
-				zone.z_log.error('lackey has timed out');
+				zone.z_log.warn('lackey has timed out');
 				taskerror = maLackeyTimeoutError;
 				zone.z_failed = timestamp;
 			}
@@ -1633,7 +1633,7 @@ mAgent.prototype.taskAbandon = function (err, task)
 	if (task.t_abandoned)
 		return;
 
-	this.ma_log.error(err, 'abandoning task "%s"', task.t_id);
+	this.ma_log.warn(err, 'abandoning task "%s"', task.t_id);
 	task.t_abandoned = true;
 
 	if (task.t_record['value']['result'] === undefined)
@@ -1807,7 +1807,7 @@ mAgent.prototype.taskEmitOutput = function (stream, task, iostream, key,
 	var agent = this;
 
 	if (task === undefined || stream.s_task != task) {
-		stream.s_log.error('stream has moved on by the time %s key ' +
+		stream.s_log.warn('stream has moved on by the time %s key ' +
 		    '"%s" was finished writing', iostream, key);
 		if (callback)
 			callback();
@@ -3331,7 +3331,7 @@ mAgent.prototype.zoneDisable = function (zone, err)
 {
 	zone.z_state = mod_agent_zone.maZone.ZONE_S_DISABLED;
 	this.ma_counters['zones_disabled']++;
-	zone.z_log.error(err, 'zone removed from service');
+	zone.z_log.warn(err, 'zone removed from service');
 
 	zone.z_disabled_time = new Date();
 	zone.z_disabled_error = err;
