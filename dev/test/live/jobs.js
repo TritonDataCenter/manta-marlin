@@ -118,8 +118,8 @@ exports.jobMimage = {
     'job': {
 	'phases': [ {
 	    'type': 'map',
-	    'image': '13.1.0',
-	    'exec': 'grep 13.1.0 /etc/motd'
+	    'image': '13.3.5',
+	    'exec': 'grep 13.3.5 /etc/motd'
 	} ]
     },
     'inputs': [ '/%user%/stor/obj1' ],
