@@ -35,8 +35,8 @@ exports.aqTasksInputDone = {
     'query': function (conf) {
     	return (sprintf(
 	    '(&(mantaComputeId=%s)(state=accepted)(!(timeCancelled=*))' +
-	    '(timeInputDone=*)(!(timeInputDoneRead=*)))',
-	    conf['mantaComputeId']));
+	    '(agentGeneration=%s)(timeInputDone=*)(!(timeInputDoneRead=*)))',
+	    conf['mantaComputeId'], conf['agentGeneration']));
     }
 };
 
