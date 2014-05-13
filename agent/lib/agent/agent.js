@@ -2342,7 +2342,7 @@ mAgent.prototype.schedIdlePool = function (poolid, zoneadded)
 		 * operation is at worse O(nzones).  But if we spend a
 		 * lot of time here, we could cache the results.
 		 */
-		group = agent.schedPickGroup();
+		group = agent.schedPickGroup(poolid);
 		if (group === undefined)
 			break;
 
@@ -2361,7 +2361,7 @@ mAgent.prototype.schedIdlePool = function (poolid, zoneadded)
  * based on the difference between desired and actual concurrency as a
  * proportion of actual concurrency.
  */
-mAgent.prototype.schedPickGroup = function ()
+mAgent.prototype.schedPickGroup = function (poolid)
 {
 	var agent = this;
 	var bestGroup, bestValue;
@@ -2370,6 +2370,9 @@ mAgent.prototype.schedPickGroup = function ()
 		var nzones, value;
 
 		if (group.g_state != maTaskGroup.TASKGROUP_S_RUNNING)
+			return;
+
+		if (group.g_poolid != poolid)
 			return;
 
 		if (group.g_tasks.length === 0)
