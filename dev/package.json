@@ -26,6 +26,7 @@
 		"kstat": "0.5.0",
 		"libmanta": "git+ssh://git@git.joyent.com:node-libmanta.git#master",
 		"lstream": "0.0.3",
+		"mahi": "git+ssh://git@git.joyent.com:node-mahi.git#master",
 		"manta": "git+ssh://git@github.com:joyent/node-manta.git#master",
 		"manta-compute-bin": "git+ssh://git@github.com:joyent/manta-compute-bin.git#master",
 		"memorystream": "0.2.0",

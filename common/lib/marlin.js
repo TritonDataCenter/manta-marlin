@@ -319,6 +319,7 @@ function jobCreate(api, conf, options, callback)
 		/*
 		 * Muskie should only allow operators to specify "options", but
 		 * the test suite allows unprivileged users to do so.
+		 * XXX update this for access-control
 		 */
 		if (!mod_jsprim.isEmpty(conf['options']))
 			mod_assert.ok((options && options.istest) ||

@@ -14,11 +14,11 @@ var mod_path = require('path');
 var mod_url = require('url');
 
 var mod_bunyan = require('bunyan');
-var mod_libmanta = require('libmanta');
 var mod_uuid = require('node-uuid');
 var mod_vasync = require('vasync');
 var mod_verror = require('verror');
 
+var mod_mahi = require('mahi');
 var mod_manta = require('manta');
 var mod_marlin = require('../lib/marlin');
 var mod_sdc = require('sdc-clients');
@@ -46,11 +46,7 @@ exports.testname = testname;
 exports.log = log;
 
 var mahi_client;
-var mahi_connecting = false;
-var mahi_waiters = [];
-
 var ufds_client;
-
 var marlin_client;
 
 function setup(callback)
@@ -317,14 +313,6 @@ function teardown(api, callback)
 
 function loginLookup(login, callback)
 {
-	if (mahi_connecting) {
-		mahi_waiters.push(function () {
-			loginLookup(login, callback);
-		});
-
-		return;
-	}
-
 	if (!mahi_client) {
 		if (!process.env['MAHI_URL']) {
 			process.nextTick(function () {
@@ -335,50 +323,25 @@ function loginLookup(login, callback)
 			return;
 		}
 
-		var conf = mod_url.parse(process.env['MAHI_URL']);
-		log.info('connecting to mahi', conf);
-		mahi_connecting = true;
-		mahi_client = mod_libmanta.createMahiClient({
-		    'host': conf['hostname'],
-		    'port': parseInt(conf['port'], 10),
-		    'log': log.child({ 'component': 'MahiClient' })
+		log.info('connecting to mahi', process.env['MAHI_URL']);
+		mahi_client = mod_mahi.createClient({
+		    'log': log.child({ 'component': 'MahiClient' }),
+		    'url': process.env['MAHI_URL'],
+		    'maxAuthCacheSize': 1000,
+		    'maxAuthCacheAgeMs': 300,
+		    'maxTranslationCacheSize': 1000,
+		    'maxTranslationCacheAgeMs': 300
 		});
-
-		mahi_client.once('error', function (err) {
-			var verr = new VError(err, 'failed to lookup login ' +
-			    '"%s"', login);
-			mahi_client = undefined;
-			log.warn(verr);
-			callback(verr);
-		});
-
-		mahi_client.once('close', function () {
-			log.warn('mahi connection closed');
-			mahi_client = undefined;
-		});
-
-		mahi_client.once('connect', function () {
-			log.info('mahi connected');
-			mahi_connecting = false;
-			mahi_client.removeAllListeners('error');
-			loginLookup(login, callback);
-
-			var w = mahi_waiters;
-			mahi_waiters = [];
-			w.forEach(function (cb) { cb(); });
-		});
-
-		return;
 	}
 
-	mahi_client.userFromLogin(login, function (err, user) {
+	mahi_client.getUuid({ 'account': login }, function (err, record) {
 		if (err) {
 			callback(err);
 			return;
 		}
 
-		log.info('user "%s" has uuid', login, user['uuid']);
-		callback(null, user['uuid'], user);
+		log.info('user "%s" has uuid', login, record['account']);
+		callback(null, record['account']);
 	});
 }
 

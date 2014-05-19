@@ -167,8 +167,9 @@ var mod_extsprintf = require('extsprintf');
 var mod_fs = require('fs');
 var mod_path = require('path');
 
-var mod_libmanta = require('libmanta');
 var mod_jsprim = require('jsprim');
+var mod_libmanta = require('libmanta');
+var mod_mahi = require('mahi');
 var mod_manta = require('manta');
 var mod_mkdirp = require('mkdirp');
 var mod_uuid = require('node-uuid');
@@ -571,7 +572,7 @@ Worker.prototype.start = function ()
 	    function () { return ([ worker.w_uuid ]); });
 
 	this.initMoray();
-	this.initRedis();
+	this.initMahi();
 
 	mod_assert.ok(!mod_jsprim.isEmpty(this.w_init_barrier.pending));
 	this.w_init_barrier.on('drain', function () {
@@ -626,49 +627,16 @@ Worker.prototype.initMoray = function ()
 	});
 };
 
-Worker.prototype.initRedis = function ()
+Worker.prototype.initMahi = function ()
 {
-	var worker = this;
-	var conf, mahi;
-
 	this.w_log.info('initializing mahi', this.w_conf['auth']);
-	this.w_init_barrier.start('mahi');
 
-	conf = {};
+	var conf = {};
 	for (var k in this.w_conf['auth'])
 		conf[k] = this.w_conf['auth'][k];
 	conf['log'] = this.w_log.child({ 'component': 'mahi' });
 
-	this.w_mahi = mahi = mod_libmanta.createMahiClient(conf);
-
-	var onError, onClose, onConnect;
-	onError = function (err) {
-		worker.w_mahi.removeListener('close', onClose);
-		worker.w_mahi.removeListener('connect', onConnect);
-
-		worker.w_log.error(err, 'failed to connect to mahi ' +
-		    '(will retry)');
-		worker.w_init_barrier.start('mahi-retry-wait');
-		worker.w_init_barrier.done('mahi');
-		setTimeout(function () {
-			worker.initRedis();
-			worker.w_init_barrier.done('mahi-retry-wait');
-		}, 10000);
-	};
-
-	onClose = function () {
-		worker.w_log.error('mahi connection closed');
-	};
-
-	onConnect = function () {
-		worker.w_log.info('mahi connected');
-		worker.w_mahi.removeListener('error', onError);
-		worker.w_init_barrier.done('mahi');
-	};
-
-	mahi.once('error', onError);
-	mahi.once('close', onClose);
-	mahi.once('connect', onConnect);
+	this.w_mahi = mod_mahi.createClient(conf);
 };
 
 Worker.prototype.initPoll = function ()
@@ -3705,7 +3673,7 @@ Worker.prototype.dispStart = function (dispatch)
 Worker.prototype.dispResolveUser = function (dispatch)
 {
 	var worker = this;
-	var login;
+	var log, login, rqarg;
 
 	login = mod_mautil.pathExtractFirst(dispatch.d_objname);
 	if (!login) {
@@ -3726,28 +3694,36 @@ Worker.prototype.dispResolveUser = function (dispatch)
 		return;
 	}
 
+	rqarg = { 'account': login };
+	log = worker.w_log;
+	log.debug('auth request', rqarg);
 	this.w_dtrace.fire('auth-start', function () { return ([ login ]); });
 	this.w_auths_pending[login] = dispatch;
-	this.w_mahi.userFromLogin(login, function (err, record) {
+	this.w_mahi.getUuid(rqarg, function (err, record) {
 		worker.w_dtrace.fire('auth-done',
 		    function () { return ([ login, err ? err.name : '' ]); });
 		mod_assert.equal(worker.w_auths_pending[login], dispatch);
 		delete (worker.w_auths_pending[login]);
 
-		if (err && err['name'] != 'UserDoesNotExistError') {
+		if (err &&
+		    err['name'] != 'UserDoesNotExistError' &&
+		    err['name'] != 'AccountDoesNotExistError') {
+			log.debug(err, 'auth response', rqarg);
 			dispatch.d_error = {
 			    'code': EM_INTERNAL,
 			    'message': err.message
 			};
 		} else if (err) {
+			log.debug(err, 'auth response', rqarg);
 			dispatch.d_error = {
 			    'code': EM_RESOURCENOTFOUND,
 			    'message': sprintf('no such object: "%s"',
 				dispatch.d_objname)
 			};
 		} else {
+			log.debug('auth response', rqarg, record);
 			dispatch.d_login = login;
-			dispatch.d_owner = record['uuid'];
+			dispatch.d_owner = record['account'];
 		}
 
 		worker.w_auths_in.push(dispatch);
@@ -4603,6 +4579,57 @@ Worker.prototype.quiesced = function ()
 	return (this.w_ourdomains.hasOwnProperty(this.w_uuid) &&
 	    typeof (this.w_ourdomains[this.w_uuid]) != 'string' &&
 	    !this.w_ourdomains[this.w_uuid].hasOwnProperty(q['name']));
+};
+
+Worker.prototype.isAuthorized = function (job, account, key)
+{
+	var rqarg, err;
+
+	rqarg = {
+	    'mahi': this.w_mahi,
+	    'context': {
+		'action': 'getobject',
+
+		/* XXX: Doesn't exist yet.  See MANTA-2223. */
+		'conditions': job['auth']['conditions'],
+
+		/* XXX: Doesn't exist yet.  See MANTA-2223. */
+		'principal': job.j_job['auth']['principal'],
+
+		/*
+		 * XXX
+		 *
+		 * "owner" should be the result of calling
+		 * mahi.getAccount(object's login).  We should use that instead
+		 * of getUuid() above, and we should save the whole result.
+		 *
+		 * "key" should be the internal path name
+		 *
+		 * "roles" should come from the resource's roles from
+		 * moray.getMetadata.
+		 */
+		'resource': {
+		    'owner': null,
+		    'key': null,
+		    'roles': null
+		}
+	    }
+	};
+
+	this.w_log.debug('authorize request', rqarg['context']);
+	try {
+		err = null;
+		mod_libmanta.authorize(rqarg);
+	} catch (ex) {
+		err = ex;
+	}
+
+	if (err)
+		this.w_log.debug(err, 'unauthorized');
+	else
+		this.w_log.debug('authorized');
+
+	return (err);
 };
 
 /*

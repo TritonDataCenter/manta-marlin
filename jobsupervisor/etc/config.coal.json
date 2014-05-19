@@ -27,18 +27,12 @@
 	},
 
 	"auth": {
-		"host": "auth.sf.joyent.us",
-		"port": 6379,
-		"redis_options": {
-			"enable_offline_queue": false
-		},
-
-		"connectTimeout": 4000,
-		"maxTimeout": 30000,
-
-		"cache": {
-		  "size": 1000,
-		  "expiry": 60
+		"url": "http://authcache.sf.joyent.us",
+		"maxAuthCacheSize": 1000,
+		"maxAuthCacheAgeMs": 300,
+		"maxTranslationCacheSize": 1000,
+		"maxTranslationCacheAgeMs": 300,
+		"typeTable": {
 		}
 	},
 
