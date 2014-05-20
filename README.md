@@ -85,7 +85,7 @@ The above script takes care of setting up /etc/resolv.conf in your development
 zone to refer to the Manta name servers and adds several environment variables
 to the new user's profile script:
 
-    $ export MAHI_URL=tcp://auth.bh1.joyent.us:6379/
+    $ export MAHI_URL=http://authcache.bh1.joyent.us/
     $ export MORAY_URL=tcp://1.moray.bh1.joyent.us:2020/
     $ export MANTA_URL=https://manta.bh1.joyent.us
     $ export MANTA_USER=poseidon

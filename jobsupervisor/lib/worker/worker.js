@@ -1200,10 +1200,12 @@ Worker.prototype.onRecordJobInput = function (record, barrier)
 	    'd_auths': [],
 	    'd_locates': [],
 	    'd_login': undefined,
+	    'd_accountid': undefined,
 	    'd_owner': undefined,
 	    'd_creator': undefined,
 	    'd_objname_internal': undefined,
 	    'd_objectid': undefined,
+	    'd_roles': undefined,
 	    'd_locations': undefined,
 	    'd_time': undefined,
 	    'd_error': undefined
@@ -1842,10 +1844,12 @@ Worker.prototype.taskRetryMap = function (record, barrier, job, phase, now)
 	    'd_auths': [],
 	    'd_locates': [],
 	    'd_login': undefined,
+	    'd_accountid': undefined,
 	    'd_owner': undefined,
 	    'd_creator': undefined,
 	    'd_objname_internal': undefined,
 	    'd_objectid': undefined,
+	    'd_roles': undefined,
 	    'd_locations': undefined,
 	    'd_time': undefined,
 	    'd_error': undefined
@@ -1990,10 +1994,12 @@ Worker.prototype.onRecordTaskOutput = function (record, barrier)
 	    'd_auths': [],
 	    'd_locates': [],
 	    'd_login': undefined,
+	    'd_accountid': undefined,
 	    'd_owner': undefined,
 	    'd_creator': undefined,
 	    'd_objname_internal': undefined,
 	    'd_objectid': undefined,
+	    'd_roles': undefined,
 	    'd_locations': undefined,
 	    'd_time': undefined,
 	    'd_error': undefined
@@ -3465,7 +3471,7 @@ Worker.prototype.processQueues = function ()
 		}
 
 		if (dispatch.d_error === undefined && !isAuthorized(
-		    job, dispatch.d_owner, dispatch.d_objname)) {
+		    job, dispatch.d_accountid, dispatch.d_objname)) {
 			dispatch.d_error = {
 			    'code': EM_AUTHORIZATION,
 			    'message': sprintf('permission denied: "%s"',
@@ -3622,15 +3628,18 @@ Worker.prototype.taskPostDispatchCheck = function (task)
  * During execution of this pipeline we'll fill in these fields in roughly the
  * this order:
  *
- *    d_login			object owner's login
+ *    d_login			object owner's account login
  *    (see dispResolveUser)	(derived directly from d_objname)
  *
- *    d_owner			object owner's account uuid
+ *    d_accountid		object owner's account uuid
+ *    (see dispResolveUser)
+ *
+ *    d_owner			raw object owner account mahi record
  *    (see dispResolveUser)
  *
  *    d_objname_internal	object name as known to Moray
  *    (see dispResolveUser)	(derived by replacing d_login
- *    				with d_owner in d_objname)
+ *    				with d_accountid in d_objname)
  *
  *    d_auths			piggy-backed auth requests
  *    (see dispResolveUser)
@@ -3640,6 +3649,9 @@ Worker.prototype.taskPostDispatchCheck = function (task)
  *
  *    d_objectid		unique object identifier, or
  *    (see dispLocate)		'/dev/null' for zero-byte objects
+ *
+ *    d_roles			role tags on the object, as reported by moray
+ *    (see dispLocate)		metadata
  *
  *    d_locations		locations where this object is stored
  *    (see dispLocate)		("mantaComputeId", "zonename" tuples)
@@ -3673,7 +3685,7 @@ Worker.prototype.dispStart = function (dispatch)
 Worker.prototype.dispResolveUser = function (dispatch)
 {
 	var worker = this;
-	var log, login, rqarg;
+	var log, login;
 
 	login = mod_mautil.pathExtractFirst(dispatch.d_objname);
 	if (!login) {
@@ -3694,36 +3706,42 @@ Worker.prototype.dispResolveUser = function (dispatch)
 		return;
 	}
 
-	rqarg = { 'account': login };
 	log = worker.w_log;
-	log.debug('auth request', rqarg);
+	log.debug('auth request', login);
 	this.w_dtrace.fire('auth-start', function () { return ([ login ]); });
 	this.w_auths_pending[login] = dispatch;
-	this.w_mahi.getUuid(rqarg, function (err, record) {
+	this.w_mahi.getAccount(login, function (err, record) {
 		worker.w_dtrace.fire('auth-done',
 		    function () { return ([ login, err ? err.name : '' ]); });
 		mod_assert.equal(worker.w_auths_pending[login], dispatch);
 		delete (worker.w_auths_pending[login]);
 
+		if (!err &&
+		    (!record || !record['account'] ||
+		    !record['account']['uuid']))
+			err = new Error('unexpected response from mahi');
+
 		if (err &&
 		    err['name'] != 'UserDoesNotExistError' &&
 		    err['name'] != 'AccountDoesNotExistError') {
-			log.debug(err, 'auth response', rqarg);
+			log.debug(err, 'auth response', login, record);
 			dispatch.d_error = {
 			    'code': EM_INTERNAL,
-			    'message': err.message
+			    'message': 'internal error',
+			    'messageInternal': err.message
 			};
 		} else if (err) {
-			log.debug(err, 'auth response', rqarg);
+			log.debug(err, 'auth response', login);
 			dispatch.d_error = {
 			    'code': EM_RESOURCENOTFOUND,
 			    'message': sprintf('no such object: "%s"',
 				dispatch.d_objname)
 			};
 		} else {
-			log.debug('auth response', rqarg, record);
+			log.debug('auth response', login, record);
 			dispatch.d_login = login;
-			dispatch.d_owner = record['account'];
+			dispatch.d_accountid = record['account']['uuid'];
+			dispatch.d_owner = record;
 		}
 
 		worker.w_auths_in.push(dispatch);
@@ -3731,6 +3749,7 @@ Worker.prototype.dispResolveUser = function (dispatch)
 		dispatch.d_auths.forEach(function (odispatch) {
 			odispatch.d_error = dispatch.d_error;
 			odispatch.d_login = dispatch.d_login;
+			odispatch.d_accountid = dispatch.d_accountid;
 			odispatch.d_owner = dispatch.d_owner;
 			worker.w_auths_in.push(odispatch);
 		});
@@ -3749,7 +3768,7 @@ Worker.prototype.dispLocate = function (dispatch)
 	var objname;
 
 	job.j_nlocates++;
-	objname = pathSwapFirst(dispatch.d_objname, dispatch.d_owner);
+	objname = pathSwapFirst(dispatch.d_objname, dispatch.d_accountid);
 	dispatch.d_objname_internal = objname;
 
 	if (this.w_locates_pending.hasOwnProperty(objname)) {
@@ -3807,6 +3826,7 @@ Worker.prototype.dispLocateResponse = function (dispatches, err, locations)
 		} else {
 			l = locations[iobjname];
 			dispatch.d_creator = l['creator'];
+			dispatch.d_roles = l['roles'] || [];
 			dispatch.d_objectid = l['contentLength'] === 0 ?
 			    '/dev/null' : l['objectid'];
 			dispatch.d_locations = l['sharks'].filter(
@@ -3824,6 +3844,8 @@ Worker.prototype.dispLocateResponse = function (dispatches, err, locations)
 
 		dispatch.d_locates.forEach(function (odispatch) {
 			odispatch.d_error = dispatch.d_error;
+			odispatch.d_creator = dispatch.d_creator;
+			odispatch.d_roles = dispatch.d_roles;
 			odispatch.d_objectid = dispatch.d_objectid;
 			odispatch.d_locations = dispatch.d_locations;
 			worker.w_locates_in.push(odispatch);
@@ -3918,7 +3940,7 @@ Worker.prototype.dispMap = function (dispatch)
 	value['input'] = dispatch.d_objname;
 	value['p0input'] = dispatch.d_pi === 0 ? dispatch.d_objname :
 	    dispatch.d_origin['value']['p0input'];
-	value['account'] = dispatch.d_owner;
+	value['account'] = dispatch.d_accountid;
 	value['creator'] = dispatch.d_creator;
 	value['objectid'] = dispatch.d_objectid;
 	value['mantaComputeId'] = agent.a_record['value']['instance'];
@@ -4101,7 +4123,7 @@ Worker.prototype.dispReduce = function (dispatch)
 		task.t_value['mantaComputeId']].a_record['value']['generation'],
 	    'input': dispatch.d_objname,
 	    'p0input': dispatch.d_p0objname,
-	    'account': dispatch.d_owner,
+	    'account': dispatch.d_accountid,
 	    'creator': dispatch.d_creator,
 	    'objectid': dispatch.d_objectid,
 	    'servers': dispatch.d_locations.map(function (l) {
@@ -4581,8 +4603,9 @@ Worker.prototype.quiesced = function ()
 	    !this.w_ourdomains[this.w_uuid].hasOwnProperty(q['name']));
 };
 
-Worker.prototype.isAuthorized = function (job, account, key)
+Worker.prototype.isAuthorized = function (dispatch)
 {
+	var job = dispatch.d_job.j_job;
 	var rqarg, err;
 
 	rqarg = {
@@ -4594,29 +4617,18 @@ Worker.prototype.isAuthorized = function (job, account, key)
 		'conditions': job['auth']['conditions'],
 
 		/* XXX: Doesn't exist yet.  See MANTA-2223. */
-		'principal': job.j_job['auth']['principal'],
+		'principal': job['auth']['principal'],
 
-		/*
-		 * XXX
-		 *
-		 * "owner" should be the result of calling
-		 * mahi.getAccount(object's login).  We should use that instead
-		 * of getUuid() above, and we should save the whole result.
-		 *
-		 * "key" should be the internal path name
-		 *
-		 * "roles" should come from the resource's roles from
-		 * moray.getMetadata.
-		 */
 		'resource': {
-		    'owner': null,
-		    'key': null,
-		    'roles': null
+		    'owner': dispatch.d_owner,
+		    'key': dispatch.d_objname_internal,
+		    'roles': dispatch.d_roles
 		}
 	    }
 	};
 
 	this.w_log.debug('authorize request', rqarg['context']);
+
 	try {
 		err = null;
 		mod_libmanta.authorize(rqarg);

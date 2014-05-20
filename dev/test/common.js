@@ -330,7 +330,8 @@ function loginLookup(login, callback)
 		    'maxAuthCacheSize': 1000,
 		    'maxAuthCacheAgeMs': 300,
 		    'maxTranslationCacheSize': 1000,
-		    'maxTranslationCacheAgeMs': 300
+		    'maxTranslationCacheAgeMs': 300,
+		    'typeTable': {}
 		});
 	}
 

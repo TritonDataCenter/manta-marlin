@@ -186,6 +186,7 @@ MantaLocator.prototype.locate = function (keys, callback)
 			    'owner': result['owner'],
 			    'objectid': result['objectId'],
 			    'contentLength': result['contentLength'],
+			    'roles': result['roles'],
 			    'sharks': result['sharks'].map(function (s) {
 				return (populateSharkData(loc, result, s));
 			    })
