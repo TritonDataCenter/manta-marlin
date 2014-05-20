@@ -1398,7 +1398,7 @@ mAgent.prototype.taskGroupSetJob = function (group, job)
 	mod_assert.ok(job.j_groups.hasOwnProperty(group.g_groupid));
 	mod_assert.equal(group.g_state, maTaskGroup.TASKGROUP_S_INIT);
 
-	group.g_token = job.j_record['value']['authToken'];
+	group.g_token = job.j_record['value']['auth']['token'];
 	group.g_phase = job.j_record['value']['phases'][group.g_phasei];
 	group.g_map_keys = group.g_phase['type'] == 'map' ||
 	    group.g_phase['type'] == 'storage-map';

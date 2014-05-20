@@ -2165,7 +2165,7 @@ Worker.prototype.taskRecordCleanup = function (record, barrier, job, jobrec,
 	}
 
 	this.w_deletes_out.push({
-	    'token': jobrec['authToken'],
+	    'token': jobrec['auth']['token'],
 	    'key': record['value']['input'],
 	    'callback': function (err) {
 		now = mod_jsprim.iso8601(new Date());
