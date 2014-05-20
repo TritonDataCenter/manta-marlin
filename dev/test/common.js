@@ -12,6 +12,8 @@ var mod_assert = require('assert');
 var mod_fs = require('fs');
 var mod_path = require('path');
 var mod_url = require('url');
+var mod_util = require('util');
+var mod_stream = require('stream');
 
 var mod_bunyan = require('bunyan');
 var mod_uuid = require('node-uuid');
@@ -44,6 +46,8 @@ exports.exnAsync = exnAsync;
 
 exports.testname = testname;
 exports.log = log;
+
+exports.StringInputStream = StringInputStream;
 
 var mahi_client;
 var ufds_client;
@@ -416,3 +420,44 @@ function exnAsync(func, callback)
 		}
 	});
 }
+
+function StringInputStream(contents)
+{
+	mod_stream.Stream();
+
+	this.s_data = contents;
+	this.s_paused = false;
+	this.s_done = false;
+	this.readable = true;
+
+	this.scheduleEmit();
+}
+
+mod_util.inherits(StringInputStream, mod_stream.Stream);
+
+StringInputStream.prototype.pause = function ()
+{
+	this.s_paused = true;
+};
+
+StringInputStream.prototype.resume = function ()
+{
+	this.s_paused = false;
+	this.scheduleEmit();
+};
+
+StringInputStream.prototype.scheduleEmit = function ()
+{
+	var stream = this;
+
+	process.nextTick(function () {
+		if (stream.s_paused || stream.s_done)
+			return;
+
+		stream.emit('data', stream.s_data);
+		stream.emit('end');
+
+		stream.s_data = null;
+		stream.s_done = true;
+	});
+};
