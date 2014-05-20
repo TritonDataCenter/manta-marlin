@@ -1,11 +1,12 @@
 /*
- * tst.basic.js: basic functional testing
+ * tst.basic.js: basic functional test runner
  */
 
 var mod_assert = require('assert');
 var mod_getopt = require('posix-getopt');
 
 var test = require('../common');
+var jobcommon = require('./common');
 var jobs = require('./jobs');
 var client;
 
@@ -35,12 +36,12 @@ while ((option = parser.getopt()) !== undefined) {
 
 if (process.argv.length > parser.optind()) {
 	process.argv.slice(parser.optind()).forEach(function (name) {
-		if (!jobs.hasOwnProperty(name)) {
+		if (!jobs.testcases.hasOwnProperty(name)) {
 			console.error('no such test: %s', name);
 			process.exit(1);
 		}
 
-		funcs.push(runTest.bind(null, jobs[name]));
+		funcs.push(runTest.bind(null, jobs.testcases[name]));
 	});
 } else {
 	jobs.jobsAll.forEach(function (testjob) {
@@ -62,14 +63,15 @@ function setup(_, next)
 
 function runTest(testjob, _, next)
 {
-	jobs.populateData(client.manta, testjob,
+	jobcommon.populateData(client.manta, testjob,
 	    testjob['inputs'], function (err) {
 		if (err) {
 			next(err);
 			return;
 		}
 
-		jobs.jobTestRun(client, testjob, { 'strict': strict }, next);
+		jobcommon.jobTestRun(client, testjob, { 'strict': strict },
+		    next);
 	});
 }
 

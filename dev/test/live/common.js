@@ -628,7 +628,8 @@ function jobTestVerifyResult(verify, callback)
 	} catch (ex) {
 		if (ex.name == 'AssertionError')
 			ex.message = ex.toString();
-		var err = new VError(ex, 'verifying job "%s"', verify['jobid']);
+		var err = new VError(ex, 'verifying job "%s" (test "%s")',
+		    verify['jobid'], verify['job']['name']);
 
 		/*
 		 * Cancelled jobs may take a few extra seconds for the metering

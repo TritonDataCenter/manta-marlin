@@ -7,6 +7,7 @@ var mod_getopt = require('posix-getopt');
 var mod_vasync = require('vasync');
 
 var test = require('../common');
+var jobcommon = require('./common');
 var jobs = require('./jobs');
 var client;
 
@@ -84,13 +85,13 @@ function runTests(_, next)
 
 function runOneTest(testjob, callback)
 {
-	jobs.populateData(client.manta, testjob,
+	jobcommon.populateData(client.manta, testjob,
 	    testjob['inputs'], function (err) {
 		if (err)
 			callback(err);
 		else
-			jobs.jobTestRun(client, testjob, { 'strict': strict },
-			    callback);
+			jobcommon.jobTestRun(client, testjob,
+			    { 'strict': strict }, callback);
 	});
 }
 
