@@ -29,23 +29,23 @@ require('../../lib/errors');
 var DEFAULT_USER = 'marlin_test';
 
 /*
- * These inputs are used by a few dispatch error tests and so are defined here
- * for consistency.
- * XXX We should also have tests for "/", "/%user%", "/%user%/stor",
- * "/%user%/jobs", and other special paths, but at the moment these don't do the
- * right thing.  See MANTA-401.
+ * These inputs and errors are used by a few dispatch error tests and so are
+ * defined here for consistency between tests.
  */
 var inputs_disperrors = [
     '/notavalidusername/stor/obj1',
     '/%user%/stor/notavalidfilename',
     '/%user%/stor/mydir',
-    '/%user%/stor/obj1'
+    '/%user%/stor/obj1',
+    '/',
+    '/%user%',
+    '/%user%/',
+    '/%user%/stor',
+    '/%user%/stor/',
+    '/%user%/jobs',
+    '/%user%/jobs/'
 ];
 
-/*
- * These errors are used by a few dispatch error tests and so are defined here
- * for consistency.
- */
 var errors_disperrors0 = [ {
     'phaseNum': '0',
     'what': 'phase 0: map input "/notavalidusername/stor/obj1"',
@@ -68,6 +68,55 @@ var errors_disperrors0 = [ {
     'code': EM_INVALIDARGUMENT,
     'message': 'objects of type "directory" are not supported: ' +
 	'"/%user%/stor/mydir"'
+}, {
+    'phaseNum': '0',
+    'what': 'phase 0: map input "/"',
+    'input': '/',
+    'p0input': '/',
+    'code': EM_RESOURCENOTFOUND,
+    'message': 'malformed object name: "/"'
+}, {
+    'phaseNum': '0',
+    'what': 'phase 0: map input "/%user%"',
+    'input': '/%user%',
+    'p0input': '/%user%',
+    'code': EM_RESOURCENOTFOUND,
+    'message': 'malformed object name: "/%user%"'
+}, {
+    'phaseNum': '0',
+    'what': 'phase 0: map input "/%user%/"',
+    'input': '/%user%/',
+    'p0input': '/%user%/',
+    'code': EM_RESOURCENOTFOUND,
+    'message': 'no such object: "/%user%/"'
+}, {
+    'phaseNum': '0',
+    'what': 'phase 0: map input "/%user%/stor"',
+    'input': '/%user%/stor',
+    'p0input': '/%user%/stor',
+    'code': EM_RESOURCENOTFOUND,
+    'message': 'no such object: "/%user%/stor"'
+}, {
+    'phaseNum': '0',
+    'what': 'phase 0: map input "/%user%/stor/"',
+    'input': '/%user%/stor/',
+    'p0input': '/%user%/stor/',
+    'code': EM_RESOURCENOTFOUND,
+    'message': 'no such object: "/%user%/stor/"'
+}, {
+    'phaseNum': '0',
+    'what': 'phase 0: map input "/%user%/jobs"',
+    'input': '/%user%/jobs',
+    'p0input': '/%user%/jobs',
+    'code': EM_RESOURCENOTFOUND,
+    'message': 'no such object: "/%user%/jobs"'
+}, {
+    'phaseNum': '0',
+    'what': 'phase 0: map input "/%user%/jobs/"',
+    'input': '/%user%/jobs/',
+    'p0input': '/%user%/jobs/',
+    'code': EM_RESOURCENOTFOUND,
+    'message': 'no such object: "/%user%/jobs/"'
 } ];
 
 /*
@@ -1166,6 +1215,62 @@ var testcases = {
 	    'code': EM_INVALIDARGUMENT,
 	    'message': 'objects of type "directory" are not supported: ' +
 		'"/%user%/stor/mydir"'
+	}, {
+	    'phaseNum': '1',
+	    'what': 'phase 0: map input "/" ' +
+	        '(from job input "/%user%/stor/obj1")',
+	    'input': '/',
+	    'p0input': '/%user%/stor/obj1',
+	    'code': EM_RESOURCENOTFOUND,
+	    'message': 'malformed object name: "/"'
+	}, {
+	    'phaseNum': '1',
+	    'what': 'phase 0: map input "/%user%" ' +
+	        '(from job input "/%user%/stor/obj1")',
+	    'input': '/%user%',
+	    'p0input': '/%user%/stor/obj1',
+	    'code': EM_RESOURCENOTFOUND,
+	    'message': 'malformed object name: "/%user%"'
+	}, {
+	    'phaseNum': '1',
+	    'what': 'phase 0: map input "/%user%/" ' +
+	        '(from job input "/%user%/stor/obj1")',
+	    'input': '/%user%/',
+	    'p0input': '/%user%/stor/obj1',
+	    'code': EM_RESOURCENOTFOUND,
+	    'message': 'no such object: "/%user%/"'
+	}, {
+	    'phaseNum': '1',
+	    'what': 'phase 0: map input "/%user%/stor" ' +
+	        '(from job input "/%user%/stor/obj1")',
+	    'input': '/%user%/stor',
+	    'p0input': '/%user%/stor/obj1',
+	    'code': EM_RESOURCENOTFOUND,
+	    'message': 'no such object: "/%user%/stor"'
+	}, {
+	    'phaseNum': '1',
+	    'what': 'phase 0: map input "/%user%/stor/" ' +
+	        '(from job input "/%user%/stor/obj1")',
+	    'input': '/%user%/stor/',
+	    'p0input': '/%user%/stor/obj1',
+	    'code': EM_RESOURCENOTFOUND,
+	    'message': 'no such object: "/%user%/stor/"'
+	}, {
+	    'phaseNum': '1',
+	    'what': 'phase 0: map input "/%user%/jobs" ' +
+	        '(from job input "/%user%/stor/obj1")',
+	    'input': '/%user%/jobs',
+	    'p0input': '/%user%/stor/obj1',
+	    'code': EM_RESOURCENOTFOUND,
+	    'message': 'no such object: "/%user%/jobs"'
+	}, {
+	    'phaseNum': '1',
+	    'what': 'phase 0: map input "/%user%/jobs/" ' +
+	        '(from job input "/%user%/stor/obj1")',
+	    'input': '/%user%/jobs/',
+	    'p0input': '/%user%/stor/obj1',
+	    'code': EM_RESOURCENOTFOUND,
+	    'message': 'no such object: "/%user%/jobs/"'
 	} ])
     },
 
