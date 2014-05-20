@@ -85,14 +85,8 @@ function runTests(_, next)
 
 function runOneTest(testjob, callback)
 {
-	jobcommon.populateData(client.manta, testjob,
-	    testjob['inputs'], function (err) {
-		if (err)
-			callback(err);
-		else
-			jobcommon.jobTestRun(client, testjob,
-			    { 'strict': strict }, callback);
-	});
+	jobcommon.jobTestCaseRun(client, testjob, { 'strict': strict },
+	    callback);
 }
 
 function teardown(_, next)

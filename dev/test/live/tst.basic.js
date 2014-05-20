@@ -63,16 +63,7 @@ function setup(_, next)
 
 function runTest(testjob, _, next)
 {
-	jobcommon.populateData(client.manta, testjob,
-	    testjob['inputs'], function (err) {
-		if (err) {
-			next(err);
-			return;
-		}
-
-		jobcommon.jobTestRun(client, testjob, { 'strict': strict },
-		    next);
-	});
+	jobcommon.jobTestCaseRun(client, testjob, { 'strict': strict }, next);
 }
 
 function teardown(_, next)

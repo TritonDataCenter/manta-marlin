@@ -30,8 +30,35 @@ var StringInputStream = mod_testcommon.StringInputStream;
 var log = mod_testcommon.log;
 
 /* Public interface */
-exports.populateData = populateData;
-exports.jobTestRun = jobTestRun;
+exports.jobTestCaseRun = jobTestCaseRun;
+
+/*
+ * Run a single job test case.
+ *
+ *     api		the test context, constructed by mod_testcommon.setup().
+ *
+ *     testspec		test job to run, as described in ./jobs.js.
+ *
+ *     options		the only supported option is:
+ *
+ *	    strict	If false, skip checks that assume that the supervisor
+ *			and agent haven't crashed.  This is useful to test
+ *			crash-recovery by making sure that jobs still complete
+ *			as expected.
+ *
+ *     callback		Invoked upon successful completion.  (On failure, an
+ *     			exception is thrown.)
+ */
+function jobTestCaseRun(api, testspec, options, callback)
+{
+	populateData(api.manta, testspec, testspec['inputs'], function (err) {
+		if (err)
+			callback(err);
+		else
+			jobTestSubmitAndVerify(
+			    api, testspec, options, callback);
+	});
+}
 
 /*
  * Populate the input data that will be required to execute a job.
@@ -150,7 +177,8 @@ function populateData(manta, testspec, keys, callback)
 }
 
 /*
- * Run a single job test case.  Arguments are:
+ * Submits a single job, waits for it to finish, and then verifies the results.
+ * Arguments are:
  *
  *     api		the test context, constructed by mod_testcommon.setup().
  *
@@ -166,7 +194,7 @@ function populateData(manta, testspec, keys, callback)
  *     callback		Invoked upon successful completion.  (On failure, an
  *     			exception is thrown.)
  */
-function jobTestRun(api, testspec, options, callback)
+function jobTestSubmitAndVerify(api, testspec, options, callback)
 {
 	jobSubmit(api, testspec, function (err, jobid) {
 		if (err) {
