@@ -27,6 +27,7 @@ exports.EventThrottler = EventThrottler;
 exports.isMantaDirectory = isMantaDirectory;
 exports.mantaSignNull = mantaSignNull;
 exports.jobIsPrivileged = jobIsPrivileged;
+exports.makeInternalAuthBlock = makeInternalAuthBlock;
 
 function maRestifyPanic(request, response, route, err)
 {
@@ -469,4 +470,49 @@ function jobIsPrivileged(auth)
 	/* Legacy case: support for this will eventually be removed. */
 	mod_assert.ok(auth.hasOwnProperty('groups'));
 	return (auth['groups'].indexOf('operators') != -1);
+}
+
+/*
+ * Given a mahiv2 client, an account name, and a source tag (which can be
+ * basically any string, since it's used only for debugging), construct an
+ * "auth" block for a job.  This is faked-up and bypasses authentication so it
+ * should only be used for internal tools and the test suite.  The caller still
+ * has to obtain and include an authn token.
+ */
+function makeInternalAuthBlock(mahi, login, tag, callback)
+{
+	var now, auth;
+
+	/*
+	 * See common/lib/schema.js for a description of these fields, some of
+	 * which are legacy.
+	 */
+	now = new Date().toISOString();
+	auth = {
+	    'login': login,
+	    'groups': [],
+	    'conditions': {
+		'fromjob': false, /* matches muskie */
+		'activeRoles': [],
+		'method': 'POST',
+		'date': now,
+		'day': now,
+		'time': now,
+		'sourceip': '::1',
+		'user-agent': tag
+	    }
+	};
+
+	mahi.getAccount(login, function (err, record) {
+		if (err) {
+			callback(
+			    new VError(err, 'failed to create auth block'));
+			return;
+		}
+
+		auth['uuid'] = record['account']['uuid'];
+		auth['conditions']['owner'] = record['account']['uuid'];
+		auth['principal'] = record;
+		callback(null, auth);
+	});
 }

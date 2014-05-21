@@ -186,10 +186,9 @@ Then use the URL you were given with curl to create a new token:
     {"token":"..."}
 
 Copy this token, and pass that to "mrjob submit" using the "-t" option.  You'll
-also want to set MANTA\_USER\_UUID to the uuid of your user.  (Sorry, this part
-sucks, but mrjob doesn't know about mahi yet.)
+also need to set MAHI\_URL appropriately.
 
-    $ jobid=$(MANTA_USER_UUID=50c7f736-9d2c-40cd-80b9-8138c003b35d mrjob submit -t '...' -m wc); echo $jobid
+    $ jobid=$(mrjob submit -t '...' -m wc); echo $jobid
     8abafb0d-9e9c-4023-b82b-73c4b52559f2
 
 For details on using "mrjob" to submit more complex jobs, add keys to jobs,

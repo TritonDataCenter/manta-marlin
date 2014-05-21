@@ -17,6 +17,7 @@ var mod_vasync = require('vasync');
 var mod_verror = require('verror');
 
 var mod_marlin = require('../../lib/marlin');
+var mod_mautil = require('../../lib/util');
 var mod_testcommon = require('../common');
 
 /* jsl:import ../../../common/lib/errors.js */
@@ -232,10 +233,11 @@ function replaceParams(testspec, str)
  */
 function jobSubmit(api, testspec, callback)
 {
-	var jobdef, login, url, funcs, private_key, signed_path, jobid;
+	var mahi, jobdef, login, url, funcs, private_key, signed_path, jobid;
 
 	login = mod_testcases.DEFAULT_USER;
 	url = mod_url.parse(process.env['MANTA_URL']);
+	mahi = mod_testcommon.mahiClient();
 
 	if (!login) {
 		process.nextTick(function () {
@@ -246,10 +248,6 @@ function jobSubmit(api, testspec, callback)
 	}
 
 	jobdef = {
-	    'auth': {
-		'login': login,
-		'groups': []
-	    },
 	    'phases': testspec['job']['phases'],
 	    'name': 'mrtest: ' + testspec['label'],
 	    'options': {
@@ -266,12 +264,20 @@ function jobSubmit(api, testspec, callback)
 
 	funcs = [
 	    function (_, stepcb) {
-		log.info('looking up user "%s"', login);
-		mod_testcommon.loginLookup(login, function (err, owner) {
-			jobdef['auth']['uuid'] = owner;
-			jobdef['owner'] = owner;
-			stepcb(err);
-		});
+		log.info('generating auth block');
+		mod_mautil.makeInternalAuthBlock(mahi, login,
+		    'marlin test suite', function (err, auth) {
+			if (err) {
+				log.error(err, 'generating auth block');
+				stepcb(err);
+				return;
+			}
+
+			log.debug('auth block', auth);
+			jobdef['auth'] = auth;
+			jobdef['owner'] = auth['uuid'];
+			stepcb();
+		    });
 	    },
 	    function (_, stepcb) {
 		var path = process.env['MANTA_KEY'] ||

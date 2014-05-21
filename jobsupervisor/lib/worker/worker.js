@@ -4612,18 +4612,21 @@ Worker.prototype.quiesced = function ()
 Worker.prototype.isAuthorized = function (dispatch)
 {
 	var job = dispatch.d_job.j_job;
-	var rqarg, err;
+	var cond, rqarg, err;
 
 	if (!job['auth'].hasOwnProperty('principal')) {
 		return (isAuthorized(dispatch.d_job, dispatch.d_accountid,
 		    dispatch.d_objname));
 	}
 
+	cond = mod_jsprim.deepCopy(job['auth']['conditions']);
+	cond['fromjob'] = true;
+
 	rqarg = {
 	    'mahi': this.w_mahi,
 	    'context': {
 		'action': 'getobject',
-		'conditions': job['auth']['conditions'],
+		'conditions': cond,
 		'principal': job['auth']['principal'],
 		'resource': {
 		    'owner': dispatch.d_owner,

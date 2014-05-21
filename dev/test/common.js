@@ -37,7 +37,7 @@ var log = new mod_bunyan({
 /* Public interface */
 exports.setup = setup;
 exports.teardown = teardown;
-exports.loginLookup = loginLookup;
+exports.mahiClient = mahiClient;
 exports.ensureUser = ensureUser;
 
 exports.pipeline = pipeline;
@@ -315,39 +315,23 @@ function teardown(api, callback)
 	ufds_client.close(callback);
 }
 
-function loginLookup(login, callback)
+function mahiClient()
 {
 	if (!mahi_client) {
 		if (!process.env['MAHI_URL']) {
-			process.nextTick(function () {
-				callback(new VError('MAHI_URL must be ' +
-				    'specified in the environment'));
-			});
-
-			return;
+			throw (new VError('MAHI_URL must be ' +
+			    'specified in the environment'));
 		}
 
 		log.info('connecting to mahi', process.env['MAHI_URL']);
 		mahi_client = mod_mahi.createClient({
 		    'log': log.child({ 'component': 'MahiClient' }),
 		    'url': process.env['MAHI_URL'],
-		    'maxAuthCacheSize': 1000,
-		    'maxAuthCacheAgeMs': 300,
-		    'maxTranslationCacheSize': 1000,
-		    'maxTranslationCacheAgeMs': 300,
 		    'typeTable': {}
 		});
 	}
 
-	mahi_client.getUuid({ 'account': login }, function (err, record) {
-		if (err) {
-			callback(err);
-			return;
-		}
-
-		log.info('user "%s" has uuid', login, record['account']);
-		callback(null, record['account']);
-	});
+	return (mahi_client);
 }
 
 function pipeline(args)
