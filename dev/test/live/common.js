@@ -22,7 +22,7 @@ var mod_testcommon = require('../common');
 /* jsl:import ../../../common/lib/errors.js */
 require('../../lib/errors');
 
-var mod_testcases = require('./testcases');
+var mod_testcases = require('./jobs');
 
 var sprintf = mod_extsprintf.sprintf;
 var VError = mod_verror.VError;
@@ -251,7 +251,7 @@ function jobSubmit(api, testspec, callback)
 		'groups': []
 	    },
 	    'phases': testspec['job']['phases'],
-	    'name': 'marlin test: ' + testspec['label'],
+	    'name': 'mrtest: ' + testspec['label'],
 	    'options': {
 		'frequentCheckpoint': true
 	    }
@@ -334,7 +334,6 @@ function jobSubmit(api, testspec, callback)
 			response.on('end', function () {
 				var token = JSON.parse(body)['token'];
 				jobdef['auth']['token'] = token;
-				jobdef['authToken'] = token;
 				stepcb();
 			});
 		});

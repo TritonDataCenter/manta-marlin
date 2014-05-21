@@ -625,7 +625,6 @@ function cmdSubmit()
 	    'phases': msPhases,
 	    'options': msOptions,
 	    'owner': process.env['MANTA_USER_UUID'],
-	    'authToken': msAuthToken,
 	    'auth': {
 	        'login': process.env['MANTA_USER'],
 		'uuid': process.env['MANTA_USER_UUID'],

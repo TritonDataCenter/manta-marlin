@@ -244,7 +244,6 @@ var errors_disperrors0 = [ {
  */
 
 var testcases = {
-
     'jobM': {
 	'job': {
 	    'phases': [ { 'type': 'map', 'exec': 'wc' } ]
@@ -2105,6 +2104,9 @@ function initJobs()
 	    testcases.jobMerrorMuskieRetry['inputs'];
 	testcases.jobRmuskieRetry['inputs'] =
 	    testcases.jobMerrorMuskieRetry['inputs'];
+
+	for (var k in testcases)
+		testcases[k]['label'] = k;
 }
 
 initJobs();

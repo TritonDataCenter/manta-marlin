@@ -270,15 +270,32 @@ var sMorayJob = {
 		'jobId': sStringRequiredNonEmpty,
 		'name': sStringRequired,
 		'owner': sStringRequiredNonEmpty,
-		'authToken': sStringRequiredNonEmpty,
+		'authToken': sString, /* deprecated and unused */
 		'phases': sJobPhases,
 		'auth': {
 			'type': 'object',
 			'properties': {
-				'uuid': sStringRequiredNonEmpty,
 				'login': sStringRequiredNonEmpty,
-				'groups': sStringArrayRequired,
-				'token': sStringRequiredNonEmpty
+				'token': sStringRequiredNonEmpty,
+
+				/*
+				 * These are the new-style access-control
+				 * fields.  They will be used when present.  If
+				 * absent, we'll fall back to the old 'uuid' and
+				 * 'groups' fields below.
+				 */
+				'principal': { 'type': 'object' },
+				'conditions': { 'type': 'object' },
+
+				/*
+				 * These are legacy fields, still provided to
+				 * avoid a flag day.  They should only be used
+				 * by Marlin when 'principal' and 'conditions'
+				 * are not specified.  Support for these fields
+				 * will eventually be removed.
+				 */
+				'uuid': sString,
+				'groups': sStringArray
 			}
 		},
 

@@ -26,6 +26,7 @@ exports.CVError = CVError;
 exports.EventThrottler = EventThrottler;
 exports.isMantaDirectory = isMantaDirectory;
 exports.mantaSignNull = mantaSignNull;
+exports.jobIsPrivileged = jobIsPrivileged;
 
 function maRestifyPanic(request, response, route, err)
 {
@@ -443,10 +444,29 @@ function isMantaDirectory(contentType)
 
 /*
  * node-manta "sign" function that produces no signature.  This should only be
- * used when also specifying an authToken, in which case muskie doesn't need a
+ * used when also specifying an authn token, in which case muskie doesn't need a
  * signature.
  */
 function mantaSignNull(_, callback)
 {
 	callback(null, null);
+}
+
+/*
+ * Return true only if the given job (specified by the "auth" part of the moray
+ * record) is running as an operator.
+ */
+function jobIsPrivileged(auth)
+{
+	mod_assert.ok(auth.hasOwnProperty['login'],
+	    'not a valid "auth" record (no "login")');
+	mod_assert.ok(auth.hasOwnProperty['token'],
+	    'not a valid "auth" record (no "token")');
+
+	if (auth.hasOwnProperty('principal'))
+		return (auth['principal']['account']['isOperator']);
+
+	/* Legacy case: support for this will eventually be removed. */
+	mod_assert.ok(auth.hasOwnProperty('groups'));
+	return (auth['groups'].indexOf('operators') != -1);
 }

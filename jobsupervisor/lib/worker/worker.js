@@ -2798,6 +2798,12 @@ Worker.prototype.jobAssigned = function (job)
 	this.w_dtrace.fire('job-assigned',
 	    function () { return ([ job.j_id, job.j_job ]); });
 	this.jobTransition(job, 'unassigned', 'initializing');
+
+	if (!job.j_job['auth'].hasOwnProperty('principal'))
+		job.j_log.info(
+		    'job has only legacy access control information; ' +
+		    'falling back to simple access-control checks');
+
 	barrier = job.j_init_barrier = mod_vasync.barrier();
 
 	/*
@@ -3470,8 +3476,8 @@ Worker.prototype.processQueues = function ()
 			continue;
 		}
 
-		if (dispatch.d_error === undefined && !isAuthorized(
-		    job, dispatch.d_accountid, dispatch.d_objname)) {
+		if (dispatch.d_error === undefined &&
+		    !this.isAuthorized(dispatch)) {
 			dispatch.d_error = {
 			    'code': EM_AUTHORIZATION,
 			    'message': sprintf('permission denied: "%s"',
@@ -4608,17 +4614,17 @@ Worker.prototype.isAuthorized = function (dispatch)
 	var job = dispatch.d_job.j_job;
 	var rqarg, err;
 
+	if (!job['auth'].hasOwnProperty('principal')) {
+		return (isAuthorized(dispatch.d_job, dispatch.d_accountid,
+		    dispatch.d_objname));
+	}
+
 	rqarg = {
 	    'mahi': this.w_mahi,
 	    'context': {
 		'action': 'getobject',
-
-		/* XXX: Doesn't exist yet.  See MANTA-2223. */
 		'conditions': job['auth']['conditions'],
-
-		/* XXX: Doesn't exist yet.  See MANTA-2223. */
 		'principal': job['auth']['principal'],
-
 		'resource': {
 		    'owner': dispatch.d_owner,
 		    'key': dispatch.d_objname_internal,
@@ -4750,7 +4756,7 @@ function isAuthorized(job, account, key)
 	/*
 	 * Operators are allowed to access anyone's objects.
 	 */
-	if (job.j_job['auth']['groups'].indexOf('operators') != -1)
+	if (mod_mautil.jobIsPrivileged(job.j_job['auth']))
 		return (true);
 
 	/*
