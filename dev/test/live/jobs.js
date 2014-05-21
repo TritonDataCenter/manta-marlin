@@ -36,7 +36,10 @@ var inputs_disperrors = [
     '/notavalidusername/stor/obj1',
     '/%user%/stor/notavalidfilename',
     '/%user%/stor/mydir',
-    '/%user%/stor/obj1',
+    '/%user%/stor/obj1'
+];
+
+var extrainputs_disperrors = [
     '/',
     '/%user%',
     '/%user%/',
@@ -1152,6 +1155,7 @@ var testcases = {
 	    } ]
 	},
 	'inputs': inputs_disperrors,
+	'extra_inputs': extrainputs_disperrors,
 	'timeout': 20 * 1000,
 	'expected_outputs': [
 	    /\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
@@ -1177,18 +1181,25 @@ var testcases = {
 	'job': {
 	    'phases': [ {
 		'type': 'map',
-		'exec': 'mcat ' + inputs_disperrors.join(' ')
+		'exec': 'mcat ' + inputs_disperrors.concat(
+		    extrainputs_disperrors).join(' ')
 	    }, {
 		'type': 'map',
 		'exec': 'wc'
 	    } ]
 	},
 	'inputs': inputs_disperrors,
+	'extra_inputs': extrainputs_disperrors,
 	'timeout': 30 * 1000,
 	'expected_outputs': [
 	    /\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.1\./
 	],
 	'expected_output_content': [ ' 0  5 50\n' ],
+	/*
+	 * Unlike the phase-0 errors above, many of these errors are duplicated
+	 * because we test both /foo and /foo/, and these both get normalized to
+	 * /foo by the "mcat" mechanism.
+	 */
 	'errors': errors_disperrors0.concat([ {
 	    'phaseNum': '1',
 	    'what': 'phase 1: map input "/notavalidusername/stor/obj1" ' +
@@ -1216,7 +1227,7 @@ var testcases = {
 		'"/%user%/stor/mydir"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 0: map input "/" ' +
+	    'what': 'phase 1: map input "/" ' +
 	        '(from job input "/%user%/stor/obj1")',
 	    'input': '/',
 	    'p0input': '/%user%/stor/obj1',
@@ -1224,7 +1235,7 @@ var testcases = {
 	    'message': 'malformed object name: "/"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 0: map input "/%user%" ' +
+	    'what': 'phase 1: map input "/%user%" ' +
 	        '(from job input "/%user%/stor/obj1")',
 	    'input': '/%user%',
 	    'p0input': '/%user%/stor/obj1',
@@ -1232,15 +1243,15 @@ var testcases = {
 	    'message': 'malformed object name: "/%user%"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 0: map input "/%user%/" ' +
+	    'what': 'phase 1: map input "/%user%" ' +
 	        '(from job input "/%user%/stor/obj1")',
-	    'input': '/%user%/',
+	    'input': '/%user%',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_RESOURCENOTFOUND,
-	    'message': 'no such object: "/%user%/"'
+	    'message': 'malformed object name: "/%user%"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 0: map input "/%user%/stor" ' +
+	    'what': 'phase 1: map input "/%user%/stor" ' +
 	        '(from job input "/%user%/stor/obj1")',
 	    'input': '/%user%/stor',
 	    'p0input': '/%user%/stor/obj1',
@@ -1248,15 +1259,15 @@ var testcases = {
 	    'message': 'no such object: "/%user%/stor"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 0: map input "/%user%/stor/" ' +
+	    'what': 'phase 1: map input "/%user%/stor" ' +
 	        '(from job input "/%user%/stor/obj1")',
-	    'input': '/%user%/stor/',
+	    'input': '/%user%/stor',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_RESOURCENOTFOUND,
-	    'message': 'no such object: "/%user%/stor/"'
+	    'message': 'no such object: "/%user%/stor"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 0: map input "/%user%/jobs" ' +
+	    'what': 'phase 1: map input "/%user%/jobs" ' +
 	        '(from job input "/%user%/stor/obj1")',
 	    'input': '/%user%/jobs',
 	    'p0input': '/%user%/stor/obj1',
@@ -1264,12 +1275,12 @@ var testcases = {
 	    'message': 'no such object: "/%user%/jobs"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 0: map input "/%user%/jobs/" ' +
+	    'what': 'phase 1: map input "/%user%/jobs" ' +
 	        '(from job input "/%user%/stor/obj1")',
-	    'input': '/%user%/jobs/',
+	    'input': '/%user%/jobs',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_RESOURCENOTFOUND,
-	    'message': 'no such object: "/%user%/jobs/"'
+	    'message': 'no such object: "/%user%/jobs"'
 	} ])
     },
 
