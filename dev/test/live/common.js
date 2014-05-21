@@ -30,6 +30,16 @@ var VError = mod_verror.VError;
 var StringInputStream = mod_testcommon.StringInputStream;
 var log = mod_testcommon.log;
 
+/*
+ * By default, jobs are created with both modern access-control information as
+ * well as some legacy fields, but Marlin ignores the legacy fields when the
+ * modern information is present.  With useLegacyAuth = true, jobs will be
+ * submitted *without* the modern fields, causing Marlin to use the legacy
+ * authorization mechanism.  While not part of the standard test suite, it's
+ * useful to be able to test that mode while we still support it.
+ */
+var useLegacyAuth = false;
+
 /* Public interface */
 exports.jobTestCaseRun = jobTestCaseRun;
 
@@ -265,8 +275,12 @@ function jobSubmit(api, testspec, callback)
 	funcs = [
 	    function (_, stepcb) {
 		log.info('generating auth block');
-		mod_mautil.makeInternalAuthBlock(mahi, login,
-		    'marlin test suite', function (err, auth) {
+		mod_mautil.makeInternalAuthBlock({
+		    'mahi': mahi,
+		    'login': login,
+		    'legacy': useLegacyAuth,
+		    'tag': 'marlin test suite'
+		}, function (err, auth) {
 			if (err) {
 				log.error(err, 'generating auth block');
 				stepcb(err);
@@ -277,7 +291,7 @@ function jobSubmit(api, testspec, callback)
 			jobdef['auth'] = auth;
 			jobdef['owner'] = auth['uuid'];
 			stepcb();
-		    });
+		});
 	    },
 	    function (_, stepcb) {
 		var path = process.env['MANTA_KEY'] ||

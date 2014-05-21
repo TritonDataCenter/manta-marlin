@@ -59,7 +59,8 @@ var msUsage = [
     '',
     'JOB ADMINISTRATION',
     '',
-    '       mrjob submit   [-a asset] [-c count] [-d size] [-i image]',
+    '       mrjob submit   [-a asset] [-c count] [-d size] [-i image] ' +
+	'[--legacy-auth]',
     '                      [-n name] [-s disk] [-t authToken] [--transient]',
     '                      [-x option=value ...] [-z init] ',
     '                      [-m exec] [-r exec] ...',
@@ -137,6 +138,7 @@ var msHelp = [
 	'task',
     '          -d size         Maximum DRAM for each task (megabytes)',
     '          -i image        Use "image" as the following task\'s zone image',
+    '          --legacy-auth   Don\'t provide modern authn information',
     '          -n name         Use "name" for the job\'s name',
     '          -s disk         Disk space allocated for tasks (gigabytes)',
     '          -t token        Auth token',
@@ -242,6 +244,7 @@ var msOptions = {};			/* special named options */
 var msAssets = [];			/* assets (for next phase) */
 var msCount = 1;			/* reducer count (for next phase) */
 var msTransient = false;		/* job should be transient */
+var msLegacyAuth = false;		/* use legacy authn mechanism */
 var msDram;				/* DRAM cap (for next phase) */
 var msDisk;				/* disk cap (for next phase) */
 var msImage;				/* zone image dep (for next phase) */
@@ -500,7 +503,7 @@ function cmdSubmit()
 	}
 
 	parser = new mod_getopt.BasicParser(
-	    'a:c:d:i:m:n:r:s:T(transient)t:x:z:',
+	    'a:c:d:i:L(legacy-auth)m:n:r:s:T(transient)t:x:z:',
 	    process.argv.slice(1));
 
 	while ((option = parser.getopt()) !== undefined) {
@@ -527,6 +530,10 @@ function cmdSubmit()
 
 		case 'i':
 			msImage = option.optarg;
+			break;
+
+		case 'L':
+			msLegacyAuth = true;
 			break;
 
 		case 'n':
@@ -652,8 +659,12 @@ function cmdSubmit()
 			});
 		},
 		function authn(_, callback) {
-			mod_mautil.makeInternalAuthBlock(mahi,
-			    login, 'mrjob', function (err, auth) {
+			mod_mautil.makeInternalAuthBlock({
+			    'mahi': mahi,
+			    'login': login,
+			    'legacy': msLegacyAuth,
+			    'tag': 'mrjob'
+			}, function (err, auth) {
 				if (err) {
 					callback(err);
 					return;
@@ -663,7 +674,7 @@ function cmdSubmit()
 				job['auth'] = auth;
 				job['owner'] = auth['uuid'];
 				callback();
-			    });
+			});
 		},
 		function submit(_, callback) {
 			api.jobCreate(job, function (err, jobid) {

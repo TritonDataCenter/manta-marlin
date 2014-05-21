@@ -459,9 +459,9 @@ function mantaSignNull(_, callback)
  */
 function jobIsPrivileged(auth)
 {
-	mod_assert.ok(auth.hasOwnProperty['login'],
+	mod_assert.ok(auth.hasOwnProperty('login'),
 	    'not a valid "auth" record (no "login")');
-	mod_assert.ok(auth.hasOwnProperty['token'],
+	mod_assert.ok(auth.hasOwnProperty('token'),
 	    'not a valid "auth" record (no "token")');
 
 	if (auth.hasOwnProperty('principal'))
@@ -473,15 +473,29 @@ function jobIsPrivileged(auth)
 }
 
 /*
- * Given a mahiv2 client, an account name, and a source tag (which can be
- * basically any string, since it's used only for debugging), construct an
- * "auth" block for a job.  This is faked-up and bypasses authentication so it
- * should only be used for internal tools and the test suite.  The caller still
- * has to obtain and include an authn token.
+ * Construct an "auth" block for a job.  This is faked-up and bypasses
+ * authentication so it should only be used for internal tools and the test
+ * suite.  The caller still has to obtain and include an authn token.
+ * Arguments:
+ *
+ *     mahi	mahiv2 client
+ *
+ *     login	account login name
+ *
+ *     legacy	boolean: indicates whether to use the legacy authorization
+ *     		mechanism (by excluding the information required for modern
+ *     		authorization)
+ *
+ *     tag	tag that identifies this client (for debugging only)
  */
-function makeInternalAuthBlock(mahi, login, tag, callback)
+function makeInternalAuthBlock(args, callback)
 {
 	var now, auth;
+
+	mod_assert.equal(typeof (args), 'object');
+	mod_assert.equal(typeof (args.mahi), 'object');
+	mod_assert.equal(typeof (args.login), 'string');
+	mod_assert.equal(typeof (args.tag), 'string');
 
 	/*
 	 * See common/lib/schema.js for a description of these fields, some of
@@ -489,7 +503,7 @@ function makeInternalAuthBlock(mahi, login, tag, callback)
 	 */
 	now = new Date().toISOString();
 	auth = {
-	    'login': login,
+	    'login': args.login,
 	    'groups': [],
 	    'conditions': {
 		'fromjob': false, /* matches muskie */
@@ -499,11 +513,11 @@ function makeInternalAuthBlock(mahi, login, tag, callback)
 		'day': now,
 		'time': now,
 		'sourceip': '::1',
-		'user-agent': tag
+		'user-agent': args.tag
 	    }
 	};
 
-	mahi.getAccount(login, function (err, record) {
+	args.mahi.getAccount(args.login, function (err, record) {
 		if (err) {
 			callback(
 			    new VError(err, 'failed to create auth block'));
@@ -511,8 +525,17 @@ function makeInternalAuthBlock(mahi, login, tag, callback)
 		}
 
 		auth['uuid'] = record['account']['uuid'];
-		auth['conditions']['owner'] = record['account']['uuid'];
-		auth['principal'] = record;
+
+		if (record['account']['isOperator'])
+			auth['groups'].push('operators');
+
+		if (args.legacy) {
+			delete (auth['conditions']);
+		} else {
+			auth['conditions']['owner'] = record['account']['uuid'];
+			auth['principal'] = record;
+		}
+
 		callback(null, auth);
 	});
 }
