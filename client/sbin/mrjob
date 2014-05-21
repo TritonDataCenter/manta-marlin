@@ -304,7 +304,7 @@ var msFieldsJobs = {
     },
     'jobname': {
 	'label': 'JOBNAME',
-	'width': 24
+	'width': 36
     },
     'login': {
 	'label': 'LOGIN',
@@ -1044,7 +1044,7 @@ function makeJobRow(job, mtime)
 	    'INPUTDONE': job['timeInputDone'] || '-',
 	    'JOBID': job['jobId'] || '-',
 	    /* XXX jobName compatibility -- can remove before GA */
-	    'JOBNAME': (job['jobName'] || job['name'] || '-').substr(0, 16),
+	    'JOBNAME': (job['jobName'] || job['name'] || '-').substr(0, 36),
 	    'LOGIN': job['auth']['login'],
 	    'MODIFIED': mtime || '-',
 	    'NASGN': job['stats'] ? job['stats']['nAssigns'] : '-',
