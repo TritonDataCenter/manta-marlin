@@ -89,7 +89,7 @@ function populateData(manta, testspec, keys, callback)
 	log.info('populating keys', keys);
 
 	if (keys.length === 0) {
-		mod_testcommon.ensureUser(login, function (err) {
+		mod_testcommon.ensureAccount(login, function (err) {
 			callback(err);
 		});
 		return;
@@ -164,7 +164,7 @@ function populateData(manta, testspec, keys, callback)
 		});
 	};
 
-	mod_testcommon.ensureUser(login, function (err) {
+	mod_testcommon.ensureAccount(login, function (err) {
 		if (err) {
 			callback(err);
 		} else {

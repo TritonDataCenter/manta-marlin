@@ -278,11 +278,11 @@ var testcases = {
 	    log.info('setting up cross-account link test');
 	    mod_vasync.pipeline({
 		'funcs': [
-		    function ensureUser1(_, subcb) {
-			    mod_testcommon.ensureUser(user1, subcb);
+		    function ensureAccount1(_, subcb) {
+			    mod_testcommon.ensureAccount(user1, subcb);
 		    },
-		    function ensureUser2(_, subcb) {
-			    mod_testcommon.ensureUser(user2, subcb);
+		    function ensureAccount2(_, subcb) {
+			    mod_testcommon.ensureAccount(user2, subcb);
 		    },
 		    function populateSource(_, subcb) {
 			    var data = 'auto-generated snaplink source content';

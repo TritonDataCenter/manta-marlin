@@ -38,7 +38,8 @@ var log = new mod_bunyan({
 exports.setup = setup;
 exports.teardown = teardown;
 exports.mahiClient = mahiClient;
-exports.ensureUser = ensureUser;
+exports.ufdsClient = ufdsClient;
+exports.ensureAccount = ensureAccount;
 
 exports.pipeline = pipeline;
 exports.timedCheck = timedCheck;
@@ -119,10 +120,10 @@ function setup(callback)
 }
 
 /*
- * Ensure that the given test user exists with login "login".  If it doesn't, it
- * will be created based on information from the user "poseidon".
+ * Ensure that the given test account exists with login "login".  If it doesn't,
+ * it will be created based on information from the "poseidon" account.
  */
-function ensureUser(login, callback)
+function ensureAccount(login, callback)
 {
 	var existing = null;
 	var haskey = false;
@@ -332,6 +333,11 @@ function mahiClient()
 	}
 
 	return (mahi_client);
+}
+
+function ufdsClient()
+{
+	return (ufds_client);
 }
 
 function pipeline(args)
