@@ -279,7 +279,7 @@ function ufdsMakeAccounts(arg, usercallback)
 	ops.forEach(function (op) {
 		if (op.kind == 'fetch_account') {
 			funcs.push(function (_, callback) {
-				log.info(op, 'starting op');
+				log.debug(op, 'starting op');
 				ufdsFetch(log, ufds, ufds.getUser,
 				    [ op.account ], function (ret) {
 					ctx.cc_accountids[op.account] =
@@ -292,7 +292,7 @@ function ufdsMakeAccounts(arg, usercallback)
 			});
 		} else if (op.kind == 'fetch_user') {
 			funcs.push(function (_, callback) {
-				log.info(op, 'starting op');
+				log.debug(op, 'starting op');
 				if (!ctx.cc_accountids.hasOwnProperty(
 				    op.account)) {
 					setImmediate(callback);
@@ -309,7 +309,7 @@ function ufdsMakeAccounts(arg, usercallback)
 			});
 		} else if (op.kind == 'fetch_account_key') {
 			funcs.push(function (_, callback) {
-				log.info(op, 'starting op');
+				log.debug(op, 'starting op');
 				if (!ctx.cc_accountids.hasOwnProperty(
 				    op.account)) {
 					setImmediate(callback);
@@ -326,7 +326,7 @@ function ufdsMakeAccounts(arg, usercallback)
 			});
 		} else if (op.kind == 'fetch_user_key') {
 			funcs.push(function (_, callback) {
-				log.info(op, 'starting op');
+				log.debug(op, 'starting op');
 				if (!ctx.cc_userids.hasOwnProperty(
 				    op.account) ||
 				    !ctx.cc_userids[op.account].hasOwnProperty(
@@ -347,7 +347,7 @@ function ufdsMakeAccounts(arg, usercallback)
 		} else if (op.kind == 'create_account' ||
 		    op.kind == 'create_user') {
 			funcs.push(function (_, callback) {
-				log.info(op, 'starting op');
+				log.debug(op, 'starting op');
 				if (op.kind == 'create_account' &&
 				    ctx.cc_accountids.hasOwnProperty(
 				    op.account)) {
@@ -411,7 +411,7 @@ function ufdsMakeAccounts(arg, usercallback)
 						return;
 					}
 
-					log.info(newuser, 'created user');
+					log.debug(newuser, 'created user');
 					if (op.kind == 'create_account') {
 						ctx.cc_accountids[op.account] =
 						    ret['uuid'];
@@ -431,7 +431,7 @@ function ufdsMakeAccounts(arg, usercallback)
 		} else if (op.kind == 'create_account_key' ||
 		    op.kind == 'create_user_key') {
 			funcs.push(function (_, callback) {
-				log.info(op, 'starting op');
+				log.debug(op, 'starting op');
 				var account, accountid, userlogin, userid, user;
 				var key;
 
@@ -483,14 +483,14 @@ function ufdsMakeAccounts(arg, usercallback)
 						callback(new VError(err,
 						    'adding key'));
 					} else {
-						log.info('added key');
+						log.debug('added key');
 						callback();
 					}
 				});
 			});
 		} else if (op.kind == 'fetch_policy') {
 			funcs.push(function (_, callback) {
-				log.info(op, 'starting op');
+				log.debug(op, 'starting op');
 
 				var accountid = ctx.cc_accountids[op.account];
 				ufdsFetch(log, ufds, ufds.getPolicy,
@@ -501,7 +501,7 @@ function ufdsMakeAccounts(arg, usercallback)
 			});
 		} else if (op.kind == 'create_policy') {
 			funcs.push(function (_, callback) {
-				log.info(op, 'starting op');
+				log.debug(op, 'starting op');
 
 				if (ctx.cc_policies[op.account].
 				    hasOwnProperty(op.name)) {
@@ -528,7 +528,8 @@ function ufdsMakeAccounts(arg, usercallback)
 						callback(new VError(err,
 						    'policy created failed'));
 					} else {
-						log.info(ret, 'created policy');
+						log.debug(ret,
+						    'created policy');
 						ctx.cc_policies[op.account][
 						    op.name] = ret;
 						callback();
@@ -537,7 +538,7 @@ function ufdsMakeAccounts(arg, usercallback)
 			});
 		} else if (op.kind == 'fetch_role') {
 			funcs.push(function (_, callback) {
-				log.info(op, 'starting op');
+				log.debug(op, 'starting op');
 
 				var accountid = ctx.cc_accountids[op.account];
 				ufdsFetch(log, ufds, ufds.getRole, [ accountid,
@@ -547,7 +548,7 @@ function ufdsMakeAccounts(arg, usercallback)
 			});
 		} else if (op.kind == 'create_role') {
 			funcs.push(function (_, callback) {
-				log.info(op, 'starting op');
+				log.debug(op, 'starting op');
 
 				if (ctx.cc_roles[op.account].
 				    hasOwnProperty(op.name)) {
@@ -582,7 +583,7 @@ function ufdsMakeAccounts(arg, usercallback)
 						callback(new VError(err,
 						    'creating role'));
 					} else {
-						log.info('created role', ret);
+						log.debug('created role', ret);
 						ctx.cc_roles[op.account][
 						    op.name] = ret;
 						callback();
@@ -613,7 +614,7 @@ function ufdsMakeAccounts(arg, usercallback)
 function ufdsFetch(log, client, clientfunc, args, func, callback) {
 	var actual_args = args.slice(0);
 	var logkey = { 'func': clientfunc.name, 'args': args };
-	log.info(logkey);
+	log.debug(logkey);
 
 	actual_args.push(function (err) {
 		var sargs;
@@ -622,10 +623,10 @@ function ufdsFetch(log, client, clientfunc, args, func, callback) {
 			callback(new VError(err, '%s(%s)',
 			    clientfunc.name, args.join(', ')));
 		} else if (err) {
-			log.info(logkey, 'object missing');
+			log.debug(logkey, 'object missing');
 			callback();
 		} else {
-			log.info(logkey, 'object found');
+			log.debug(logkey, 'object found');
 			sargs = Array.prototype.slice.call(arguments, 1);
 			func.apply(null, sargs);
 			callback();

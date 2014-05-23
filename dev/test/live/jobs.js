@@ -55,21 +55,21 @@ var extrainputs_disperrors = [
 
 var errors_disperrors0 = [ {
     'phaseNum': '0',
-    'what': 'phase 0: map input "/notavalidusername/stor/obj1"',
+    'what': 'phase 0: input "/notavalidusername/stor/obj1"',
     'input': '/notavalidusername/stor/obj1',
     'p0input': '/notavalidusername/stor/obj1',
     'code': EM_RESOURCENOTFOUND,
     'message': 'no such object: "/notavalidusername/stor/obj1"'
 }, {
     'phaseNum': '0',
-    'what': 'phase 0: map input "/%user%/stor/notavalidfilename"',
+    'what': 'phase 0: input "/%user%/stor/notavalidfilename"',
     'input': '/%user%/stor/notavalidfilename',
     'p0input': '/%user%/stor/notavalidfilename',
     'code': EM_RESOURCENOTFOUND,
     'message': 'no such object: "/%user%/stor/notavalidfilename"'
 }, {
     'phaseNum': '0',
-    'what': 'phase 0: map input "/%user%/stor/mydir"',
+    'what': 'phase 0: input "/%user%/stor/mydir"',
     'input': '/%user%/stor/mydir',
     'p0input': '/%user%/stor/mydir',
     'code': EM_INVALIDARGUMENT,
@@ -77,49 +77,49 @@ var errors_disperrors0 = [ {
 	'"/%user%/stor/mydir"'
 }, {
     'phaseNum': '0',
-    'what': 'phase 0: map input "/"',
+    'what': 'phase 0: input "/"',
     'input': '/',
     'p0input': '/',
     'code': EM_RESOURCENOTFOUND,
     'message': 'malformed object name: "/"'
 }, {
     'phaseNum': '0',
-    'what': 'phase 0: map input "/%user%"',
+    'what': 'phase 0: input "/%user%"',
     'input': '/%user%',
     'p0input': '/%user%',
     'code': EM_RESOURCENOTFOUND,
     'message': 'malformed object name: "/%user%"'
 }, {
     'phaseNum': '0',
-    'what': 'phase 0: map input "/%user%/"',
+    'what': 'phase 0: input "/%user%/"',
     'input': '/%user%/',
     'p0input': '/%user%/',
     'code': EM_RESOURCENOTFOUND,
     'message': 'no such object: "/%user%/"'
 }, {
     'phaseNum': '0',
-    'what': 'phase 0: map input "/%user%/stor"',
+    'what': 'phase 0: input "/%user%/stor"',
     'input': '/%user%/stor',
     'p0input': '/%user%/stor',
     'code': EM_RESOURCENOTFOUND,
     'message': 'no such object: "/%user%/stor"'
 }, {
     'phaseNum': '0',
-    'what': 'phase 0: map input "/%user%/stor/"',
+    'what': 'phase 0: input "/%user%/stor/"',
     'input': '/%user%/stor/',
     'p0input': '/%user%/stor/',
     'code': EM_RESOURCENOTFOUND,
     'message': 'no such object: "/%user%/stor/"'
 }, {
     'phaseNum': '0',
-    'what': 'phase 0: map input "/%user%/jobs"',
+    'what': 'phase 0: input "/%user%/jobs"',
     'input': '/%user%/jobs',
     'p0input': '/%user%/jobs',
     'code': EM_RESOURCENOTFOUND,
     'message': 'no such object: "/%user%/jobs"'
 }, {
     'phaseNum': '0',
-    'what': 'phase 0: map input "/%user%/jobs/"',
+    'what': 'phase 0: input "/%user%/jobs/"',
     'input': '/%user%/jobs/',
     'p0input': '/%user%/jobs/',
     'code': EM_RESOURCENOTFOUND,
@@ -813,21 +813,21 @@ var testcases = {
 	},
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj1"',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
 	    'input': '/%user%/stor/obj1',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_JOBCANCELLED,
 	    'message': 'job was cancelled'
 	}, {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj2"',
+	    'what': 'phase 0: input "/%user%/stor/obj2"',
 	    'input': '/%user%/stor/obj2',
 	    'p0input': '/%user%/stor/obj2',
 	    'code': EM_JOBCANCELLED,
 	    'message': 'job was cancelled'
 	}, {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj3"',
+	    'what': 'phase 0: input "/%user%/stor/obj3"',
 	    'input': '/%user%/stor/obj3',
 	    'p0input': '/%user%/stor/obj3',
 	    'code': EM_JOBCANCELLED,
@@ -894,7 +894,7 @@ var testcases = {
 	'expected_outputs': [],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj1"',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
 	    'input': '/%user%/stor/obj1',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_USERTASK,
@@ -1079,7 +1079,7 @@ var testcases = {
 	],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/my dir"',
+	    'what': 'phase 0: input "/%user%/stor/my dir"',
 	    'input': '/%user%/stor/my dir',
 	    'p0input': '/%user%/stor/my dir',
 	    'code': EM_INVALIDARGUMENT,
@@ -1142,14 +1142,14 @@ var testcases = {
 	'expected_outputs': [],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/my obj1"',
+	    'what': 'phase 0: input "/%user%/stor/my obj1"',
 	    'input': '/%user%/stor/my obj1',
 	    'p0input': '/%user%/stor/my obj1',
 	    'code': EM_USERTASK,
 	    'stderr': /\/%user%\/jobs\/.*\/stor\/%user%\/stor\/my obj1.0.err/
 	}, {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/M%41RK"',
+	    'what': 'phase 0: input "/%user%/stor/M%41RK"',
 	    'input': '/%user%/stor/M%41RK',
 	    'p0input': '/%user%/stor/M%41RK',
 	    'code': EM_USERTASK,
@@ -1174,7 +1174,7 @@ var testcases = {
 	'expected_outputs': [],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj1"',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
 	    'input': '/%user%/stor/obj1',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_TASKINIT,
@@ -1198,7 +1198,7 @@ var testcases = {
 	'expected_outputs': [],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj1"',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
 	    'input': '/%user%/stor/obj1',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_TASKINIT,
@@ -1262,7 +1262,7 @@ var testcases = {
 	 */
 	'errors': errors_disperrors0.concat([ {
 	    'phaseNum': '1',
-	    'what': 'phase 1: map input "/notavalidusername/stor/obj1" ' +
+	    'what': 'phase 1: input "/notavalidusername/stor/obj1" ' +
 		'(from job input "/%user%/stor/obj1")',
 	    'input': '/notavalidusername/stor/obj1',
 	    'p0input': '/%user%/stor/obj1',
@@ -1270,7 +1270,7 @@ var testcases = {
 	    'message': 'no such object: "/notavalidusername/stor/obj1"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 1: map input "/%user%/stor/notavalidfilename" ' +
+	    'what': 'phase 1: input "/%user%/stor/notavalidfilename" ' +
 		'(from job input "/%user%/stor/obj1")',
 	    'input': '/%user%/stor/notavalidfilename',
 	    'p0input': '/%user%/stor/obj1',
@@ -1278,7 +1278,7 @@ var testcases = {
 	    'message': 'no such object: "/%user%/stor/notavalidfilename"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 1: map input "/%user%/stor/mydir" ' +
+	    'what': 'phase 1: input "/%user%/stor/mydir" ' +
 		'(from job input "/%user%/stor/obj1")',
 	    'input': '/%user%/stor/mydir',
 	    'p0input': '/%user%/stor/obj1',
@@ -1287,7 +1287,7 @@ var testcases = {
 		'"/%user%/stor/mydir"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 1: map input "/" ' +
+	    'what': 'phase 1: input "/" ' +
 	        '(from job input "/%user%/stor/obj1")',
 	    'input': '/',
 	    'p0input': '/%user%/stor/obj1',
@@ -1295,7 +1295,7 @@ var testcases = {
 	    'message': 'malformed object name: "/"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 1: map input "/%user%" ' +
+	    'what': 'phase 1: input "/%user%" ' +
 	        '(from job input "/%user%/stor/obj1")',
 	    'input': '/%user%',
 	    'p0input': '/%user%/stor/obj1',
@@ -1303,7 +1303,7 @@ var testcases = {
 	    'message': 'malformed object name: "/%user%"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 1: map input "/%user%" ' +
+	    'what': 'phase 1: input "/%user%" ' +
 	        '(from job input "/%user%/stor/obj1")',
 	    'input': '/%user%',
 	    'p0input': '/%user%/stor/obj1',
@@ -1311,7 +1311,7 @@ var testcases = {
 	    'message': 'malformed object name: "/%user%"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 1: map input "/%user%/stor" ' +
+	    'what': 'phase 1: input "/%user%/stor" ' +
 	        '(from job input "/%user%/stor/obj1")',
 	    'input': '/%user%/stor',
 	    'p0input': '/%user%/stor/obj1',
@@ -1319,7 +1319,7 @@ var testcases = {
 	    'message': 'no such object: "/%user%/stor"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 1: map input "/%user%/stor" ' +
+	    'what': 'phase 1: input "/%user%/stor" ' +
 	        '(from job input "/%user%/stor/obj1")',
 	    'input': '/%user%/stor',
 	    'p0input': '/%user%/stor/obj1',
@@ -1327,7 +1327,7 @@ var testcases = {
 	    'message': 'no such object: "/%user%/stor"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 1: map input "/%user%/jobs" ' +
+	    'what': 'phase 1: input "/%user%/jobs" ' +
 	        '(from job input "/%user%/stor/obj1")',
 	    'input': '/%user%/jobs',
 	    'p0input': '/%user%/stor/obj1',
@@ -1335,7 +1335,7 @@ var testcases = {
 	    'message': 'no such object: "/%user%/jobs"'
 	}, {
 	    'phaseNum': '1',
-	    'what': 'phase 1: map input "/%user%/jobs" ' +
+	    'what': 'phase 1: input "/%user%/jobs" ' +
 	        '(from job input "/%user%/stor/obj1")',
 	    'input': '/%user%/jobs',
 	    'p0input': '/%user%/stor/obj1',
@@ -1395,7 +1395,7 @@ var testcases = {
 	'expected_outputs': [],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj1"',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
 	    'input': '/%user%/stor/obj1',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_TASKINIT,
@@ -1420,7 +1420,7 @@ var testcases = {
 	'expected_outputs': [ /\/%user%\/jobs\/.*\/reduce.1./ ],
 	'errors': [ {
 	    'phaseNum': '1',
-	    'what': new RegExp('phase 1: map input ' +
+	    'what': new RegExp('phase 1: input ' +
 		'"/%user%/jobs/.*/stor/%user%/stor/obj1.0..*" ' +
 		'\\(from job input "/%user%/stor/obj1"\\)'),
 	    'input': new RegExp('/%user%/jobs/.*/stor/%user%/stor/obj1.0..*'),
@@ -1445,7 +1445,7 @@ var testcases = {
 	'expected_outputs': [ /\/%user%\/jobs\/.*\/reduce.1./ ],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj1"',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
 	    'input': '/%user%/stor/obj1',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_USERTASK,
@@ -1465,7 +1465,7 @@ var testcases = {
 	'expected_outputs': [],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj1"',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
 	    'code': EM_INTERNAL,
 	    'message': 'internal error'
 	} ]
@@ -1483,7 +1483,7 @@ var testcases = {
 	'expected_outputs': [],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj1"',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
 	    'input': '/%user%/stor/obj1',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_USERTASK,
@@ -1503,7 +1503,7 @@ var testcases = {
 	'expected_outputs': [],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj1"',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
 	    'input': '/%user%/stor/obj1',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_INTERNAL,
@@ -1528,7 +1528,7 @@ var testcases = {
 	'expected_outputs': [],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj1"',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
 	    'input': '/%user%/stor/obj1',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_USERTASK,
@@ -1574,7 +1574,7 @@ var testcases = {
 	'expected_outputs': [],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj1"',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
 	    'input': '/%user%/stor/obj1',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_USERTASK,
@@ -1595,7 +1595,7 @@ var testcases = {
 	'expected_outputs': [],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj1"',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
 	    'input': '/%user%/stor/obj1',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_INVALIDARGUMENT,
@@ -1866,7 +1866,7 @@ var testcases = {
 	'expected_outputs': [],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj1"',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
 	    'input': '/%user%/stor/obj1',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_TASKINIT,
@@ -1887,7 +1887,7 @@ var testcases = {
 	'expected_outputs': [],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj1"',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
 	    'input': '/%user%/stor/obj1',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_TASKINIT,
@@ -1914,7 +1914,7 @@ var testcases = {
 	'expected_outputs': [],
 	'errors': [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/obj1"',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
 	    'input': '/%user%/stor/obj1',
 	    'p0input': '/%user%/stor/obj1',
 	    'code': EM_INTERNAL,
@@ -2138,7 +2138,7 @@ var testcases = {
 
 /*
  * Authentication/authorization tests are generated dynamically by
- * initAuthzTestCases below.
+ * initAuthzTestCases() below.
  */
 };
 
@@ -2192,25 +2192,23 @@ function initTestCases()
  * In order to exhaustively test access control with jobs, we have to cover
  * several cases.  We'll define these accounts and users:
  *
- *     Account A: users U1, U2
- *     Account B: user U3
- *     Operator:  user U4
+ *     Account A: users A1, A2
+ *     Account B: user B1
+ *     Operator account O
  *
  * and we'll test this matrix:
  *
- *    PATH               A   U1   U2  B/U3   U4
+ *    PATH               A   A1   A2  B/B1   O
  *    /A/public/X        *    *    *    *    *    (any object under /public)
  *    /A/stor/A          *                   *    (A creates object under /stor)
- *    /A/stor/public     *    *    *    *    *    (public object under /stor)
- *    /A/stor/U1         *    *              *    (object readable only by U1)
- *  * /A/stor/U3         *              *    *    (object readable by U3)
+ *    /A/stor/pub        *    *    *    *    *    (public object under /stor)
+ *    /A/stor/A1         *    *              *    (object readable only by A1)
+ *  * /A/stor/B1         *              *    *    (object readable by B1)
  *  * /A/stor/B          *    *         *    *    (object readable by B)
  *
- *  XXX add test cases for "reduce" in addition to map?
- *  XXX add test cases for writing output
- *  XXX The starred test cases are blocked on MANTA-2171.
- *  XXX Test cases for the "conditions" that Marlin supplies (e.g.,
- *      fromjob=true) are blocked on joyent/node-aperture#1
+ * XXX The starred test cases are blocked on MANTA-2171.
+ * XXX Test cases for the "conditions" that Marlin supplies (e.g., fromjob=true)
+ *     are blocked on joyent/node-aperture#1
  */
 function initAuthzUfdsConfig()
 {
@@ -2264,7 +2262,7 @@ function initAuthzTestCases()
 	template = {
 	    'pre_submit': setupAuthzTestCase,
 	    'job': {
-		'phases': [ { 'type': 'map', 'exec': 'cat' } ]
+		'phases': [ { 'exec': 'cat' } ]
 	    },
 	    'inputs': [],
 	    'extra_inputs': [
@@ -2295,28 +2293,28 @@ function initAuthzTestCases()
 	 */
 	expected_errors = [ {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/public/X"',
+	    'what': 'phase 0: input "/%user%/public/X"',
 	    'code': EM_AUTHORIZATION,
 	    'message': 'permission denied: "/%user%/public/X"',
 	    'input': '/%user%/public/X',
 	    'p0input': '/%user%/public/X'
 	}, {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/A"',
+	    'what': 'phase 0: input "/%user%/stor/A"',
 	    'code': EM_AUTHORIZATION,
 	    'message': 'permission denied: "/%user%/stor/A"',
 	    'input': '/%user%/stor/A',
 	    'p0input': '/%user%/stor/A'
 	}, {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/pub"',
+	    'what': 'phase 0: input "/%user%/stor/pub"',
 	    'code': EM_AUTHORIZATION,
 	    'message': 'permission denied: "/%user%/stor/pub"',
 	    'input': '/%user%/stor/pub',
 	    'p0input': '/%user%/stor/pub'
 	}, {
 	    'phaseNum': '0',
-	    'what': 'phase 0: map input "/%user%/stor/U1"',
+	    'what': 'phase 0: input "/%user%/stor/U1"',
 	    'code': EM_AUTHORIZATION,
 	    'message': 'permission denied: "/%user%/stor/U1"',
 	    'input': '/%user%/stor/U1',
@@ -2334,26 +2332,26 @@ function initAuthzTestCases()
 	 * appropriate set of expected outputs and errors.
 	 */
 	tcconfig = [ {
-	    'label': 'jobMauthzA',
+	    'label': 'authzA',		/* jobMauthzA, jobRauthzA */
 	    'account': authzAccountA,
 	    'ok': [ 0, 1, 2, 3 ]
 	}, {
-	    'label': 'jobMauthzA1',
+	    'label': 'authzA1',		/* jobMauthzA1, jobRauthzA2 */
 	    'account': authzAccountA,
 	    'user': authzUserA1,
 	    'ok': [ 0, 2, 3 ]
 	}, {
-	    'label': 'jobMauthzA2',
+	    'label': 'authzA2',		/* jobMauthzA2, jobRauthzA2 */
 	    'account': authzAccountA,
 	    'user': authzUserA2,
 	    'ok': [ 0, 2 ]
 	}, {
-	    'label': 'jobMauthzB',
+	    'label': 'authzB',		/* jobMauthzB, jobRauthzB */
 	    'account_objects': authzAccountA,
 	    'account': authzAccountB,
 	    'ok': [ 0, 2 ]
 	}, {
-	    'label': 'jobMauthzB1',
+	    'label': 'authzB1',		/* jobMauthzB1, jobRauthzB1 */
 	    'account_objects': authzAccountA,
 	    'account': authzAccountB,
 	    'ok': [ 0, 2 ]
@@ -2362,7 +2360,7 @@ function initAuthzTestCases()
 	 * The legacy mechanism doesn't affect account A's ability to access
 	 * its own objects.
 	 */
-	    'label': 'jobMauthzLegacyA',
+	    'label': 'authzLegacyA', /* jobMauthzLegacyA, jobRauthzLegacyA */
 	    'legacy_auth': true,
 	    'account': authzAccountA,
 	    'ok': [ 0, 1, 2, 3 ]
@@ -2372,7 +2370,7 @@ function initAuthzTestCases()
 	 * objects under account A's private directory because the
 	 * credentials aren't available to allow that.
 	 */
-	    'label': 'jobMauthzLegacyB',
+	    'label': 'authzLegacyB', /* jobMauthzLegacyB, jobRauthzLegacyB */
 	    'legacy_auth': true,
 	    'account_objects': authzAccountA,
 	    'account': authzAccountB,
@@ -2383,38 +2381,65 @@ function initAuthzTestCases()
 	 * Generate proper test cases from the above descriptions.  We do this
 	 * by copying the test case template, overriding properties from the
 	 * description, and using the "ok" array to select the right set of
-	 * expected outputs and errors.
+	 * expected outputs and errors.  We create both "map" and "reduce" test
+	 * cases for the non-legacy tests, though the reduce case really tests
+	 * token pass-through and muskie semantics (which is why we can't really
+	 * do legacy tests for these).
 	 */
 	tcconfig.forEach(function (tccfg) {
-		var testcase, p;
+		var testcase;
 
-		testcase = mod_jsprim.deepCopy(template);
-
-		for (p in tccfg) {
-			if (p == 'ok')
-				continue;
-			testcase[p] = tccfg[p];
-		}
-
+		testcase = authzMakeOneTestCase(template, tccfg,
+		    expected_errors, 'jobM');
+		testcase['job']['phases'][0]['type'] = 'map';
 		tccfg['ok'].forEach(function (i) {
 			testcase['expected_outputs'].push(expected_outputs[i]);
-		});
-
-		expected_errors.forEach(function (_, i) {
-			if (tccfg['ok'].indexOf(i) == -1)
-				testcase['errors'].push(expected_errors[i]);
 		});
 
 		mod_assert.equal(testcase['errors'].length +
 		    testcase['expected_outputs'].length,
 		    expected_outputs.length);
-
-		mod_assert.ok(testcase['label']);
 		mod_assert.ok(!testcases.hasOwnProperty(testcase['label']));
 		testcases[testcase['label']] = testcase;
+		exports.jobsMain.push(testcase);
 
+		if (tccfg['legacy_auth'])
+			return;
+
+		testcase = authzMakeOneTestCase(template, tccfg,
+		    expected_errors, 'jobR');
+		testcase['job']['phases'][0]['type'] = 'reduce';
+		testcase['expected_outputs'].push(new RegExp(''));
+		mod_assert.ok(!testcases.hasOwnProperty(testcase['label']));
+		testcases[testcase['label']] = testcase;
 		exports.jobsMain.push(testcase);
 	});
+}
+
+function authzMakeOneTestCase(template, tccfg, expected_errors, labelprefix)
+{
+	var testcase, p;
+
+	testcase = mod_jsprim.deepCopy(template);
+	for (p in tccfg) {
+		if (p == 'ok')
+			continue;
+
+		if (p == 'label') {
+			testcase[p] = labelprefix + tccfg[p];
+			continue;
+		}
+
+		testcase[p] = tccfg[p];
+	}
+
+	mod_assert.ok(testcase['label']);
+	expected_errors.forEach(function (_, i) {
+		if (tccfg['ok'].indexOf(i) == -1)
+			testcase['errors'].push(expected_errors[i]);
+	});
+
+	return (testcase);
 }
 
 /*

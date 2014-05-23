@@ -821,8 +821,7 @@ function jobFetchErrorsImpl(api, jobid, options, extra)
 		var summary = 'phase ' + value['phaseNum'] + ': ';
 
 		if (value['input']) {
-			summary += 'map input ' +
-			    JSON.stringify(value['input']);
+			summary += 'input ' + JSON.stringify(value['input']);
 
 			if (value['phaseNum'] > 0 && value['p0input'])
 				summary += ' (from job input ' +
