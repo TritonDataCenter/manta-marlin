@@ -84,8 +84,9 @@ function jobTestCaseRun(api, testspec, options, callback)
  */
 function populateData(manta, testspec, keys, callback)
 {
-	var login = mod_testcases.DEFAULT_USER;
+	var login;
 
+	login = testspec['account'] || mod_testcases.DEFAULT_USER;
 	log.info('populating keys', keys);
 
 	if (keys.length === 0) {
@@ -225,7 +226,7 @@ function jobTestSubmitAndVerify(api, testspec, options, callback)
 function replaceParams(testspec, str)
 {
 	mod_assert.ok(arguments.length >= 2);
-	var user = mod_testcases.DEFAULT_USER;
+	var user = testspec['account'] || mod_testcases.DEFAULT_USER;
 
 	if (typeof (str) == 'string')
 		return (str.replace(/%user%/g, user));
@@ -245,17 +246,9 @@ function jobSubmit(api, testspec, callback)
 {
 	var mahi, jobdef, login, url, funcs, private_key, signed_path, jobid;
 
-	login = mod_testcases.DEFAULT_USER;
+	login = testspec['account'] || mod_testcases.DEFAULT_USER;
 	url = mod_url.parse(process.env['MANTA_URL']);
 	mahi = mod_testcommon.mahiClient();
-
-	if (!login) {
-		process.nextTick(function () {
-			callback(new VError(
-			    'MANTA_USER must be specified in the environment'));
-		});
-		return;
-	}
 
 	jobdef = {
 	    'phases': testspec['job']['phases'],
@@ -277,7 +270,8 @@ function jobSubmit(api, testspec, callback)
 		log.info('generating auth block');
 		mod_mautil.makeInternalAuthBlock({
 		    'mahi': mahi,
-		    'login': login,
+		    'account': login,
+		    'user': testspec['user'] || null,
 		    'legacy': useLegacyAuth,
 		    'tag': 'marlin test suite'
 		}, function (err, auth) {

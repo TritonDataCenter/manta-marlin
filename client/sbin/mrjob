@@ -661,7 +661,7 @@ function cmdSubmit()
 		function authn(_, callback) {
 			mod_mautil.makeInternalAuthBlock({
 			    'mahi': mahi,
-			    'login': login,
+			    'account': login,
 			    'legacy': msLegacyAuth,
 			    'tag': 'mrjob'
 			}, function (err, auth) {

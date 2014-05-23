@@ -480,7 +480,9 @@ function jobIsPrivileged(auth)
  *
  *     mahi	mahiv2 client
  *
- *     login	account login name
+ *     account	account login name
+ *
+ *     [user]   subuser name
  *
  *     legacy	boolean: indicates whether to use the legacy authorization
  *     		mechanism (by excluding the information required for modern
@@ -490,12 +492,22 @@ function jobIsPrivileged(auth)
  */
 function makeInternalAuthBlock(args, callback)
 {
-	var now, auth;
+	var mahi, func, now, auth;
 
 	mod_assert.equal(typeof (args), 'object');
 	mod_assert.equal(typeof (args.mahi), 'object');
-	mod_assert.equal(typeof (args.login), 'string');
 	mod_assert.equal(typeof (args.tag), 'string');
+	mod_assert.equal(typeof (args.account), 'string');
+
+	mahi = args.mahi;
+	if (args.user) {
+		mod_assert.equal(typeof (args.user), 'string');
+		mod_assert.ok(!args.legacy,
+		    'legacy mode cannot support subusers');
+		func = mahi.getUser.bind(mahi, args.user, args.account);
+	} else {
+		func = mahi.getAccount.bind(mahi, args.account);
+	}
 
 	/*
 	 * See common/lib/schema.js for a description of these fields, some of
@@ -503,7 +515,7 @@ function makeInternalAuthBlock(args, callback)
 	 */
 	now = new Date().toISOString();
 	auth = {
-	    'login': args.login,
+	    'login': args.account,
 	    'groups': [],
 	    'conditions': {
 		'fromjob': false, /* matches muskie */
@@ -517,7 +529,7 @@ function makeInternalAuthBlock(args, callback)
 	    }
 	};
 
-	args.mahi.getAccount(args.login, function (err, record) {
+	func(function (err, record) {
 		if (err) {
 			callback(
 			    new VError(err, 'failed to create auth block'));
@@ -533,6 +545,10 @@ function makeInternalAuthBlock(args, callback)
 			delete (auth['conditions']);
 		} else {
 			auth['conditions']['owner'] = record['account']['uuid'];
+			if (args.user) {
+				auth['conditions']['activeRoles'] =
+				    record['user']['defaultRoles'].slice(0);
+			}
 			auth['principal'] = record;
 		}
 

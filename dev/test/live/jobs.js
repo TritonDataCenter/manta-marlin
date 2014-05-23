@@ -199,6 +199,11 @@ var errors_disperrors0 = [ {
  *
  * Tests may also specify a few other fields, but these are less common:
  *
+ *      account
+ *
+ *         The SDC account login name under which to run the job.  Most jobs run
+ *         under DEFAULT_USER.
+ *
  *	expected_output_content
  *
  *         Array of strings or regular expressions describing the contents of
@@ -244,6 +249,11 @@ var errors_disperrors0 = [ {
  *         If true, then the job's input stream will not be closed after the job
  *         is submitted.  You'll probably want to use post_submit to do
  *         something or else the job will likely hit its timeout.
+ *
+ *      user
+ *
+ *         The SDC account subuser under which to run the job.  Most jobs run
+ *         under the DEFAULT_USER account (not a subuser).
  */
 
 var testcases = {

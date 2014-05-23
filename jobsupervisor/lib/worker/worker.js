@@ -3476,15 +3476,6 @@ Worker.prototype.processQueues = function ()
 			continue;
 		}
 
-		if (dispatch.d_error === undefined &&
-		    !this.isAuthorized(dispatch)) {
-			dispatch.d_error = {
-			    'code': EM_AUTHORIZATION,
-			    'message': sprintf('permission denied: "%s"',
-				dispatch.d_objname)
-			};
-		}
-
 		if (dispatch.d_error !== undefined)
 			this.dispError(dispatch);
 		else
@@ -3904,6 +3895,14 @@ Worker.prototype.dispLocateValidLoc = function (input, loc)
 
 Worker.prototype.dispDispatch = function (dispatch)
 {
+	if (dispatch.d_error === undefined && !this.isAuthorized(dispatch)) {
+		dispatch.d_error = {
+		    'code': EM_AUTHORIZATION,
+		    'message': sprintf('permission denied: "%s"',
+			dispatch.d_objname)
+		};
+	}
+
 	if (dispatch.d_error === undefined &&
 	    dispatch.d_job.j_cancelled !== undefined) {
 		dispatch.d_error = {
@@ -4636,7 +4635,7 @@ Worker.prototype.isAuthorized = function (dispatch)
 	    }
 	};
 
-	this.w_log.debug('authorize request', rqarg['context']);
+	this.w_log.info('authorize request', rqarg['context']);
 
 	try {
 		err = null;
@@ -4645,12 +4644,19 @@ Worker.prototype.isAuthorized = function (dispatch)
 		err = ex;
 	}
 
-	if (err)
-		this.w_log.debug(err, 'unauthorized');
-	else
-		this.w_log.debug('authorized');
+	if (err) {
+		/*
+		 * XXX Work around MANTA-2228. We can't provide the real stack,
+		 * but we can at least make sure bunyan logs it as an error.
+		 */
+		if (!err.stack)
+			Error.captureStackTrace(err);
+		this.w_log.warn(err, 'unauthorized');
+		return (false);
+	}
 
-	return (err);
+	this.w_log.debug('authorized');
+	return (true);
 };
 
 /*

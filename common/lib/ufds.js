@@ -571,7 +571,8 @@ function ufdsMakeAccounts(arg, usercallback)
 				    'name': op.name,
 				    'account': accountid,
 				    'memberpolicy': policy.dn,
-				    'uniquemember': user.dn
+				    'uniquemember': user.dn,
+				    'uniquememberdefault': user.dn
 				};
 				log.info(role, 'creating role');
 				ufds.addRole(accountid, role,
@@ -593,6 +594,10 @@ function ufdsMakeAccounts(arg, usercallback)
 			    op.kind));
 		}
 	});
+
+	/*
+	 * XXX add a "flush" operation
+	 */
 
 	return (mod_vasync.pipeline({
 	    'input': ctx,
