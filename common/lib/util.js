@@ -546,8 +546,9 @@ function makeInternalAuthBlock(args, callback)
 		} else {
 			auth['conditions']['owner'] = record['account']['uuid'];
 			if (args.user) {
+				var dfl = record['user']['defaultRoles'] || [];
 				auth['conditions']['activeRoles'] =
-				    record['user']['defaultRoles'].slice(0);
+				    dfl.slice(0);
 			}
 			auth['principal'] = record;
 		}

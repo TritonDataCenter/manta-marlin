@@ -30,16 +30,6 @@ var VError = mod_verror.VError;
 var StringInputStream = mod_testcommon.StringInputStream;
 var log = mod_testcommon.log;
 
-/*
- * By default, jobs are created with both modern access-control information as
- * well as some legacy fields, but Marlin ignores the legacy fields when the
- * modern information is present.  With useLegacyAuth = true, jobs will be
- * submitted *without* the modern fields, causing Marlin to use the legacy
- * authorization mechanism.  While not part of the standard test suite, it's
- * useful to be able to test that mode while we still support it.
- */
-var useLegacyAuth = false;
-
 /* Public interface */
 exports.jobTestCaseRun = jobTestCaseRun;
 
@@ -86,7 +76,8 @@ function populateData(manta, testspec, keys, callback)
 {
 	var login;
 
-	login = testspec['account'] || mod_testcases.DEFAULT_USER;
+	login = testspec['account_objects'] || testspec['account'] ||
+	    mod_testcases.DEFAULT_USER;
 	log.info('populating keys', keys);
 
 	if (keys.length === 0) {
@@ -226,13 +217,17 @@ function jobTestSubmitAndVerify(api, testspec, options, callback)
 function replaceParams(testspec, str)
 {
 	mod_assert.ok(arguments.length >= 2);
-	var user = testspec['account'] || mod_testcases.DEFAULT_USER;
+	var jobuser = testspec['account'] || mod_testcases.DEFAULT_USER;
+	var user = testspec['account_objects'] || testspec['account'] ||
+	    mod_testcases.DEFAULT_USER;
 
 	if (typeof (str) == 'string')
-		return (str.replace(/%user%/g, user));
+		return (str.replace(/%user%/g, user).replace(
+		    /%jobuser%/g, jobuser));
 
 	mod_assert.equal(str.constructor.name, 'RegExp');
-	return (new RegExp(str.source.replace(/%user%/g, user)));
+	return (new RegExp(str.source.replace(/%user%/g, user).replace(
+	    /%jobuser%/g, jobuser)));
 }
 
 /*
@@ -272,7 +267,7 @@ function jobSubmit(api, testspec, callback)
 		    'mahi': mahi,
 		    'account': login,
 		    'user': testspec['user'] || null,
-		    'legacy': useLegacyAuth,
+		    'legacy': testspec['legacy_auth'],
 		    'tag': 'marlin test suite'
 		}, function (err, auth) {
 			if (err) {

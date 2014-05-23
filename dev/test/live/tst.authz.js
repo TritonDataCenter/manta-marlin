@@ -12,6 +12,9 @@ var mod_uuid = require('node-uuid');
 var mod_vasync = require('vasync');
 var VError = require('verror');
 
+/* jsl:import ../../../common/lib/errors.js */
+require('../../lib/errors');
+
 var sprintf = mod_extsprintf.sprintf;
 
 var mod_maufds = require('../../lib/ufds');
@@ -38,10 +41,9 @@ var testapi;
  *  * /A/stor/B          *    *         *    *    (object readable by B)
  *
  *  *: These last two cases are pending MANTA-2171.
- *
- * XXX also want to test legacy cases
- * XXX also want to test cases where an object is accessible in a job, but not
- * via Manta, and vice versa (to check "conditions").
+ *  XXX The starred test cases are blocked on MANTA-2171.
+ *  XXX Test cases for the "conditions" that Marlin supplies (e.g.,
+ *      fromjob=true) are blocked on joyent/node-aperture#1
  */
 var tcAccountA = 'marlin_test_authzA';
 var tcAccountB = 'marlin_test_authzB';
@@ -49,31 +51,8 @@ var tcUserAnon = 'anonymous';
 var tcUserA1 = 'authzA1';
 var tcUserA2 = 'authzA2';
 var tcUserB1 = 'authzB1';
-var tcAccountOperator = process.env['MANTA_USER'];
 var tcTestCaseOptions = { 'strict': true };
 var tcConfig = {};
-var tcAuthzLegacy = {
-	/* XXX demo */
-	'label': 'jobMAuthzLegacy',
-	'job': { 'phases': [ { 'type': 'map', 'exec': 'wc' } ] },
-	'inputs': [ '/%user%/stor/obj1' ],
-	'timeout': 15 * 1000,
-	'expected_outputs': [
-	    /\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
-	],
-	'errors': []
-};
-var tcAuthzModern = {
-	/* XXX demo */
-	'label': 'jobMAuthzModern',
-	'job': { 'phases': [ { 'type': 'map', 'exec': 'wc' } ] },
-	'inputs': [ '/%user%/stor/obj1' ],
-	'timeout': 15 * 1000,
-	'expected_outputs': [
-	    /\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
-	],
-	'errors': []
-};
 
 testcommon.pipeline({
     'funcs': [
@@ -137,38 +116,6 @@ testcommon.pipeline({
 		var size = content.length;
 		var objects = [];
 
-		objects.push({
-		    'label': '/A/public/X: any object under /public',
-		    'account': tcAccountA,
-		    'public': true,
-		    'name': 'X'
-		});
-
-		objects.push({
-		    'label': '/A/stor/A: A creates object under /A/stor',
-		    'account': tcAccountA,
-		    'name': 'A'
-		});
-
-		objects.push({
-		    'label': '/A/stor/public',
-		    'account': tcAccountA,
-		    'name': 'public',
-		    'roles': [ tcUserAnon + '-readall' ]
-		});
-
-		objects.push({
-		    'label': '/A/stor/U1: object readable only by U1',
-		    'account': tcAccountA,
-		    'roles': [ tcUserA1 + '-readall' ],
-		    'name': 'U1'
-		});
-
-		/*
-		 * XXX want /A/stor/B and /A/stor/U3, which are blocked on
-		 * MANTA-2171.
-		 */
-
 		mod_vasync.forEachParallel({
 		    'inputs': objects,
 		    'func': function (objcfg, callback) {
@@ -218,7 +165,7 @@ testcommon.pipeline({
 		        '/%user%/stor/public',
 		        '/%user%/stor/U1'
 		    ],
-		    'timeout': 15 * 1000,
+		    'timeout': 30 * 1000,
 		    'errors': [],
 		    'expected_outputs': [
 			/\/%user%\/jobs\/.*\/stor\/%user%\/public\/X/,
@@ -229,7 +176,7 @@ testcommon.pipeline({
 		}, tcTestCaseOptions, next);
 	},
 
-	function rumMapJobAsA1(_, next) {
+	function runMapJobAsA1(_, next) {
 		jobcommon.jobTestCaseRun(testapi, {
 		    'label': 'jobMauthzA1',
 		    'account': tcAccountA,
@@ -244,8 +191,15 @@ testcommon.pipeline({
 		        '/%user%/stor/public',
 		        '/%user%/stor/U1'
 		    ],
-		    'timeout': 15 * 1000,
-		    'errors': [],
+		    'timeout': 30 * 1000,
+		    'errors': [ {
+			'phaseNum': '0',
+			'what': 'phase 0: map input "/%user%/stor/A"',
+			'code': EM_AUTHORIZATION,
+			'message': 'permission denied: "/%user%/stor/A"',
+			'input': '/%user%/stor/A',
+			'p0input': '/%user%/stor/A'
+		    } ],
 		    'expected_outputs': [
 			/\/%user%\/jobs\/.*\/stor\/%user%\/public\/X/,
 			/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/public/,
@@ -254,15 +208,197 @@ testcommon.pipeline({
 		}, tcTestCaseOptions, next);
 	},
 
-//	function runLegacy(_, next) {
-//		jobcommon.jobTestCaseRun(testapi, tcAuthzLegacy,
-//		    tcTestCaseOptions, next);
-//	},
-//
-//	function runModern(_, next) {
-//		jobcommon.jobTestCaseRun(testapi, tcAuthzModern,
-//		    tcTestCaseOptions, next);
-//	},
+	function runMapJobAsA2(_, next) {
+		jobcommon.jobTestCaseRun(testapi, {
+		    'label': 'jobMauthzA2',
+		    'account': tcAccountA,
+		    'user': tcUserA2,
+		    'job': {
+		        'phases': [ { 'type': 'map', 'exec': 'cat' } ]
+		    },
+		    'inputs': [],
+		    'extra_inputs': [
+		        '/%user%/public/X',
+		        '/%user%/stor/A',
+		        '/%user%/stor/public',
+		        '/%user%/stor/U1'
+		    ],
+		    'timeout': 30 * 1000,
+		    'errors': [ {
+			'phaseNum': '0',
+			'what': 'phase 0: map input "/%user%/stor/A"',
+			'code': EM_AUTHORIZATION,
+			'message': 'permission denied: "/%user%/stor/A"',
+			'input': '/%user%/stor/A',
+			'p0input': '/%user%/stor/A'
+		    }, {
+			'phaseNum': '0',
+			'what': 'phase 0: map input "/%user%/stor/U1"',
+			'code': EM_AUTHORIZATION,
+			'message': 'permission denied: "/%user%/stor/U1"',
+			'input': '/%user%/stor/U1',
+			'p0input': '/%user%/stor/U1'
+		    } ],
+		    'expected_outputs': [
+			/\/%user%\/jobs\/.*\/stor\/%user%\/public\/X/,
+			/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/public/
+		    ]
+		}, tcTestCaseOptions, next);
+	},
+
+	function runMapJobAsB(_, next) {
+		jobcommon.jobTestCaseRun(testapi, {
+		    'label': 'jobMauthzB',
+		    'account_objects': tcAccountA,
+		    'account': tcAccountB,
+		    'job': {
+		        'phases': [ { 'type': 'map', 'exec': 'cat' } ]
+		    },
+		    'inputs': [],
+		    'extra_inputs': [
+		        '/%user%/public/X',
+		        '/%user%/stor/A',
+		        '/%user%/stor/public',
+		        '/%user%/stor/U1'
+		    ],
+		    'timeout': 30 * 1000,
+		    'errors': [ {
+			'phaseNum': '0',
+			'what': 'phase 0: map input "/%user%/stor/A"',
+			'code': EM_AUTHORIZATION,
+			'message': 'permission denied: "/%user%/stor/A"',
+			'input': '/%user%/stor/A',
+			'p0input': '/%user%/stor/A'
+		    }, {
+			'phaseNum': '0',
+			'what': 'phase 0: map input "/%user%/stor/U1"',
+			'code': EM_AUTHORIZATION,
+			'message': 'permission denied: "/%user%/stor/U1"',
+			'input': '/%user%/stor/U1',
+			'p0input': '/%user%/stor/U1'
+		    } ],
+		    'expected_outputs': [
+			/\/%jobuser%\/jobs\/.*\/stor\/%user%\/public\/X/,
+			/\/%jobuser%\/jobs\/.*\/stor\/%user%\/stor\/public/
+		    ]
+		}, tcTestCaseOptions, next);
+	},
+
+	function runMapJobAsB1(_, next) {
+		jobcommon.jobTestCaseRun(testapi, {
+		    'label': 'jobMauthzB1',
+		    'account_objects': tcAccountA,
+		    'account': tcAccountB,
+		    'user': tcUserB1,
+		    'job': {
+		        'phases': [ { 'type': 'map', 'exec': 'cat' } ]
+		    },
+		    'inputs': [],
+		    'extra_inputs': [
+		        '/%user%/public/X',
+		        '/%user%/stor/A',
+		        '/%user%/stor/public',
+		        '/%user%/stor/U1'
+		    ],
+		    'timeout': 30 * 1000,
+		    'errors': [ {
+			'phaseNum': '0',
+			'what': 'phase 0: map input "/%user%/stor/A"',
+			'code': EM_AUTHORIZATION,
+			'message': 'permission denied: "/%user%/stor/A"',
+			'input': '/%user%/stor/A',
+			'p0input': '/%user%/stor/A'
+		    }, {
+			'phaseNum': '0',
+			'what': 'phase 0: map input "/%user%/stor/U1"',
+			'code': EM_AUTHORIZATION,
+			'message': 'permission denied: "/%user%/stor/U1"',
+			'input': '/%user%/stor/U1',
+			'p0input': '/%user%/stor/U1'
+		    } ],
+		    'expected_outputs': [
+			/\/%jobuser%\/jobs\/.*\/stor\/%user%\/public\/X/,
+			/\/%jobuser%\/jobs\/.*\/stor\/%user%\/stor\/public/
+		    ]
+		}, tcTestCaseOptions, next);
+	},
+
+	function runLegacyMapJobAsA(_, next) {
+		jobcommon.jobTestCaseRun(testapi, {
+		    'label': 'jobMauthzLegacyA',
+		    'account': tcAccountA,
+		    'legacy_auth': true,
+		    'job': {
+		        'phases': [ { 'type': 'map', 'exec': 'cat' } ]
+		    },
+		    'inputs': [],
+		    'extra_inputs': [
+		        '/%user%/public/X',
+		        '/%user%/stor/A',
+		        '/%user%/stor/public',
+		        '/%user%/stor/U1'
+		    ],
+		    'timeout': 30 * 1000,
+		    'errors': [],
+		    'expected_outputs': [
+			/\/%user%\/jobs\/.*\/stor\/%user%\/public\/X/,
+			/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/A/,
+			/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/public/,
+			/\/%user%\/jobs\/.*\/stor\/%user%\/stor\/U1/
+		    ]
+		}, tcTestCaseOptions, next);
+	},
+
+	function runLegacyMapJobAsB(_, next) {
+		jobcommon.jobTestCaseRun(testapi, {
+		    'label': 'jobMauthzLegacyB',
+		    'account_objects': tcAccountA,
+		    'account': tcAccountB,
+		    'legacy_auth': true,
+		    'job': {
+		        'phases': [ { 'type': 'map', 'exec': 'cat' } ]
+		    },
+		    'inputs': [],
+		    'extra_inputs': [
+		        '/%user%/public/X',
+		        '/%user%/stor/A',
+		        '/%user%/stor/public',
+		        '/%user%/stor/U1'
+		    ],
+		    'timeout': 30 * 1000,
+		    'errors': [ {
+			'phaseNum': '0',
+			'what': 'phase 0: map input "/%user%/stor/A"',
+			'code': EM_AUTHORIZATION,
+			'message': 'permission denied: "/%user%/stor/A"',
+			'input': '/%user%/stor/A',
+			'p0input': '/%user%/stor/A'
+		    }, {
+			'phaseNum': '0',
+			'what': 'phase 0: map input "/%user%/stor/U1"',
+			'code': EM_AUTHORIZATION,
+			'message': 'permission denied: "/%user%/stor/U1"',
+			'input': '/%user%/stor/U1',
+			'p0input': '/%user%/stor/U1'
+		    }, {
+			/*
+			 * Using legacy authorization, account B cannot access
+			 * public objects under account A's private directory
+			 * because the credentials aren't available to allow
+			 * that.
+			 */
+			'phaseNum': '0',
+			'what': 'phase 0: map input "/%user%/stor/public"',
+			'code': EM_AUTHORIZATION,
+			'message': 'permission denied: "/%user%/stor/public"',
+			'input': '/%user%/stor/public',
+			'p0input': '/%user%/stor/public'
+		    } ],
+		    'expected_outputs': [
+			/\/%jobuser%\/jobs\/.*\/stor\/%user%\/public\/X/
+		    ]
+		}, tcTestCaseOptions, next);
+	},
 
 	function teardown(_, next) {
 		testcommon.teardown(testapi, next);

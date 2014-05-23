@@ -10,10 +10,14 @@
  * all-at-once in parallel.
  */
 
+var mod_assert = require('assert');
 var mod_fs = require('fs');
+var mod_jsprim = require('jsprim');
 var mod_path = require('path');
 var mod_extsprintf = require('extsprintf');
 var mod_vasync = require('vasync');
+
+var mod_maufds = require('../../lib/ufds');
 var mod_schema = require('../../lib/schema');
 var mod_testcommon = require('../common');
 var sprintf = mod_extsprintf.sprintf;
@@ -123,6 +127,38 @@ var errors_disperrors0 = [ {
 } ];
 
 /*
+ * These parameters are used to dynamically generate the authn/authz test cases.
+ * For more information, see initAuthzTestCases().
+ */
+var authzAccountA = 'marlin_test_authzA';
+var authzAccountB = 'marlin_test_authzB';
+var authzUserAnon = 'anonymous';
+var authzUserA1 = 'authzA1';
+var authzUserA2 = 'authzA2';
+var authzUserB1 = 'authzB1';
+var authzUfdsConfig;
+var authzMantaObjects = [ {
+    'label': '/A/public/X: any object under /public',
+    'account': authzAccountA,
+    'public': true,
+    'name': 'X'
+}, {
+    'label': '/A/stor/A: A creates object under /A/stor',
+    'account': authzAccountA,
+    'name': 'A'
+}, {
+    'label': '/A/stor/pub',
+    'account': authzAccountA,
+    'name': 'pub',
+    'roles': [ authzUserAnon + '-readall' ]
+}, {
+    'label': '/A/stor/U1: object readable only by U1',
+    'account': authzAccountA,
+    'roles': [ authzUserA1 + '-readall' ],
+    'name': 'U1'
+} ];
+
+/*
  * Test cases
  *
  * The keys in this object are the names of test cases.  These names can be
@@ -202,7 +238,15 @@ var errors_disperrors0 = [ {
  *      account
  *
  *         The SDC account login name under which to run the job.  Most jobs run
- *         under DEFAULT_USER.
+ *         under DEFAULT_USER.  This is expanded for '%jobuser%' in object names
+ *         and error messages, and for '%user%' as well unless "account_objects"
+ *         is also specified.
+ *
+ *      account_objects
+ *
+ *         The SDC account login name to replace inside object names for the
+ *         string '%user%'.  This is only useful for tests that use multiple
+ *         accounts, which are pretty much just the authn/authz tests.
  *
  *	expected_output_content
  *
@@ -224,6 +268,12 @@ var errors_disperrors0 = [ {
  *         The test suite automatically checks that there are no extra objects
  *         under the job directory for most jobs, but some jobs create objects
  *         as side effects, and these need to be whitelisted here.
+ *
+ *      legacy_auth
+ *
+ *         Submit the job in legacy-authz/authn mode, in which only legacy
+ *         credentials are supplied with the job and only legacy authorization
+ *         checks can be applied by Marlin.
  *
  *	metering_includes_checkpoints
  *
@@ -2085,13 +2135,18 @@ var testcases = {
 	'expected_output_content': [ '1000\n' ],
 	'errors': []
     }
+
+/*
+ * Authentication/authorization tests are generated dynamically by
+ * initAuthzTestCases below.
+ */
 };
 
 /*
- * Initialize a few of the larger-scale jobs for which it's easier to generate
- * the inputs and expected outputs programmatically.
+ * Initialize a few of the larger-scale test cases for which it's easier to
+ * generate the inputs and expected outputs programmatically.
  */
-function initJobs()
+function initTestCases()
 {
 	var job = testcases.jobM500;
 
@@ -2128,9 +2183,300 @@ function initJobs()
 
 	for (var k in testcases)
 		testcases[k]['label'] = k;
+
+	initAuthzUfdsConfig();
+	initAuthzTestCases();
 }
 
-initJobs();
+/*
+ * In order to exhaustively test access control with jobs, we have to cover
+ * several cases.  We'll define these accounts and users:
+ *
+ *     Account A: users U1, U2
+ *     Account B: user U3
+ *     Operator:  user U4
+ *
+ * and we'll test this matrix:
+ *
+ *    PATH               A   U1   U2  B/U3   U4
+ *    /A/public/X        *    *    *    *    *    (any object under /public)
+ *    /A/stor/A          *                   *    (A creates object under /stor)
+ *    /A/stor/public     *    *    *    *    *    (public object under /stor)
+ *    /A/stor/U1         *    *              *    (object readable only by U1)
+ *  * /A/stor/U3         *              *    *    (object readable by U3)
+ *  * /A/stor/B          *    *         *    *    (object readable by B)
+ *
+ *  XXX The starred test cases are blocked on MANTA-2171.
+ *  XXX Test cases for the "conditions" that Marlin supplies (e.g.,
+ *      fromjob=true) are blocked on joyent/node-aperture#1
+ */
+function initAuthzUfdsConfig()
+{
+	/*
+	 * Generate the UFDS configuration that we're going to use for all of
+	 * the authz/authn test cases.  It would be nice if this were totally
+	 * statically declared, but in order to use variables as the account
+	 * names so that we can change them easily, we have to create the
+	 * configuration programmatically.
+	 */
+	authzUfdsConfig = {};
+	authzUfdsConfig[authzAccountA] = {
+	    'subusers': [ authzUserA1, authzUserA2, authzUserAnon ],
+	    'template': 'poseidon',
+	    'keyid': process.env['MANTA_KEY_ID'],
+	    'policies': {
+	        'readall': 'can getobject',
+	        'readjob': 'can getobject when fromjob = true',
+	        'readhttp': 'can getobject when fromjob = false'
+	    },
+	    'roles': {}
+	};
+	authzUfdsConfig[authzAccountB] = {
+	    'subusers': [ authzUserB1 ],
+	    'template': 'poseidon',
+	    'keyid': process.env['MANTA_KEY_ID']
+	};
+
+	for (var pk in authzUfdsConfig[authzAccountA].policies) {
+		authzUfdsConfig[authzAccountA].roles[
+		    authzUserA1 + '-' + pk] = {
+		    'user': authzUserA1,
+		    'policy': pk
+		};
+		authzUfdsConfig[authzAccountA].roles[
+		    authzUserAnon + '-' + pk] = {
+		    'user': authzUserAnon,
+		    'policy': pk
+		};
+	}
+}
+
+function initAuthzTestCases()
+{
+	var template, tcconfig, expected_outputs, expected_errors;
+
+	/*
+	 * Generate the actual authz/authn test cases, starting with a template
+	 * that we'll use for all of these test cases.
+	 */
+	template = {
+	    'pre_submit': setupAuthzTestCase,
+	    'job': {
+		'phases': [ { 'type': 'map', 'exec': 'cat' } ]
+	    },
+	    'inputs': [],
+	    'extra_inputs': [
+		'/%user%/public/X',
+		'/%user%/stor/A',
+		'/%user%/stor/pub',
+		'/%user%/stor/U1'
+	    ],
+	    'timeout': 30 * 1000,
+	    'errors': [],
+	    'expected_outputs': []
+	};
+
+	/*
+	 * Generate the names of the expected outputs for each input, assuming
+	 * authorization succeeds.
+	 */
+	expected_outputs = [
+	    /\/%jobuser%\/jobs\/.*\/stor\/%user%\/public\/X/,
+	    /\/%jobuser%\/jobs\/.*\/stor\/%user%\/stor\/A/,
+	    /\/%jobuser%\/jobs\/.*\/stor\/%user%\/stor\/pub/,
+	    /\/%jobuser%\/jobs\/.*\/stor\/%user%\/stor\/U1/
+	];
+
+	/*
+	 * Generate the names of the expected errors for each input, assuming
+	 * authorization fails.
+	 */
+	expected_errors = [ {
+	    'phaseNum': '0',
+	    'what': 'phase 0: map input "/%user%/public/X"',
+	    'code': EM_AUTHORIZATION,
+	    'message': 'permission denied: "/%user%/public/X"',
+	    'input': '/%user%/public/X',
+	    'p0input': '/%user%/public/X'
+	}, {
+	    'phaseNum': '0',
+	    'what': 'phase 0: map input "/%user%/stor/A"',
+	    'code': EM_AUTHORIZATION,
+	    'message': 'permission denied: "/%user%/stor/A"',
+	    'input': '/%user%/stor/A',
+	    'p0input': '/%user%/stor/A'
+	}, {
+	    'phaseNum': '0',
+	    'what': 'phase 0: map input "/%user%/stor/pub"',
+	    'code': EM_AUTHORIZATION,
+	    'message': 'permission denied: "/%user%/stor/pub"',
+	    'input': '/%user%/stor/pub',
+	    'p0input': '/%user%/stor/pub'
+	}, {
+	    'phaseNum': '0',
+	    'what': 'phase 0: map input "/%user%/stor/U1"',
+	    'code': EM_AUTHORIZATION,
+	    'message': 'permission denied: "/%user%/stor/U1"',
+	    'input': '/%user%/stor/U1',
+	    'p0input': '/%user%/stor/U1'
+	} ];
+
+	/*
+	 * Now, enumerate the test cases we want to build.  This is basically a
+	 * straight translation of the above ASCII table.  The definition of
+	 * each test case here describes only those properties that differ from
+	 * the template, and instead of repeating each of the regular
+	 * expressions and objects for the expected outputs and errors
+	 * (respectively), we just enumerate the inputs that are expected to
+	 * succeed.  The code below constructs actual test cases with the
+	 * appropriate set of expected outputs and errors.
+	 */
+	tcconfig = [ {
+	    'label': 'jobMauthzA',
+	    'account': authzAccountA,
+	    'ok': [ 0, 1, 2, 3 ]
+	}, {
+	    'label': 'jobMauthzA1',
+	    'account': authzAccountA,
+	    'user': authzUserA1,
+	    'ok': [ 0, 2, 3 ]
+	}, {
+	    'label': 'jobMauthzA2',
+	    'account': authzAccountA,
+	    'user': authzUserA2,
+	    'ok': [ 0, 2 ]
+	}, {
+	    'label': 'jobMauthzB',
+	    'account_objects': authzAccountA,
+	    'account': authzAccountB,
+	    'ok': [ 0, 2 ]
+	}, {
+	    'label': 'jobMauthzB1',
+	    'account_objects': authzAccountA,
+	    'account': authzAccountB,
+	    'ok': [ 0, 2 ]
+	}, {
+	/*
+	 * The legacy mechanism doesn't affect account A's ability to access
+	 * its own objects.
+	 */
+	    'label': 'jobMauthzLegacyA',
+	    'legacy_auth': true,
+	    'account': authzAccountA,
+	    'ok': [ 0, 1, 2, 3 ]
+	}, {
+	/*
+	 * Using legacy authorization, account B cannot access public
+	 * objects under account A's private directory because the
+	 * credentials aren't available to allow that.
+	 */
+	    'label': 'jobMauthzLegacyB',
+	    'legacy_auth': true,
+	    'account_objects': authzAccountA,
+	    'account': authzAccountB,
+	    'ok': [ 0 ]
+	} ];
+
+	/*
+	 * Generate proper test cases from the above descriptions.  We do this
+	 * by copying the test case template, overriding properties from the
+	 * description, and using the "ok" array to select the right set of
+	 * expected outputs and errors.
+	 */
+	tcconfig.forEach(function (tccfg) {
+		var testcase, p;
+
+		testcase = mod_jsprim.deepCopy(template);
+
+		for (p in tccfg) {
+			if (p == 'ok')
+				continue;
+			testcase[p] = tccfg[p];
+		}
+
+		tccfg['ok'].forEach(function (i) {
+			testcase['expected_outputs'].push(expected_outputs[i]);
+		});
+
+		expected_errors.forEach(function (_, i) {
+			if (tccfg['ok'].indexOf(i) == -1)
+				testcase['errors'].push(expected_errors[i]);
+		});
+
+		mod_assert.equal(testcase['errors'].length +
+		    testcase['expected_outputs'].length,
+		    expected_outputs.length);
+
+		mod_assert.ok(testcase['label']);
+		mod_assert.ok(!testcases.hasOwnProperty(testcase['label']));
+		testcases[testcase['label']] = testcase;
+
+		exports.jobsMain.push(testcase);
+	});
+}
+
+/*
+ * pre_submit() function for each of the authz/authn test cases.  This is
+ * responsible for applying the UFDS configuration that we use for all of these
+ * cases, as well as making sure the corresponding Manta objects exist.
+ */
+function setupAuthzTestCase(api, callback)
+{
+	mod_vasync.pipeline({
+	    'funcs': [
+		function applyUfdsConfig(_, next) {
+			mod_maufds.ufdsMakeAccounts({
+			    'log': mod_testcommon.log,
+			    'ufds': mod_testcommon.ufdsClient(),
+			    'config': authzUfdsConfig
+			}, next);
+		},
+
+		function createMantaObjects(_, next) {
+			var manta = mod_testcommon.manta;
+			var content = 'expected content\n';
+			var size = content.length;
+
+			mod_vasync.forEachParallel({
+			    'inputs': authzMantaObjects,
+			    'func': function (objcfg, putcb) {
+				var account, roles, path, stream;
+				var headers, options;
+
+				mod_assert.equal('string',
+				    typeof (objcfg.account));
+				mod_assert.equal('string',
+				    typeof (objcfg.name));
+				mod_assert.equal('string',
+				    typeof (objcfg.label));
+
+				account = objcfg.account;
+				roles = objcfg.roles || [];
+				mod_assert.ok(Array.isArray(roles));
+				path = sprintf('/%s/%s/%s',
+				    account, objcfg.public ? 'public' : 'stor',
+				    objcfg.name);
+
+				headers = {};
+				if (roles.length > 0)
+					headers['role-tag'] = roles.join(', ');
+
+				options = {
+				    'size': size,
+				    'headers': headers
+				};
+
+				stream = new StringInputStream(content);
+				log.info({
+				    'path': path
+				}, 'creating object', { 'headers': headers });
+				manta.put(path, stream, options, putcb);
+			    }
+			}, next);
+		}
+	    ]
+	}, callback);
+}
 
 exports.DEFAULT_USER = DEFAULT_USER;
 exports.testcases = testcases;
@@ -2142,7 +2488,7 @@ exports.testcases = testcases;
  *
  *		The main body of quick, functional tests.  Most tests go here.
  *
- *     "corner case"
+ *      "corner case"
  *
  *		A few particularly expensive cases that are important to run
  *		before integrating, but which shouldn't be part of an automated
@@ -2248,3 +2594,5 @@ exports.jobsStress = exports.jobsMain.concat([
     testcases.jobMR1000,
     testcases.jobM4RR1000
 ]);
+
+initTestCases();

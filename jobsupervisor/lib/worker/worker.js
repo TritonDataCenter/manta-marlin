@@ -3707,7 +3707,8 @@ Worker.prototype.dispResolveUser = function (dispatch)
 	log.debug('auth request', login);
 	this.w_dtrace.fire('auth-start', function () { return ([ login ]); });
 	this.w_auths_pending[login] = dispatch;
-	this.w_mahi.getAccount(login, function (err, record) {
+	/* XXX document and replace "anonymous" with a constant */
+	this.w_mahi.getUser('anonymous', login, function (err, record) {
 		worker.w_dtrace.fire('auth-done',
 		    function () { return ([ login, err ? err.name : '' ]); });
 		mod_assert.equal(worker.w_auths_pending[login], dispatch);
@@ -3718,9 +3719,11 @@ Worker.prototype.dispResolveUser = function (dispatch)
 		    !record['account']['uuid']))
 			err = new Error('unexpected response from mahi');
 
-		if (err &&
-		    err['name'] != 'UserDoesNotExistError' &&
-		    err['name'] != 'AccountDoesNotExistError') {
+		/* XXX document */
+		if (err && err['name'] == 'UserDoesNotExistError')
+			err = null;
+
+		if (err && err['name'] != 'AccountDoesNotExistError') {
 			log.debug(err, 'auth response', login, record);
 			dispatch.d_error = {
 			    'code': EM_INTERNAL,
@@ -4620,6 +4623,8 @@ Worker.prototype.isAuthorized = function (dispatch)
 
 	cond = mod_jsprim.deepCopy(job['auth']['conditions']);
 	cond['fromjob'] = true;
+	/* XXX Work around MANTA-2231. */
+	cond['method'] = 'GET';
 
 	rqarg = {
 	    'mahi': this.w_mahi,
