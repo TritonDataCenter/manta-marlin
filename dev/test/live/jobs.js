@@ -2206,6 +2206,8 @@ function initTestCases()
  *  * /A/stor/U3         *              *    *    (object readable by U3)
  *  * /A/stor/B          *    *         *    *    (object readable by B)
  *
+ *  XXX add test cases for "reduce" in addition to map?
+ *  XXX add test cases for writing output
  *  XXX The starred test cases are blocked on MANTA-2171.
  *  XXX Test cases for the "conditions" that Marlin supplies (e.g.,
  *      fromjob=true) are blocked on joyent/node-aperture#1

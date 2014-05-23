@@ -3707,21 +3707,39 @@ Worker.prototype.dispResolveUser = function (dispatch)
 	log.debug('auth request', login);
 	this.w_dtrace.fire('auth-start', function () { return ([ login ]); });
 	this.w_auths_pending[login] = dispatch;
-	/* XXX document and replace "anonymous" with a constant */
+
+	/*
+	 * We're resolving the account that owns this input object (not the
+	 * account running this job).  Remember that objects are owned by
+	 * accounts, not users.  That said, if the account has an "anonymous"
+	 * user, then want the details for that user.  To accomplish this, we
+	 * use the mahi.getUser entry point on the account's "anonymous" user.
+	 * Note that if the anonymous user doesn't exist, mahi still returns a
+	 * record that describes the account.  So we don't actually need to
+	 * check which case we're in.  The logic in libmanta.authorize()
+	 * handles this.
+	 */
+	/* XXX work around MANTA-2233. */
 	this.w_mahi.getUser('anonymous', login, function (err, record) {
 		worker.w_dtrace.fire('auth-done',
 		    function () { return ([ login, err ? err.name : '' ]); });
 		mod_assert.equal(worker.w_auths_pending[login], dispatch);
 		delete (worker.w_auths_pending[login]);
 
+		/*
+		 * As described above, even if we failed to find the "anonymous"
+		 * user, mahi would still have returned a record describing the
+		 * *account*.  And whichever case we're in, we just pass this
+		 * object directly to libmanta.authorize(), so we don't care
+		 * which case we're in.
+		 */
+		if (err && err['name'] == 'UserDoesNotExistError')
+			err = null;
+
 		if (!err &&
 		    (!record || !record['account'] ||
 		    !record['account']['uuid']))
 			err = new Error('unexpected response from mahi');
-
-		/* XXX document */
-		if (err && err['name'] == 'UserDoesNotExistError')
-			err = null;
 
 		if (err && err['name'] != 'AccountDoesNotExistError') {
 			log.debug(err, 'auth response', login, record);
@@ -4640,7 +4658,7 @@ Worker.prototype.isAuthorized = function (dispatch)
 	    }
 	};
 
-	this.w_log.info('authorize request', rqarg['context']);
+	this.w_log.debug('authorize request', rqarg['context']);
 
 	try {
 		err = null;
@@ -4656,7 +4674,7 @@ Worker.prototype.isAuthorized = function (dispatch)
 		 */
 		if (!err.stack)
 			Error.captureStackTrace(err);
-		this.w_log.warn(err, 'unauthorized');
+		this.w_log.debug(err, 'unauthorized');
 		return (false);
 	}
 
