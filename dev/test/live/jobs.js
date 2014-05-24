@@ -2447,16 +2447,28 @@ function authzMakeOneTestCase(template, tccfg, expected_errors, labelprefix)
  * responsible for applying the UFDS configuration that we use for all of these
  * cases, as well as making sure the corresponding Manta objects exist.
  */
+var setupAuthzQueue = mod_vasync.queue(function (f, cb) { f(cb); }, 1);
 function setupAuthzTestCase(api, callback)
 {
 	mod_vasync.pipeline({
 	    'funcs': [
 		function applyUfdsConfig(_, next) {
-			mod_maufds.ufdsMakeAccounts({
-			    'log': mod_testcommon.log,
-			    'ufds': mod_testcommon.ufdsClient(),
-			    'config': authzUfdsConfig
-			}, next);
+			/*
+			 * Because ufdsMakeAccounts() is not atomic or
+			 * concurrent-safe (but is idempotent), we run all calls
+			 * through a queue.
+			 */
+			setupAuthzQueue.push(function (queuecb) {
+				mod_maufds.ufdsMakeAccounts({
+				    'log': mod_testcommon.log,
+				    'manta': api.manta,
+				    'ufds': mod_testcommon.ufdsClient(),
+				    'config': authzUfdsConfig
+				}, function (err) {
+					queuecb();
+					next(err);
+				});
+			});
 		},
 
 		function createMantaObjects(_, next) {

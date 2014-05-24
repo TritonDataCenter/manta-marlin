@@ -8,6 +8,7 @@ var mod_jsprim = require('jsprim');
 var mod_uuid = require('node-uuid');
 var mod_vasync = require('vasync');
 
+var sprintf = require('extsprintf').sprintf;
 var VError = require('verror');
 
 /* public interface */
@@ -18,9 +19,16 @@ exports.ufdsMakeAccounts = ufdsMakeAccounts;
  * asynchronously and idempotently ensure that the given configuration exists.
  * Arguments:
  *
- *     ufds		UFDS client object (from node-sdc-clients.git)
- *
  *     log		Bunyan-style logger
+ *
+ *     manta		Manta client.  This is currently used with a heuristic
+ *     			approach to determine when the UFDS changes have been
+ *     			propagated to Mahi.  If this function proves useful
+ *     			outside a context where a Manta client is available (or
+ *     			if we develop a better approach to waiting on
+ *     			replication), this dependency could be removed.
+ *
+ *     ufds		UFDS client object (from node-sdc-clients.git)
  *
  *     config		A configuration object, which has this general form:
  *
@@ -87,19 +95,22 @@ exports.ufdsMakeAccounts = ufdsMakeAccounts;
  */
 function ufdsMakeAccounts(arg, usercallback)
 {
-	var log, ufds, cfg, ctx;
-	var ops, funcs;
+	var log, manta, ufds, cfg, ctx;
+	var ops, funcs, flushes;
 
 	mod_assert.equal('object', typeof (arg));
 	mod_assert.ok(arg !== null);
-	mod_assert.equal('object', typeof (arg.ufds));
-	mod_assert.ok(arg.ufds !== null);
 	mod_assert.equal('object', typeof (arg.log));
 	mod_assert.ok(arg.log !== null);
+	mod_assert.equal('object', typeof (arg.manta));
+	mod_assert.ok(arg.manta !== null);
+	mod_assert.equal('object', typeof (arg.ufds));
+	mod_assert.ok(arg.ufds !== null);
 	mod_assert.equal('object', typeof (arg.config));
 	mod_assert.ok(arg.config !== null);
 
 	log = arg.log;
+	manta = arg.manta;
 	ufds = arg.ufds;
 	cfg = mod_jsprim.deepCopy(arg.config);
 
@@ -124,7 +135,8 @@ function ufdsMakeAccounts(arg, usercallback)
 	    'cc_haskey': {},	 /* account/user uuid -> boolean */
 	    'cc_keys': {},	 /* keyid -> key */
 	    'cc_policies': {},	 /* account login -> policy name -> policy */
-	    'cc_roles': {}	 /* account login -> role name -> role */
+	    'cc_roles': {},	 /* account login -> role name -> role */
+	    'cc_flushes': {}	 /* set of account logins needing flush */
 	};
 
 	/*
@@ -159,6 +171,7 @@ function ufdsMakeAccounts(arg, usercallback)
 	 * fetch accounts and users in order to check and add ssh keys, anyway.
 	 */
 	ops = [];
+	flushes = [];
 	mod_jsprim.forEachKey(cfg, function (account, accountcfg) {
 		/* Fetch the account. */
 		ops.push({
@@ -171,6 +184,8 @@ function ufdsMakeAccounts(arg, usercallback)
 		    'account': account,
 		    'keyid': accountcfg.keyid
 		});
+
+		flushes.push(account);
 
 		/* Fetch all subusers on the account. */
 		accountcfg.subusers.forEach(function (userlogin) {
@@ -412,6 +427,7 @@ function ufdsMakeAccounts(arg, usercallback)
 					}
 
 					log.debug(newuser, 'created user');
+					ctx.cc_flushes[op.account] = true;
 					if (op.kind == 'create_account') {
 						ctx.cc_accountids[op.account] =
 						    ret['uuid'];
@@ -597,8 +613,58 @@ function ufdsMakeAccounts(arg, usercallback)
 	});
 
 	/*
-	 * XXX add a "flush" operation
+	 * Finally, for any accounts that we created, wait for these to be
+	 * replicated to Mahi.  There may be multiple Mahi servers, and we have
+	 * to wait for all of them to get the objects.  As a crude attempt to
+	 * wait on this condition, we wait until at least 20 Manta requests
+	 * complete.  This is obviously cheesy, and you might think that fewer
+	 * than 20 would reliably work, but it doesn't.  We should also wait for
+	 * replication of users, policies, and roles, too, but that's trickier,
+	 * and this is generally good enough.
 	 */
+	flushes.forEach(function (login) {
+		var path = '/' + login + '/stor';
+		var timeout = 30; /* seconds */
+		var errmsg = sprintf('replication timed out after %ds',
+		    timeout);
+
+		funcs.push(function (_, callback) {
+			if (!ctx.cc_flushes[login]) {
+				setImmediate(callback);
+				return;
+			}
+
+			log.info(login, 'waiting for replication');
+			var count = 0;
+			var start = Date.now();
+			var iter = function () {
+				manta.info(path, function (err, rv) {
+					if (err) {
+						count = 0;
+						if (Date.now() - start >
+						    timeout * 1000) {
+							callback(new VError(
+							    errmsg));
+						} else {
+							setTimeout(iter, 100);
+						}
+
+						return;
+					}
+
+					if (++count == 20) {
+						log.info('completed %d ' +
+						    'requests', count);
+						callback();
+					} else {
+						setTimeout(iter, 10);
+					}
+				});
+			};
+
+			iter();
+		});
+	});
 
 	return (mod_vasync.pipeline({
 	    'input': ctx,
