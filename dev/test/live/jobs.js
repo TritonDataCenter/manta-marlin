@@ -2356,6 +2356,11 @@ function initAuthzTestCases()
 	    'account': authzAccountB,
 	    'ok': [ 0, 2 ]
 	}, {
+	    'label': 'authzOp',		/* jobMauthzOp, jobRauthzOp */
+	    'account_objects': authzAccountA,
+	    'account': process.env['MANTA_USER'],
+	    'ok': [ 0, 1, 2, 3 ]
+	}, {
 	/*
 	 * The legacy mechanism doesn't affect account A's ability to access
 	 * its own objects.
@@ -2375,6 +2380,11 @@ function initAuthzTestCases()
 	    'account_objects': authzAccountA,
 	    'account': authzAccountB,
 	    'ok': [ 0 ]
+	}, {
+	    'label': 'authzLegacyOp', /* jobMauthzLegacyOp, jobRauthzLegacyOp */
+	    'account_objects': authzAccountA,
+	    'account': process.env['MANTA_USER'],
+	    'ok': [ 0, 1, 2, 3 ]
 	} ];
 
 	/*
