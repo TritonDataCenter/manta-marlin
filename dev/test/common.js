@@ -9,14 +9,11 @@
  */
 
 var mod_assert = require('assert');
-var mod_fs = require('fs');
 var mod_path = require('path');
-var mod_url = require('url');
 var mod_util = require('util');
 var mod_stream = require('stream');
 
 var mod_bunyan = require('bunyan');
-var mod_uuid = require('node-uuid');
 var mod_vasync = require('vasync');
 var mod_verror = require('verror');
 
