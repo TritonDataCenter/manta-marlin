@@ -44,7 +44,7 @@ function list_objects
 	#
 	local script
 	script="y = this.$1"
-	script="$script; x = Object.keys(y).sort().map("
+	script="$script; this.x = Object.keys(y).sort().map("
 	script="$script function (k) { return (y[k]); });"
 	curlagent /kang/snapshot | json -e "$script" x
 }

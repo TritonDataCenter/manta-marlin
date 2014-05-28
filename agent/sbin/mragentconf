@@ -33,11 +33,11 @@ mac_root=$(dirname $0)/..
 mac_confdir=/opt/smartdc/marlin/etc
 mac_smfdir=/opt/smartdc/agents/smf
 
-mac_code="instanceUuid='$mac_serverid'"
-mac_code="$mac_code; mantaComputeId='$mac_manta_compute_id'"
-mac_code="$mac_code; moray.url='tcp://$mac_moray_host:2020'"
-mac_code="$mac_code; manta.url='http://$mac_manta_host:80/'"
-mac_code="$mac_code; dns.nameservers = []"
+mac_code="this.instanceUuid='$mac_serverid'"
+mac_code="$mac_code; this.mantaComputeId='$mac_manta_compute_id'"
+mac_code="$mac_code; this.moray.url='tcp://$mac_moray_host:2020'"
+mac_code="$mac_code; this.manta.url='http://$mac_manta_host:80/'"
+mac_code="$mac_code; this.dns.nameservers = []"
 
 mkdir -p "$mac_confdir" || fail "failed to mkdir $mac_confdir"
 

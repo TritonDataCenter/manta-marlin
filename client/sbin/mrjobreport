@@ -34,12 +34,12 @@ function tasktimes
 {
 	local script
 
-	script="machine = value.machine || 'none'"
-	script="$script; dispatched = Date.parse(value.timeDispatched) || 0"
-	script="$script; accepted = Date.parse(value.timeAccepted) || 0"
-	script="$script; done  = Date.parse(value.timeDone) || 0"
-	script="$script; started = Date.parse(value.timeStarted) || 0"
-	script="$script; committed = Date.parse(value.timeCommitted) || 0"
+	script="this.machine = this.value.machine || 'none'"
+	script="$script; this.dispatched = Date.parse(this.value.timeDispatched) || 0"
+	script="$script; this.accepted = Date.parse(this.value.timeAccepted) || 0"
+	script="$script; this.done  = Date.parse(this.value.timeDone) || 0"
+	script="$script; this.started = Date.parse(this.value.timeStarted) || 0"
+	script="$script; this.committed = Date.parse(this.value.timeCommitted) || 0"
 	
 	json -ga -e "$script"	\
 	    value.taskId 	\
