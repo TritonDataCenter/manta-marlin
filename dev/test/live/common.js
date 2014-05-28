@@ -57,6 +57,15 @@ exports.DEFAULT_USER = DEFAULT_USER;
  *     callback		Invoked upon successful completion.  (On failure, an
  *     			exception is thrown.)
  *
+ * Test cases are defined (mostly) declaratively in terms of inputs, expected
+ * outputs, expected errors, and the like.  The idea is to keep these as
+ * self-contained as possible so that they can be tested in a number of
+ * different configurations: one-at-a-time or all at once; in series or in
+ * parallel; using the marlin client to submit jobs or using the front door; or
+ * in a stress mode that simulates failed Moray requests.  The only parts that
+ * are implemented today are the one-at-a-time, all-at-once in series, and
+ * all-at-once in parallel.
+ *
  * The test suite asserts a number of correctness conditions for each job,
  * including:
  *
