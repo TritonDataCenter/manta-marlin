@@ -4636,8 +4636,8 @@ Worker.prototype.isAuthorized = function (dispatch)
 	var cond, rqarg, err;
 
 	if (!job['auth'].hasOwnProperty('principal')) {
-		return (isAuthorized(dispatch.d_job, dispatch.d_accountid,
-		    dispatch.d_objname));
+		return (legacyIsAuthorized(dispatch.d_job,
+		    dispatch.d_accountid, dispatch.d_objname));
 	}
 
 	cond = mod_jsprim.deepCopy(job['auth']['conditions']);
@@ -4776,7 +4776,13 @@ function keyIsAnonymous(key, jobid)
 	return (re.test(key));
 }
 
-function isAuthorized(job, account, key)
+/*
+ * Returns true if the given account, operating under the given job, is allowed
+ * to access the given key under the legacy authorization mechanism.  This is
+ * only used for jobs specified for use with the legacy authentication
+ * mechanism.
+ */
+function legacyIsAuthorized(job, account, key)
 {
 	/*
 	 * Common case: user is allowed access to their own objects.
