@@ -36,9 +36,130 @@ var log = mod_testcommon.log;
 var DEFAULT_USER = 'marlin_test';
 
 /* Public interface */
-exports.jobTestCaseRun = jobTestCaseRun;
-exports.jobTestRunner = jobTestRunner;
 exports.DEFAULT_USER = DEFAULT_USER;
+exports.jobTestRunner = jobTestRunner;
+exports.jobTestCaseRun = jobTestCaseRun;
+
+/*
+ * Library function that implements a testcase runner.  The caller passes:
+ *
+ *    testcases		the set of testcases to choose from, as an object with
+ *    			values of the test case object passed to
+ *    			jobTestCaseRun().
+ *
+ *    argv		process arguments, allowing users to specify common
+ *    			arguments like "-S" to mean "non-strict mode"
+ *
+ *    concurrency	number of testcases to run concurrently
+ */
+function jobTestRunner(testcases, argv, concurrency)
+{
+	var parser, option, opts, cases;
+	var queue, api, timeout;
+
+	parser = new mod_getopt.BasicParser('S', argv);
+
+	/*
+	 * By default, we run in strict mode.  Users can override that using the
+	 * MARLIN_TESTS_STRICT environment variable or the -S command-line
+	 * option.  For details on what "strict" means, see jobTestCaseRun().
+	 */
+	opts = { 'strict': true };
+	if (process.env['MARLIN_TESTS_STRICT'] == 'false')
+		opts.strict = false;
+
+	while ((option = parser.getopt()) !== undefined) {
+		switch (option.option) {
+		case 'S':
+			opts.strict = false;
+			break;
+
+		default:
+		    /* error message already emitted by getopt */
+		    mod_assert.equal('?', option.option);
+		    break;
+		}
+	}
+
+	/*
+	 * Test cases are supposed to have a label so that jobTestCaseRun can
+	 * report which test its running, but for convenience most of them
+	 * aren't present directly in the test case definition.  Fill them in
+	 * here.
+	 */
+	mod_jsprim.forEachKey(testcases,
+	    function (name, testcase) { testcase['label'] = name; });
+
+	/*
+	 * Figure out which cases the user selected.  If none, run all of them.
+	 */
+	cases = [];
+	if (argv.length > parser.optind()) {
+		argv.slice(parser.optind()).forEach(function (name) {
+			if (!testcases.hasOwnProperty(name))
+				throw (new VError('no such test: "%s"', name));
+			cases.push(testcases[name]);
+		});
+	} else {
+		mod_jsprim.forEachKey(testcases,
+		    function (_, testcase) { cases.push(testcase); });
+	}
+
+	/*
+	 * The "concurrency" argument determines how many test cases we can run
+	 * concurrently.  When concurrency > 1, we allow each test to take
+	 * longer to account for the fact that they're all sharing resources,
+	 * but the total test time shouldn't change.
+	 */
+	if (concurrency > 1) {
+		timeout = cases.reduce(function (sum, testjob) {
+			return (sum + testjob['timeout']);
+		}, 0);
+		log.info('using timeout = %s', timeout);
+		cases.forEach(function (testcase) {
+			testcase['timeout'] = timeout;
+		});
+	}
+
+	/*
+	 * To implement all possible values for "concurrency", we run the tests
+	 * through a vasync queue with the corresponding concurrency.
+	 */
+	queue = mod_vasync.queue(function (testcase, queuecb) {
+		jobTestCaseRun(api, testcase, opts, function (err) {
+			if (err) {
+				err = new VError(err, 'TEST FAILED: "%s"',
+				    testcase['label']);
+				log.fatal(err);
+				throw (err);
+			}
+
+			queuecb();
+		});
+	}, concurrency);
+
+	/*
+	 * Finally, run the tests.
+	 */
+	mod_testcommon.pipeline({
+	    'funcs': [
+		function setup(_, next) {
+			mod_testcommon.setup(function (c) {
+				api = c;
+				next();
+			});
+		},
+		function runTests(_, next) {
+			queue.on('end', next);
+			queue.push(cases);
+			queue.close();
+		},
+		function teardown(_, next) {
+			mod_testcommon.teardown(api, next);
+		}
+	    ]
+	});
+}
 
 /*
  * Run a single job test case.
@@ -216,107 +337,6 @@ function jobTestCaseRun(api, testspec, options, callback)
 		else
 			jobTestSubmitAndVerify(
 			    api, testspec, options, callback);
-	});
-}
-
-/*
- * Library function that implements a testcase runner.  The caller passes:
- *
- *    testcases		the set of testcases to choose from, as an object with
- *    			values of the test case object passed to
- *    			jobTestCaseRun().
- *
- *    argv		process arguments, allowing users to specify common
- *    			arguments like "-S" to mean "non-strict mode"
- *
- *    concurrency	number of testcases to run concurrently
- */
-function jobTestRunner(testcases, argv, concurrency)
-{
-	var parser, option, opts, cases;
-	var queue, api, timeout;
-
-	parser = new mod_getopt.BasicParser('S', argv);
-	opts = {
-	    'strict': true
-	};
-
-	if (process.env['MARLIN_TESTS_STRICT'] == 'false')
-		opts.strict = false;
-
-	while ((option = parser.getopt()) !== undefined) {
-		switch (option.option) {
-		case 'S':
-			opts.strict = false;
-			break;
-
-		default:
-		    /* error message already emitted by getopt */
-		    mod_assert.equal('?', option.option);
-		    break;
-		}
-	}
-
-	mod_jsprim.forEachKey(testcases,
-	    function (name, testcase) { testcase['label'] = name; });
-
-	cases = [];
-	if (argv.length > parser.optind()) {
-		argv.slice(parser.optind()).forEach(function (name) {
-			if (!testcases.hasOwnProperty(name))
-				throw (new VError('no such test: "%s"', name));
-			cases.push(testcases[name]);
-		});
-	} else {
-		mod_jsprim.forEachKey(testcases,
-		    function (_, testcase) { cases.push(testcase); });
-	}
-
-	queue = mod_vasync.queue(function (testcase, queuecb) {
-		jobTestCaseRun(api, testcase, opts, function (err) {
-			if (err) {
-				err = new VError(err, 'TEST FAILED: "%s"',
-				    testcase['label']);
-				log.fatal(err);
-				throw (err);
-			}
-
-			queuecb();
-		});
-	}, concurrency);
-
-	if (concurrency > 1) {
-		/*
-		 * When using concurrency > 1, we allow tests to take longer
-		 * individually to account for the fact that they're all sharing
-		 * resources.
-		 */
-		timeout = cases.reduce(function (sum, testjob) {
-			return (sum + testjob['timeout']);
-		}, 0);
-		log.info('using timeout = %s', timeout);
-		cases.forEach(function (testcase) {
-			testcase['timeout'] = timeout;
-		});
-	}
-
-	mod_testcommon.pipeline({
-	    'funcs': [
-		function setup(_, next) {
-			mod_testcommon.setup(function (c) {
-				api = c;
-				next();
-			});
-		},
-		function runTests(_, next) {
-			queue.on('end', next);
-			queue.push(cases);
-			queue.close();
-		},
-		function teardown(_, next) {
-			mod_testcommon.teardown(api, next);
-		}
-	    ]
 	});
 }
 
