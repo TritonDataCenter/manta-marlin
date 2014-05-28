@@ -24,16 +24,21 @@ var mod_testcommon = require('../common');
 /* jsl:import ../../../common/lib/errors.js */
 require('../../lib/errors');
 
-var mod_testcases = require('./jobs');
-
 var sprintf = mod_extsprintf.sprintf;
 var VError = mod_verror.VError;
 var StringInputStream = mod_testcommon.StringInputStream;
 var log = mod_testcommon.log;
 
+/*
+ * MANTA_USER should be set to an operator (e.g., "poseidon") in order to run
+ * the tests, but most of the tests will run as DEFAULT_USER.
+ */
+var DEFAULT_USER = 'marlin_test';
+
 /* Public interface */
 exports.jobTestCaseRun = jobTestCaseRun;
 exports.jobTestRunner = jobTestRunner;
+exports.DEFAULT_USER = DEFAULT_USER;
 
 /*
  * Run a single job test case.
@@ -220,13 +225,13 @@ function jobTestCaseRun(api, testspec, options, callback)
 function jobTestRunner(testcases, argv, concurrency)
 {
 	var parser, option, opts, cases;
-	var queue, api;
+	var queue, api, timeout;
 
 	parser = new mod_getopt.BasicParser('S', argv);
 	opts = {
 	    'strict': true
 	};
-	
+
 	if (process.env['MARLIN_TESTS_STRICT'] == 'false')
 		opts.strict = false;
 
@@ -235,7 +240,7 @@ function jobTestRunner(testcases, argv, concurrency)
 		case 'S':
 			opts.strict = false;
 			break;
-	
+
 		default:
 		    /* error message already emitted by getopt */
 		    mod_assert.equal('?', option.option);
@@ -261,7 +266,8 @@ function jobTestRunner(testcases, argv, concurrency)
 	queue = mod_vasync.queue(function (testcase, queuecb) {
 		jobTestCaseRun(api, testcase, opts, function (err) {
 			if (err) {
-				err = new VError(err, 'TEST FAILED');
+				err = new VError(err, 'TEST FAILED: "%s"',
+				    testcase['label']);
 				log.fatal(err);
 				throw (err);
 			}
@@ -269,6 +275,21 @@ function jobTestRunner(testcases, argv, concurrency)
 			queuecb();
 		});
 	}, concurrency);
+
+	if (concurrency > 1) {
+		/*
+		 * When using concurrency > 1, we allow tests to take longer
+		 * individually to account for the fact that they're all sharing
+		 * resources.
+		 */
+		timeout = cases.reduce(function (sum, testjob) {
+			return (sum + testjob['timeout']);
+		}, 0);
+		log.info('using timeout = %s', timeout);
+		cases.forEach(function (testcase) {
+			testcase['timeout'] = timeout;
+		});
+	}
 
 	mod_testcommon.pipeline({
 	    'funcs': [
@@ -306,7 +327,7 @@ function populateData(manta, testspec, keys, callback)
 	var login;
 
 	login = testspec['account_objects'] || testspec['account'] ||
-	    mod_testcases.DEFAULT_USER;
+	    DEFAULT_USER;
 	log.info('populating keys', keys);
 
 	if (keys.length === 0) {
@@ -446,9 +467,9 @@ function jobTestSubmitAndVerify(api, testspec, options, callback)
 function replaceParams(testspec, str)
 {
 	mod_assert.ok(arguments.length >= 2);
-	var jobuser = testspec['account'] || mod_testcases.DEFAULT_USER;
+	var jobuser = testspec['account'] || DEFAULT_USER;
 	var user = testspec['account_objects'] || testspec['account'] ||
-	    mod_testcases.DEFAULT_USER;
+	    DEFAULT_USER;
 
 	if (typeof (str) == 'string')
 		return (str.replace(/%user%/g, user).replace(
@@ -470,7 +491,7 @@ function jobSubmit(api, testspec, callback)
 {
 	var mahi, jobdef, login, url, funcs, private_key, signed_path, jobid;
 
-	login = testspec['account'] || mod_testcases.DEFAULT_USER;
+	login = testspec['account'] || DEFAULT_USER;
 	url = mod_url.parse(process.env['MANTA_URL']);
 	mahi = mod_testcommon.mahiClient();
 

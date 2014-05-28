@@ -2,7 +2,7 @@
  * jobs_big.js: Test cases that involve large numbers of inputs.
  */
 
-module.exports = registerTestCases;
+var mod_livetests = require('./common');
 
 var testcases = {
     'jobM500': {
@@ -46,7 +46,7 @@ var testcases = {
     }
 };
 
-function registerTestCases()
+function main()
 {
 	var job, i, key, okey;
 
@@ -71,11 +71,7 @@ function registerTestCases()
 		job['inputs'].push(key);
 	}
 
-	job = testcases.jobMerrorMuskieRetry;
-	for (i = 0; i < 100; i++) {
-		key = '/%user%/stor/obj' + i;
-		job['inputs'].push(key);
-	}
-
-	return (testcases);
+	mod_livetests.jobTestRunner(testcases, process.argv, 1);
 }
+
+main();

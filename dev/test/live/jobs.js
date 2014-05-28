@@ -26,10 +26,6 @@ var StringInputStream = mod_testcommon.StringInputStream;
 /* jsl:import ../../../common/lib/errors.js */
 require('../../lib/errors');
 
-/*
- * MANTA_USER should be set to an operator (e.g., "poseidon") in order to run
- * the tests, but most of the tests will run as DEFAULT_USER.
- */
 var DEFAULT_USER = 'marlin_test';
 
 /*

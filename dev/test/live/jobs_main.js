@@ -8,16 +8,17 @@ var mod_path = require('path');
 var mod_extsprintf = require('extsprintf');
 var mod_schema = require('../../lib/schema');
 var mod_testcommon = require('../common');
+var mod_livetests = require('./common');
 var mod_vasync = require('vasync');
 
 /* jsl:import ../../../common/lib/errors.js */
 require('../../lib/errors');
 
-module.exports = registerTestCases;
-
 var sprintf = mod_extsprintf.sprintf;
 var log = mod_testcommon.log;
 var StringInputStream = mod_testcommon.StringInputStream;
+
+var concurrency = 5;	/* how many tests to run at once */
 
 /*
  * These inputs and errors are used by a few dispatch error tests and so are
@@ -137,7 +138,7 @@ var testcases = {
     'jobMcrossAccountLink': {
 	'pre_submit': function (api, callback) {
 	    var user1 = 'marlin_test_user_xacct';
-	    var user2 = DEFAULT_USER;
+	    var user2 = mod_livetests.DEFAULT_USER;
 	    var srckey = sprintf('/%s/public/xacctobj', user1);
 	    var dstdir = sprintf('/%s/stor/subdir', user2);
 	    var dstkey = sprintf('%s/obj_link', dstdir);
@@ -1736,7 +1737,4 @@ var testcases = {
     }
 };
 
-function main()
-{
-	return (testcases);
-}
+mod_livetests.jobTestRunner(testcases, process.argv, concurrency);

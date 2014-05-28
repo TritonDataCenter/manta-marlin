@@ -6,11 +6,10 @@
 
 var mod_fs = require('fs');
 var mod_path = require('path');
+var mod_livetests = require('./common');
 
 /* jsl:import ../../../common/lib/errors.js */
 require('../../lib/errors');
-
-module.exports = registerTestCases;
 
 var testcases = {
     'jobMerrorOom': {
@@ -174,7 +173,7 @@ var testcases = {
     }
 };
 
-function registerTestCases()
+function main()
 {
 	var job, i, key;
 
@@ -188,5 +187,8 @@ function registerTestCases()
 	    testcases.jobMerrorMuskieRetry['inputs'];
 	testcases.jobRmuskieRetry['inputs'] =
 	    testcases.jobMerrorMuskieRetry['inputs'];
-	return (testcases);
+
+	mod_livetests.jobTestRunner(testcases, process.argv, 5);
 }
+
+main();

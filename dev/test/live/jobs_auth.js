@@ -2,11 +2,12 @@
  * jobs_auth.js: Authorization/authentication-related test cases.
  */
 
-
 var mod_assert = require('assert');
 var mod_extsprintf = require('extsprintf');
 var mod_jsprim = require('jsprim');
 var mod_vasync = require('vasync');
+
+var mod_livetests = require('./common');
 var mod_maufds = require('../../lib/ufds');
 var mod_testcommon = require('../common');
 var sprintf = mod_extsprintf.sprintf;
@@ -14,8 +15,6 @@ var StringInputStream = mod_testcommon.StringInputStream;
 
 /* jsl:import ../../../common/lib/errors.js */
 require('../../lib/errors');
-
-module.exports = registerTestCases;
 
 /*
  * These parameters are used to dynamically generate the authn/authz test cases.
@@ -47,14 +46,14 @@ var authzMantaObjects = [ {
     'roles': [ authzUserA1 + '-readall' ],
     'name': 'U1'
 } ];
+var authzTestCases = {};
 var authzUfdsConfig;
-var authzTestCases;
 
-function registerTestCases()
+function main()
 {
 	initAuthzUfdsConfig();
 	initAuthzTestCases();
-	return (authzTestCases);
+	mod_livetests.jobTestRunner(authzTestCases, process.argv, 5);
 }
 
 /*
@@ -278,7 +277,8 @@ function initAuthzTestCases()
 		mod_assert.equal(testcase['errors'].length +
 		    testcase['expected_outputs'].length,
 		    expected_outputs.length);
-		mod_assert.ok(!authzTestCases.hasOwnProperty(testcase['label']));
+		mod_assert.ok(!authzTestCases.hasOwnProperty(
+		    testcase['label']));
 		authzTestCases[testcase['label']] = testcase;
 
 		if (tccfg['legacy_auth'])
@@ -288,7 +288,8 @@ function initAuthzTestCases()
 		    expected_errors, 'jobR');
 		testcase['job']['phases'][0]['type'] = 'reduce';
 		testcase['expected_outputs'].push(new RegExp(''));
-		mod_assert.ok(!authzTestCases.hasOwnProperty(testcase['label']));
+		mod_assert.ok(!authzTestCases.hasOwnProperty(
+		    testcase['label']));
 		authzTestCases[testcase['label']] = testcase;
 	});
 }
@@ -394,4 +395,4 @@ function setupAuthzTestCase(api, callback)
 	}, callback);
 }
 
-
+main();
