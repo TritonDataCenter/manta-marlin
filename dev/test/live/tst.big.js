@@ -1,5 +1,5 @@
 /*
- * jobs_big.js: Test cases that involve large numbers of inputs.
+ * tst.big.js: Test cases that involve large numbers of inputs.
  */
 
 var mod_livetests = require('./common');

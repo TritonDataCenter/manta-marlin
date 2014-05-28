@@ -262,8 +262,8 @@ transient failures:
 
     $ for (( i = 0; ; i++ )) { \
         echo "$i: $(date)"; \
-        if ! node build/proto/root/opt/smartdc/marlin/test/live/tst.concurrent.js \
-            -S stress >> ../tests.out 2>&1; then
+        if ! node build/proto/root/opt/smartdc/marlin/test/live/tst.main.js \
+            -S >> ../tests.out 2>&1; then
             echo "FAILED at $(date)";
             break;
         fi

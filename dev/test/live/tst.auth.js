@@ -1,5 +1,5 @@
 /*
- * jobs_auth.js: Authorization/authentication-related test cases.
+ * tst.auth.js: Authorization/authentication-related test cases.
  */
 
 var mod_assert = require('assert');

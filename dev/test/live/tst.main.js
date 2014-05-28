@@ -1,5 +1,5 @@
 /*
- * jobs_main.js: The main set of quick, functional test cases in the Marlin test
+ * tst.main.js: The main set of quick, functional test cases in the Marlin test
  * suite.
  */
 

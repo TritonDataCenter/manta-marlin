@@ -1,5 +1,5 @@
 /*
- * jobs_extended.js: test cases that are part of the test suite, but which tend
+ * tst.extended.js: test cases that are part of the test suite, but which tend
  * to take a long time.  These are not used during typical crash test runs,
  * since most of the supervisor and agent time is usually spent waiting.
  */
