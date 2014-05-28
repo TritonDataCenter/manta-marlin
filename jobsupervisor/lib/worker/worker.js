@@ -189,6 +189,8 @@ var mwProviderDefinition = require('./provider');
 var Throttler = mod_mautil.Throttler;
 
 var wQueries = require('./queries');
+var ANONYMOUS = mod_libmanta.ANONYMOUS_USER;
+mod_assert.equal('string', typeof (ANONYMOUS));
 
 /* jsl:import ../../../common/lib/errors.js */
 require('../errors');
@@ -3719,8 +3721,7 @@ Worker.prototype.dispResolveUser = function (dispatch)
 	 * check which case we're in.  The logic in libmanta.authorize()
 	 * handles this.
 	 */
-	/* XXX work around MANTA-2233. */
-	this.w_mahi.getUser('anonymous', login, function (err, record) {
+	this.w_mahi.getUser(ANONYMOUS, login, function (err, record) {
 		worker.w_dtrace.fire('auth-done',
 		    function () { return ([ login, err ? err.name : '' ]); });
 		mod_assert.equal(worker.w_auths_pending[login], dispatch);
@@ -4641,8 +4642,6 @@ Worker.prototype.isAuthorized = function (dispatch)
 
 	cond = mod_jsprim.deepCopy(job['auth']['conditions']);
 	cond['fromjob'] = true;
-	/* XXX Work around MANTA-2231. */
-	cond['method'] = 'GET';
 
 	rqarg = {
 	    'mahi': this.w_mahi,
