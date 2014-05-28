@@ -4,6 +4,7 @@
 
 var mod_assert = require('assert');
 var mod_child = require('child_process');
+var mod_getopt = require('posix-getopt');
 var mod_fs = require('fs');
 var mod_http = require('http');
 var mod_path = require('path');
@@ -32,13 +33,14 @@ var log = mod_testcommon.log;
 
 /* Public interface */
 exports.jobTestCaseRun = jobTestCaseRun;
+exports.jobTestRunner = jobTestRunner;
 
 /*
  * Run a single job test case.
  *
  *     api		the test context, constructed by mod_testcommon.setup().
  *
- *     testspec		test job to run, as described in ./jobs.js.
+ *     testspec		test job to run, as described below.
  *
  *     options		the only supported option is:
  *
@@ -49,6 +51,148 @@ exports.jobTestCaseRun = jobTestCaseRun;
  *
  *     callback		Invoked upon successful completion.  (On failure, an
  *     			exception is thrown.)
+ *
+ * The test suite asserts a number of correctness conditions for each job,
+ * including:
+ *
+ *     o The job completed within the allowed timeout.
+ *
+ *     o The job completed with the expected errors and outputs (optionally
+ *       including output contents).
+ *
+ *     o The job completed without any job reassignments (which would indicate a
+ *       worker crash) or retries (which would indicate an agent crash), unless
+ *       being run in "stress" mode.
+ *
+ *     o The various job counters (inputs, tasks, errors, and outputs) match
+ *       what we expect.
+ *
+ *     o If the job wasn't cancelled, then there should be no objects under the
+ *       job's directory that aren't accounted for as output objects.
+ *
+ * Each test case specifies the following fields:
+ *
+ *	job
+ *
+ *         Job definition, including "phases" (with at least "type" and "exec",
+ *         and optionally "memory", "disk", and "image) and "assets" (which
+ *         should be an object mapping paths to asset content).
+ *
+ *	inputs
+ *
+ *         Names of job input objects.  These will be created automatically
+ *         before submitting the job and they will be submitted as inputs to the
+ *         job.  By default, the objects are populated with a basic, unique
+ *         string ("auto-generated content for key ..."), but a few special
+ *         patterns trigger different behavior:
+ *
+ *		.*dir		a directory is created instead of a key
+ *
+ *		.*0bytes	object is created with no content
+ *
+ *	timeout
+ *
+ *         Milliseconds to wait for a job to complete, after which the test case
+ *         is considered failed.  This should describe how long the test should
+ *         take when run by itself (i.e., on an uncontended system), but should
+ *         include time taken to reset zones.  The "concurrent" tests will
+ *         automatically bump this timeout appropriately.
+ *
+ * Each test must also specify either "errors" and "expected_outputs" OR
+ * "error_count":
+ *
+ *	errors
+ *
+ *         Array of objects describing the errors expected from the job.  Each
+ *         property of the error may be a string or a regular expression that
+ *         will be compared with the actual errors emitted.  It's not a failure
+ *         if the actual errors contain properties not described here.  There
+ *         must be a 1:1 mapping between the job's errors and these expected
+ *         errors.
+ *
+ *	expected_outputs
+ *
+ *         Array of strings or regular expressions describing the *names* of
+ *         expected output objects.  There must be a 1:1 mapping between
+ *         the job's outputs and these expected outputs, but they may appear in
+ *         any order.
+ *
+ *	error_count
+ *
+ *         Two-element array denoting the minimum and maximum number of errors
+ *         allowed, used for probabilistic tests.
+ *
+ * Tests may also specify a few other fields, but these are less common:
+ *
+ *      account
+ *
+ *         The SDC account login name under which to run the job.  Most jobs run
+ *         under DEFAULT_USER.  This is expanded for '%jobuser%' in object names
+ *         and error messages, and for '%user%' as well unless "account_objects"
+ *         is also specified.
+ *
+ *      account_objects
+ *
+ *         The SDC account login name to replace inside object names for the
+ *         string '%user%'.  This is only useful for tests that use multiple
+ *         accounts, which are pretty much just the authn/authz tests.
+ *
+ *	expected_output_content
+ *
+ *         Array of strings or regular expressions describing the contents of
+ *         the expected output objects.  If specified, there must be a 1:1
+ *         mapping between the job's output contents and these expected outputs,
+ *         but they may appear in any order.
+ *
+ *	extra_inputs
+ *
+ *         Array of names of job input objects that should be submitted as
+ *         inputs, but should not go through the creation process described for
+ *         "inputs" above.
+ *
+ *	extra_objects
+ *
+ *         Array of strings or regular expressions describing objects that may
+ *         be present under the job's directory after the job has completed.
+ *         The test suite automatically checks that there are no extra objects
+ *         under the job directory for most jobs, but some jobs create objects
+ *         as side effects, and these need to be whitelisted here.
+ *
+ *      legacy_auth
+ *
+ *         Submit the job in legacy-authz/authn mode, in which only legacy
+ *         credentials are supplied with the job and only legacy authorization
+ *         checks can be applied by Marlin.
+ *
+ *	metering_includes_checkpoints
+ *
+ *         If true, the test suite (when run in the appropriate mode) will
+ *         verify that metering data includes at least one checkpoint record.
+ *
+ *	pre_submit(api, callback)
+ *
+ *         Callback to be invoked before the job is submitted.  "callback"
+ *         should be invoked when the job is ready to be submitted.
+ *
+ *	post_submit(api, jobid)
+ *
+ *         Callback to be invoked once the job has been submitted.
+ *
+ *	verify(verify)
+ *
+ *         Callback to be invoked once the job has completed to run additional
+ *         checks.
+ *
+ *	skip_input_end
+ *
+ *         If true, then the job's input stream will not be closed after the job
+ *         is submitted.  You'll probably want to use post_submit to do
+ *         something or else the job will likely hit its timeout.
+ *
+ *      user
+ *
+ *         The SDC account subuser under which to run the job.  Most jobs run
+ *         under the DEFAULT_USER account (not a subuser).
  */
 function jobTestCaseRun(api, testspec, options, callback)
 {
@@ -58,6 +202,91 @@ function jobTestCaseRun(api, testspec, options, callback)
 		else
 			jobTestSubmitAndVerify(
 			    api, testspec, options, callback);
+	});
+}
+
+/*
+ * Library function that implements a testcase runner.  The caller passes:
+ *
+ *    testcases		the set of testcases to choose from, as an object with
+ *    			values of the test case object passed to
+ *    			jobTestCaseRun().
+ *
+ *    argv		process arguments, allowing users to specify common
+ *    			arguments like "-S" to mean "non-strict mode"
+ *
+ *    concurrency	number of testcases to run concurrently
+ */
+function jobTestRunner(testcases, argv, concurrency)
+{
+	var parser, option, opts, cases;
+	var queue, api;
+
+	parser = new mod_getopt.BasicParser('S', argv);
+	opts = {
+	    'strict': true
+	};
+	
+	if (process.env['MARLIN_TESTS_STRICT'] == 'false')
+		opts.strict = false;
+
+	while ((option = parser.getopt()) !== undefined) {
+		switch (option.option) {
+		case 'S':
+			opts.strict = false;
+			break;
+	
+		default:
+		    /* error message already emitted by getopt */
+		    mod_assert.equal('?', option.option);
+		    break;
+		}
+	}
+
+	mod_jsprim.forEachKey(testcases,
+	    function (name, testcase) { testcase['label'] = name; });
+
+	cases = [];
+	if (argv.length > parser.optind()) {
+		argv.slice(parser.optind()).forEach(function (name) {
+			if (!testcases.hasOwnProperty(name))
+				throw (new VError('no such test: "%s"', name));
+			cases.push(testcases[name]);
+		});
+	} else {
+		mod_jsprim.forEachKey(testcases,
+		    function (_, testcase) { cases.push(testcase); });
+	}
+
+	queue = mod_vasync.queue(function (testcase, queuecb) {
+		jobTestCaseRun(api, testcase, opts, function (err) {
+			if (err) {
+				err = new VError(err, 'TEST FAILED');
+				log.fatal(err);
+				throw (err);
+			}
+
+			queuecb();
+		});
+	}, concurrency);
+
+	mod_testcommon.pipeline({
+	    'funcs': [
+		function setup(_, next) {
+			mod_testcommon.setup(function (c) {
+				api = c;
+				next();
+			});
+		},
+		function runTests(_, next) {
+			queue.on('end', next);
+			queue.push(cases);
+			queue.close();
+		},
+		function teardown(_, next) {
+			mod_testcommon.teardown(api, next);
+		}
+	    ]
 	});
 }
 
