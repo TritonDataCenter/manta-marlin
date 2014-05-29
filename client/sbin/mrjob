@@ -20,6 +20,9 @@ var mod_verror = require('verror');
 var mod_vasync = require('vasync');
 var mod_wordwrap = require('wordwrap');
 
+var mod_mahi = require('mahi');
+var mod_mautil = require('../lib/util');
+
 var sprintf = mod_extsprintf.sprintf;
 var wrap = mod_wordwrap(80);
 var wrap4 = mod_wordwrap(4, 80);
@@ -56,7 +59,8 @@ var msUsage = [
     '',
     'JOB ADMINISTRATION',
     '',
-    '       mrjob submit   [-a asset] [-c count] [-d size] [-i image]',
+    '       mrjob submit   [-a asset] [-c count] [-d size] [-i image] ' +
+	'[--legacy-auth]',
     '                      [-n name] [-s disk] [-t authToken] [--transient]',
     '                      [-x option=value ...] [-z init] ',
     '                      [-m exec] [-r exec] ...',
@@ -134,6 +138,7 @@ var msHelp = [
 	'task',
     '          -d size         Maximum DRAM for each task (megabytes)',
     '          -i image        Use "image" as the following task\'s zone image',
+    '          --legacy-auth   Don\'t provide modern authn information',
     '          -n name         Use "name" for the job\'s name',
     '          -s disk         Disk space allocated for tasks (gigabytes)',
     '          -t token        Auth token',
@@ -239,6 +244,7 @@ var msOptions = {};			/* special named options */
 var msAssets = [];			/* assets (for next phase) */
 var msCount = 1;			/* reducer count (for next phase) */
 var msTransient = false;		/* job should be transient */
+var msLegacyAuth = false;		/* use legacy authn mechanism */
 var msDram;				/* DRAM cap (for next phase) */
 var msDisk;				/* disk cap (for next phase) */
 var msImage;				/* zone image dep (for next phase) */
@@ -304,7 +310,7 @@ var msFieldsJobs = {
     },
     'jobname': {
 	'label': 'JOBNAME',
-	'width': 24
+	'width': 36
     },
     'login': {
 	'label': 'LOGIN',
@@ -488,9 +494,16 @@ function clientFini()
 function cmdSubmit()
 {
 	var parser, option;
+	var mahi, login, job, api;
+
+	if (!process.env['MAHI_URL']) {
+		console.error('%s: %s', msArg0,
+		    'MAHI_URL must be specified in the environment.');
+		process.exit(1);
+	}
 
 	parser = new mod_getopt.BasicParser(
-	    'a:c:d:i:m:n:r:s:T(transient)t:x:z:',
+	    'a:c:d:i:L(legacy-auth)m:n:r:s:T(transient)t:x:z:',
 	    process.argv.slice(1));
 
 	while ((option = parser.getopt()) !== undefined) {
@@ -517,6 +530,10 @@ function cmdSubmit()
 
 		case 'i':
 			msImage = option.optarg;
+			break;
+
+		case 'L':
+			msLegacyAuth = true;
 			break;
 
 		case 'n':
@@ -618,32 +635,67 @@ function cmdSubmit()
 		process.exit(1);
 	}
 
-	var job = {
+	login = process.env['MANTA_USER'];
+	job = {
 	    'jobId': msJobId,
 	    'name': msJobName,
 	    'transient': msTransient,
 	    'phases': msPhases,
-	    'options': msOptions,
-	    'owner': process.env['MANTA_USER_UUID'],
-	    'authToken': msAuthToken,
-	    'auth': {
-	        'login': process.env['MANTA_USER'],
-		'uuid': process.env['MANTA_USER_UUID'],
-		'groups': [ 'operators' ],
-		'token': msAuthToken
-	    }
+	    'options': msOptions
 	};
 
-	clientInit(function (api) {
-		api.jobCreate(job, function (err, jobid) {
-			if (err) {
-				console.error('%s: %s', msArg0, err.message);
-				process.exit(1);
-			}
+	mahi = mod_mahi.createClient({
+	    'log': msLog.child({ 'component': 'MahiClient' }),
+	    'url': process.env['MAHI_URL'],
+	    'typeTable': {}
+	});
 
-			console.log(jobid);
-			clientFini();
-		});
+	mod_vasync.pipeline({
+	    'funcs': [
+		function init(_, callback) {
+			clientInit(function (retapi) {
+				api = retapi;
+				callback();
+			});
+		},
+		function authn(_, callback) {
+			mod_mautil.makeInternalAuthBlock({
+			    'mahi': mahi,
+			    'account': login,
+			    'legacy': msLegacyAuth,
+			    'tag': 'mrjob'
+			}, function (err, auth) {
+				if (err) {
+					callback(err);
+					return;
+				}
+
+				auth['token'] = msAuthToken;
+				job['auth'] = auth;
+				job['owner'] = auth['uuid'];
+				callback();
+			});
+		},
+		function submit(_, callback) {
+			api.jobCreate(job, function (err, jobid) {
+				if (err) {
+					callback(err);
+					return;
+				}
+
+				console.log(jobid);
+				callback();
+			});
+		}
+	    ]
+	}, function (err) {
+		if (err) {
+			console.error('%s: %s', msArg0, err.message);
+			process.exit(1);
+		}
+
+		mahi.close();
+		clientFini();
 	});
 }
 
@@ -1045,7 +1097,7 @@ function makeJobRow(job, mtime)
 	    'INPUTDONE': job['timeInputDone'] || '-',
 	    'JOBID': job['jobId'] || '-',
 	    /* XXX jobName compatibility -- can remove before GA */
-	    'JOBNAME': (job['jobName'] || job['name'] || '-').substr(0, 16),
+	    'JOBNAME': (job['jobName'] || job['name'] || '-').substr(0, 36),
 	    'LOGIN': job['auth']['login'],
 	    'MODIFIED': mtime || '-',
 	    'NASGN': job['stats'] ? job['stats']['nAssigns'] : '-',

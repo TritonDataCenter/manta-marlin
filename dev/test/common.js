@@ -9,19 +9,19 @@
  */
 
 var mod_assert = require('assert');
-var mod_fs = require('fs');
 var mod_path = require('path');
-var mod_url = require('url');
+var mod_util = require('util');
+var mod_stream = require('stream');
 
 var mod_bunyan = require('bunyan');
-var mod_libmanta = require('libmanta');
-var mod_uuid = require('node-uuid');
 var mod_vasync = require('vasync');
 var mod_verror = require('verror');
 
+var mod_mahi = require('mahi');
 var mod_manta = require('manta');
 var mod_marlin = require('../lib/marlin');
 var mod_sdc = require('sdc-clients');
+var mod_maufds = require('../lib/ufds');
 
 var VError = mod_verror.VError;
 
@@ -35,8 +35,9 @@ var log = new mod_bunyan({
 /* Public interface */
 exports.setup = setup;
 exports.teardown = teardown;
-exports.loginLookup = loginLookup;
-exports.ensureUser = ensureUser;
+exports.mahiClient = mahiClient;
+exports.ufdsClient = ufdsClient;
+exports.ensureAccount = ensureAccount;
 
 exports.pipeline = pipeline;
 exports.timedCheck = timedCheck;
@@ -45,12 +46,10 @@ exports.exnAsync = exnAsync;
 exports.testname = testname;
 exports.log = log;
 
+exports.StringInputStream = StringInputStream;
+
 var mahi_client;
-var mahi_connecting = false;
-var mahi_waiters = [];
-
 var ufds_client;
-
 var marlin_client;
 
 function setup(callback)
@@ -119,191 +118,35 @@ function setup(callback)
 }
 
 /*
- * Ensure that the given test user exists with login "login".  If it doesn't, it
- * will be created based on information from the user "poseidon".
+ * Ensure that the given test account exists with login "login".  If it doesn't,
+ * it will be created based on information from the "poseidon" account.
  */
-function ensureUser(login, callback)
+var ensureAccountQueue = mod_vasync.queue(function (f, cb) { f(cb); }, 1);
+function ensureAccount(login, callback)
 {
-	var existing = null;
-	var haskey = false;
-	var raced = false;
-	var templateuser = 'poseidon';
-	var keyid, template, sshkey;
-	var ulog = log.child({ 'login': login });
+	var config = {};
+	config[login] = {
+	    'template': 'poseidon',
+	    'keyid': process.env['MANTA_KEY_ID'],
+	    'subusers': [],
+	    'roles': {},
+	    'policies': {}
+	};
 
-	keyid = process.env['MANTA_KEY_ID'];
-
-	mod_vasync.pipeline({
-	    'funcs': [
-		function checkUserExists(_, subcb) {
-			ulog.info('checking for user');
-			ufds_client.getUser(login, function (err, ret) {
-				if (!err) {
-					ulog.debug('user exists');
-					existing = ret;
-					subcb();
-				} else if (err.statusCode == 404) {
-					ulog.debug('user doesn\'t exist');
-					subcb();
-				} else {
-					ulog.error(err, 'user check failed');
-					subcb(err);
-				}
-			});
-		},
-		function checkUserHasKey(_, subcb) {
-			if (existing === null) {
-				subcb();
-				return;
-			}
-
-			ulog.info({ 'key_id': keyid },
-			    'checking for user\'s key');
-			existing.getKey(keyid, function (err, key) {
-				if (!err) {
-					haskey = true;
-					ulog.info({ 'key_id': keyid },
-					    'user exists with expected key');
-					/* Abort the pipeline. */
-					subcb(new VError('no error'));
-				} else if (err.statusCode == 404) {
-					ulog.info('user exists, but no key');
-					subcb();
-				} else {
-					ulog.error(err,
-					    'user key fetch failed');
-					subcb(err);
-				}
-			});
-		},
-		function fetchTemplate(_, subcb) {
-			ulog.info('fetching user "%s" as template',
-			    templateuser);
-			ufds_client.getUser(templateuser, function (err, ret) {
-				if (err) {
-					ulog.error(err, 'fetch template user');
-					subcb(new VError(err,
-					    'fetch user "%s"', templateuser));
-				} else {
-					template = ret;
-					ulog.debug(template, 'user template');
-					subcb();
-				}
-			});
-		},
-		function fetchKey(_, subcb) {
-			ulog.info('fetching key "%s" from template user',
-			    keyid);
-			template.getKey(keyid, function (err, key) {
-				if (err) {
-					ulog.error(err, 'fetch template key');
-					subcb(new VError(err,
-					    'fetch template key'));
-				} else {
-					sshkey = key;
-					ulog.debug(sshkey, 'user key');
-					subcb();
-				}
-			});
-		},
-		function addUser(_, subcb) {
-			if (existing !== null) {
-				subcb();
-				return;
-			}
-
-			var newemail = template['email'].replace(
-			    '@', '+' + mod_uuid.v4().substr(0, 8) + '@');
-			var user = {
-			    'login': login,
-			    'userpassword': 'secret123',
-			    'email': newemail,
-			    'approved_for_provisioning': true
-			};
-			ulog.debug(user, 'creating user');
-			ufds_client.addUser(user, function (err, newuser) {
-				if (err && err.statusCode == 409) {
-					/*
-					 * It's possible (even likely) that this
-					 * is being run concurrently for the
-					 * same user for a different test case,
-					 * so we'll jump down to waiting for
-					 * replication in this case.
-					 */
-					ulog.warn(err, 'error creating user ' +
-					    '(concurent update?)', err);
-					raced = true;
-					subcb();
-					return;
-				}
-
-				if (err) {
-					ulog.error(err, 'creating user', err);
-					subcb(new VError(err, 'creating user'));
-				} else {
-					ulog.info('created user');
-					existing = newuser;
-					subcb();
-				}
-			});
-		},
-		function addKey(_, subcb) {
-			if (raced) {
-				subcb();
-				return;
-			}
-
-			ulog.debug('adding key');
-			existing.addKey(sshkey['openssh'], function (err) {
-				if (err) {
-					ulog.error(err, 'adding key');
-					subcb(new VError('adding key', err));
-				} else {
-					ulog.info('added key');
-					subcb();
-				}
-			});
-		},
-		/*
-		 * Wait for the key to be replicated to mahi.  There may be
-		 * multiple mahi servers, and we have to wait for all of them to
-		 * get the key.  To attempt to check this from the outside, we
-		 * wait until at least 20 requests complete.  Yes, this is
-		 * cheesy, and you might think fewer than 20 would reliably
-		 * work, but it doesn't.
-		 */
-		function waitForReplication(_, subcb) {
-			ulog.info('waiting for UFDS replication');
-
-			var count = 0;
-			var iter = function () {
-				timedCheck(30, 1000, function (testcb) {
-					marlin_client.manta.info(
-					    '/' + login + '/stor',
-					    function (err, rv) {
-						testcb(err);
-					    });
-				}, function () {
-					if (++count == 20) {
-						ulog.info('completed %d ' +
-						    'requests', count);
-						subcb();
-					} else {
-						ulog.debug('waiting (%d)',
-						    count);
-						iter();
-					}
-				});
-			};
-
-			iter();
-		}
-	    ]
-	}, function (err) {
-		if (!err || haskey)
-			callback();
-		else
+	/*
+	 * ufdsMakeAccounts() is not atomic or concurrent-safe (but it is
+	 * idempotent), so we run all calls through a queue.
+	 */
+	ensureAccountQueue.push(function (queuecb) {
+		mod_maufds.ufdsMakeAccounts({
+		    'log': log,
+		    'manta': marlin_client.manta,
+		    'ufds': ufdsClient(),
+		    'config': config
+		}, function (err) {
+			queuecb();
 			callback(err);
+		});
 	});
 }
 
@@ -315,71 +158,28 @@ function teardown(api, callback)
 	ufds_client.close(callback);
 }
 
-function loginLookup(login, callback)
+function mahiClient()
 {
-	if (mahi_connecting) {
-		mahi_waiters.push(function () {
-			loginLookup(login, callback);
-		});
-
-		return;
-	}
-
 	if (!mahi_client) {
 		if (!process.env['MAHI_URL']) {
-			process.nextTick(function () {
-				callback(new VError('MAHI_URL must be ' +
-				    'specified in the environment'));
-			});
-
-			return;
+			throw (new VError('MAHI_URL must be ' +
+			    'specified in the environment'));
 		}
 
-		var conf = mod_url.parse(process.env['MAHI_URL']);
-		log.info('connecting to mahi', conf);
-		mahi_connecting = true;
-		mahi_client = mod_libmanta.createMahiClient({
-		    'host': conf['hostname'],
-		    'port': parseInt(conf['port'], 10),
-		    'log': log.child({ 'component': 'MahiClient' })
+		log.info('connecting to mahi', process.env['MAHI_URL']);
+		mahi_client = mod_mahi.createClient({
+		    'log': log.child({ 'component': 'MahiClient' }),
+		    'url': process.env['MAHI_URL'],
+		    'typeTable': {}
 		});
-
-		mahi_client.once('error', function (err) {
-			var verr = new VError(err, 'failed to lookup login ' +
-			    '"%s"', login);
-			mahi_client = undefined;
-			log.warn(verr);
-			callback(verr);
-		});
-
-		mahi_client.once('close', function () {
-			log.warn('mahi connection closed');
-			mahi_client = undefined;
-		});
-
-		mahi_client.once('connect', function () {
-			log.info('mahi connected');
-			mahi_connecting = false;
-			mahi_client.removeAllListeners('error');
-			loginLookup(login, callback);
-
-			var w = mahi_waiters;
-			mahi_waiters = [];
-			w.forEach(function (cb) { cb(); });
-		});
-
-		return;
 	}
 
-	mahi_client.userFromLogin(login, function (err, user) {
-		if (err) {
-			callback(err);
-			return;
-		}
+	return (mahi_client);
+}
 
-		log.info('user "%s" has uuid', login, user['uuid']);
-		callback(null, user['uuid'], user);
-	});
+function ufdsClient()
+{
+	return (ufds_client);
 }
 
 function pipeline(args)
@@ -452,3 +252,44 @@ function exnAsync(func, callback)
 		}
 	});
 }
+
+function StringInputStream(contents)
+{
+	mod_stream.Stream();
+
+	this.s_data = contents;
+	this.s_paused = false;
+	this.s_done = false;
+	this.readable = true;
+
+	this.scheduleEmit();
+}
+
+mod_util.inherits(StringInputStream, mod_stream.Stream);
+
+StringInputStream.prototype.pause = function ()
+{
+	this.s_paused = true;
+};
+
+StringInputStream.prototype.resume = function ()
+{
+	this.s_paused = false;
+	this.scheduleEmit();
+};
+
+StringInputStream.prototype.scheduleEmit = function ()
+{
+	var stream = this;
+
+	process.nextTick(function () {
+		if (stream.s_paused || stream.s_done)
+			return;
+
+		stream.emit('data', stream.s_data);
+		stream.emit('end');
+
+		stream.s_data = null;
+		stream.s_done = true;
+	});
+};

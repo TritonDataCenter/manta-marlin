@@ -26,6 +26,8 @@ exports.CVError = CVError;
 exports.EventThrottler = EventThrottler;
 exports.isMantaDirectory = isMantaDirectory;
 exports.mantaSignNull = mantaSignNull;
+exports.jobIsPrivileged = jobIsPrivileged;
+exports.makeInternalAuthBlock = makeInternalAuthBlock;
 
 function maRestifyPanic(request, response, route, err)
 {
@@ -443,10 +445,114 @@ function isMantaDirectory(contentType)
 
 /*
  * node-manta "sign" function that produces no signature.  This should only be
- * used when also specifying an authToken, in which case muskie doesn't need a
+ * used when also specifying an authn token, in which case muskie doesn't need a
  * signature.
  */
 function mantaSignNull(_, callback)
 {
 	callback(null, null);
+}
+
+/*
+ * Return true only if the given job (specified by the "auth" part of the moray
+ * record) is running as an operator.
+ */
+function jobIsPrivileged(auth)
+{
+	mod_assert.ok(auth.hasOwnProperty('login'),
+	    'not a valid "auth" record (no "login")');
+	mod_assert.ok(auth.hasOwnProperty('token'),
+	    'not a valid "auth" record (no "token")');
+
+	if (auth.hasOwnProperty('principal'))
+		return (auth['principal']['account']['isOperator']);
+
+	/* Legacy case: support for this will eventually be removed. */
+	mod_assert.ok(auth.hasOwnProperty('groups'));
+	return (auth['groups'].indexOf('operators') != -1);
+}
+
+/*
+ * Construct an "auth" block for a job.  This is faked-up and bypasses
+ * authentication so it should only be used for internal tools and the test
+ * suite.  The caller still has to obtain and include an authn token.
+ * Arguments:
+ *
+ *     mahi	mahiv2 client
+ *
+ *     account	account login name
+ *
+ *     [user]   subuser name
+ *
+ *     legacy	boolean: indicates whether to use the legacy authorization
+ *     		mechanism (by excluding the information required for modern
+ *     		authorization)
+ *
+ *     tag	tag that identifies this client (for debugging only)
+ */
+function makeInternalAuthBlock(args, callback)
+{
+	var mahi, func, now, auth;
+
+	mod_assert.equal(typeof (args), 'object');
+	mod_assert.equal(typeof (args.mahi), 'object');
+	mod_assert.equal(typeof (args.tag), 'string');
+	mod_assert.equal(typeof (args.account), 'string');
+
+	mahi = args.mahi;
+	if (args.user) {
+		mod_assert.equal(typeof (args.user), 'string');
+		mod_assert.ok(!args.legacy,
+		    'legacy mode cannot support subusers');
+		func = mahi.getUser.bind(mahi, args.user, args.account);
+	} else {
+		func = mahi.getAccount.bind(mahi, args.account);
+	}
+
+	/*
+	 * See common/lib/schema.js for a description of these fields, some of
+	 * which are legacy.
+	 */
+	now = new Date().toISOString();
+	auth = {
+	    'login': args.account,
+	    'groups': [],
+	    'conditions': {
+		'fromjob': false, /* matches muskie */
+		'activeRoles': [],
+		'method': 'POST',
+		'date': now,
+		'day': now,
+		'time': now,
+		'sourceip': '::1',
+		'user-agent': args.tag
+	    }
+	};
+
+	func(function (err, record) {
+		if (err) {
+			callback(
+			    new VError(err, 'failed to create auth block'));
+			return;
+		}
+
+		auth['uuid'] = record['account']['uuid'];
+
+		if (record['account']['isOperator'])
+			auth['groups'].push('operators');
+
+		if (args.legacy) {
+			delete (auth['conditions']);
+		} else {
+			auth['conditions']['owner'] = record['account']['uuid'];
+			if (args.user) {
+				var dfl = record['user']['defaultRoles'] || [];
+				auth['conditions']['activeRoles'] =
+				    dfl.slice(0);
+			}
+			auth['principal'] = record;
+		}
+
+		callback(null, auth);
+	});
 }

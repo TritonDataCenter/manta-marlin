@@ -85,7 +85,7 @@ The above script takes care of setting up /etc/resolv.conf in your development
 zone to refer to the Manta name servers and adds several environment variables
 to the new user's profile script:
 
-    $ export MAHI_URL=tcp://auth.bh1.joyent.us:6379/
+    $ export MAHI_URL=http://authcache.bh1.joyent.us/
     $ export MORAY_URL=tcp://1.moray.bh1.joyent.us:2020/
     $ export MANTA_URL=https://manta.bh1.joyent.us
     $ export MANTA_USER=poseidon
@@ -186,10 +186,9 @@ Then use the URL you were given with curl to create a new token:
     {"token":"..."}
 
 Copy this token, and pass that to "mrjob submit" using the "-t" option.  You'll
-also want to set MANTA\_USER\_UUID to the uuid of your user.  (Sorry, this part
-sucks, but mrjob doesn't know about mahi yet.)
+also need to set MAHI\_URL appropriately.
 
-    $ jobid=$(MANTA_USER_UUID=50c7f736-9d2c-40cd-80b9-8138c003b35d mrjob submit -t '...' -m wc); echo $jobid
+    $ jobid=$(mrjob submit -t '...' -m wc); echo $jobid
     8abafb0d-9e9c-4023-b82b-73c4b52559f2
 
 For details on using "mrjob" to submit more complex jobs, add keys to jobs,
@@ -263,8 +262,8 @@ transient failures:
 
     $ for (( i = 0; ; i++ )) { \
         echo "$i: $(date)"; \
-        if ! node build/proto/root/opt/smartdc/marlin/test/live/tst.concurrent.js \
-            -S stress >> ../tests.out 2>&1; then
+        if ! node build/proto/root/opt/smartdc/marlin/test/live/tst.main.js \
+            -S >> ../tests.out 2>&1; then
             echo "FAILED at $(date)";
             break;
         fi

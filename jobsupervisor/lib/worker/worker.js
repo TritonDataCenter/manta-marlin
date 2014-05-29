@@ -167,8 +167,9 @@ var mod_extsprintf = require('extsprintf');
 var mod_fs = require('fs');
 var mod_path = require('path');
 
-var mod_libmanta = require('libmanta');
 var mod_jsprim = require('jsprim');
+var mod_libmanta = require('libmanta');
+var mod_mahi = require('mahi');
 var mod_manta = require('manta');
 var mod_mkdirp = require('mkdirp');
 var mod_uuid = require('node-uuid');
@@ -188,6 +189,8 @@ var mwProviderDefinition = require('./provider');
 var Throttler = mod_mautil.Throttler;
 
 var wQueries = require('./queries');
+var ANONYMOUS = mod_libmanta.ANONYMOUS_USER;
+mod_assert.equal('string', typeof (ANONYMOUS));
 
 /* jsl:import ../../../common/lib/errors.js */
 require('../errors');
@@ -571,7 +574,7 @@ Worker.prototype.start = function ()
 	    function () { return ([ worker.w_uuid ]); });
 
 	this.initMoray();
-	this.initRedis();
+	this.initMahi();
 
 	mod_assert.ok(!mod_jsprim.isEmpty(this.w_init_barrier.pending));
 	this.w_init_barrier.on('drain', function () {
@@ -626,49 +629,16 @@ Worker.prototype.initMoray = function ()
 	});
 };
 
-Worker.prototype.initRedis = function ()
+Worker.prototype.initMahi = function ()
 {
-	var worker = this;
-	var conf, mahi;
-
 	this.w_log.info('initializing mahi', this.w_conf['auth']);
-	this.w_init_barrier.start('mahi');
 
-	conf = {};
+	var conf = {};
 	for (var k in this.w_conf['auth'])
 		conf[k] = this.w_conf['auth'][k];
 	conf['log'] = this.w_log.child({ 'component': 'mahi' });
 
-	this.w_mahi = mahi = mod_libmanta.createMahiClient(conf);
-
-	var onError, onClose, onConnect;
-	onError = function (err) {
-		worker.w_mahi.removeListener('close', onClose);
-		worker.w_mahi.removeListener('connect', onConnect);
-
-		worker.w_log.error(err, 'failed to connect to mahi ' +
-		    '(will retry)');
-		worker.w_init_barrier.start('mahi-retry-wait');
-		worker.w_init_barrier.done('mahi');
-		setTimeout(function () {
-			worker.initRedis();
-			worker.w_init_barrier.done('mahi-retry-wait');
-		}, 10000);
-	};
-
-	onClose = function () {
-		worker.w_log.error('mahi connection closed');
-	};
-
-	onConnect = function () {
-		worker.w_log.info('mahi connected');
-		worker.w_mahi.removeListener('error', onError);
-		worker.w_init_barrier.done('mahi');
-	};
-
-	mahi.once('error', onError);
-	mahi.once('close', onClose);
-	mahi.once('connect', onConnect);
+	this.w_mahi = mod_mahi.createClient(conf);
 };
 
 Worker.prototype.initPoll = function ()
@@ -1232,10 +1202,12 @@ Worker.prototype.onRecordJobInput = function (record, barrier)
 	    'd_auths': [],
 	    'd_locates': [],
 	    'd_login': undefined,
+	    'd_accountid': undefined,
 	    'd_owner': undefined,
 	    'd_creator': undefined,
 	    'd_objname_internal': undefined,
 	    'd_objectid': undefined,
+	    'd_roles': undefined,
 	    'd_locations': undefined,
 	    'd_time': undefined,
 	    'd_error': undefined
@@ -1874,10 +1846,12 @@ Worker.prototype.taskRetryMap = function (record, barrier, job, phase, now)
 	    'd_auths': [],
 	    'd_locates': [],
 	    'd_login': undefined,
+	    'd_accountid': undefined,
 	    'd_owner': undefined,
 	    'd_creator': undefined,
 	    'd_objname_internal': undefined,
 	    'd_objectid': undefined,
+	    'd_roles': undefined,
 	    'd_locations': undefined,
 	    'd_time': undefined,
 	    'd_error': undefined
@@ -2022,10 +1996,12 @@ Worker.prototype.onRecordTaskOutput = function (record, barrier)
 	    'd_auths': [],
 	    'd_locates': [],
 	    'd_login': undefined,
+	    'd_accountid': undefined,
 	    'd_owner': undefined,
 	    'd_creator': undefined,
 	    'd_objname_internal': undefined,
 	    'd_objectid': undefined,
+	    'd_roles': undefined,
 	    'd_locations': undefined,
 	    'd_time': undefined,
 	    'd_error': undefined
@@ -2191,7 +2167,7 @@ Worker.prototype.taskRecordCleanup = function (record, barrier, job, jobrec,
 	}
 
 	this.w_deletes_out.push({
-	    'token': jobrec['authToken'],
+	    'token': jobrec['auth']['token'],
 	    'key': record['value']['input'],
 	    'callback': function (err) {
 		now = mod_jsprim.iso8601(new Date());
@@ -2824,6 +2800,12 @@ Worker.prototype.jobAssigned = function (job)
 	this.w_dtrace.fire('job-assigned',
 	    function () { return ([ job.j_id, job.j_job ]); });
 	this.jobTransition(job, 'unassigned', 'initializing');
+
+	if (!job.j_job['auth'].hasOwnProperty('principal'))
+		job.j_log.info(
+		    'job has only legacy access control information; ' +
+		    'falling back to simple access-control checks');
+
 	barrier = job.j_init_barrier = mod_vasync.barrier();
 
 	/*
@@ -3496,15 +3478,6 @@ Worker.prototype.processQueues = function ()
 			continue;
 		}
 
-		if (dispatch.d_error === undefined && !isAuthorized(
-		    job, dispatch.d_owner, dispatch.d_objname)) {
-			dispatch.d_error = {
-			    'code': EM_AUTHORIZATION,
-			    'message': sprintf('permission denied: "%s"',
-				dispatch.d_objname)
-			};
-		}
-
 		if (dispatch.d_error !== undefined)
 			this.dispError(dispatch);
 		else
@@ -3654,15 +3627,18 @@ Worker.prototype.taskPostDispatchCheck = function (task)
  * During execution of this pipeline we'll fill in these fields in roughly the
  * this order:
  *
- *    d_login			object owner's login
+ *    d_login			object owner's account login
  *    (see dispResolveUser)	(derived directly from d_objname)
  *
- *    d_owner			object owner's account uuid
+ *    d_accountid		object owner's account uuid
+ *    (see dispResolveUser)
+ *
+ *    d_owner			raw object owner account mahi record
  *    (see dispResolveUser)
  *
  *    d_objname_internal	object name as known to Moray
  *    (see dispResolveUser)	(derived by replacing d_login
- *    				with d_owner in d_objname)
+ *    				with d_accountid in d_objname)
  *
  *    d_auths			piggy-backed auth requests
  *    (see dispResolveUser)
@@ -3672,6 +3648,9 @@ Worker.prototype.taskPostDispatchCheck = function (task)
  *
  *    d_objectid		unique object identifier, or
  *    (see dispLocate)		'/dev/null' for zero-byte objects
+ *
+ *    d_roles			role tags on the object, as reported by moray
+ *    (see dispLocate)		metadata
  *
  *    d_locations		locations where this object is stored
  *    (see dispLocate)		("mantaComputeId", "zonename" tuples)
@@ -3705,7 +3684,7 @@ Worker.prototype.dispStart = function (dispatch)
 Worker.prototype.dispResolveUser = function (dispatch)
 {
 	var worker = this;
-	var login;
+	var log, login;
 
 	login = mod_mautil.pathExtractFirst(dispatch.d_objname);
 	if (!login) {
@@ -3726,28 +3705,62 @@ Worker.prototype.dispResolveUser = function (dispatch)
 		return;
 	}
 
+	log = worker.w_log;
+	log.debug('auth request', login);
 	this.w_dtrace.fire('auth-start', function () { return ([ login ]); });
 	this.w_auths_pending[login] = dispatch;
-	this.w_mahi.userFromLogin(login, function (err, record) {
+
+	/*
+	 * We're resolving the account that owns this input object (not the
+	 * account running this job).  Remember that objects are owned by
+	 * accounts, not users.  That said, if the account has an "anonymous"
+	 * user, then want the details for that user.  To accomplish this, we
+	 * use the mahi.getUser entry point on the account's "anonymous" user.
+	 * Note that if the anonymous user doesn't exist, mahi still returns a
+	 * record that describes the account.  So we don't actually need to
+	 * check which case we're in.  The logic in libmanta.authorize()
+	 * handles this.
+	 */
+	this.w_mahi.getUser(ANONYMOUS, login, function (err, record) {
 		worker.w_dtrace.fire('auth-done',
 		    function () { return ([ login, err ? err.name : '' ]); });
 		mod_assert.equal(worker.w_auths_pending[login], dispatch);
 		delete (worker.w_auths_pending[login]);
 
-		if (err && err['name'] != 'UserDoesNotExistError') {
+		/*
+		 * As described above, even if we failed to find the "anonymous"
+		 * user, mahi would still have returned a record describing the
+		 * *account*.  And whichever case we're in, we just pass this
+		 * object directly to libmanta.authorize(), so we don't care
+		 * which case we're in.
+		 */
+		if (err && err['name'] == 'UserDoesNotExistError')
+			err = null;
+
+		if (!err &&
+		    (!record || !record['account'] ||
+		    !record['account']['uuid']))
+			err = new Error('unexpected response from mahi');
+
+		if (err && err['name'] != 'AccountDoesNotExistError') {
+			log.debug(err, 'auth response', login, record);
 			dispatch.d_error = {
 			    'code': EM_INTERNAL,
-			    'message': err.message
+			    'message': 'internal error',
+			    'messageInternal': err.message
 			};
 		} else if (err) {
+			log.debug(err, 'auth response', login);
 			dispatch.d_error = {
 			    'code': EM_RESOURCENOTFOUND,
 			    'message': sprintf('no such object: "%s"',
 				dispatch.d_objname)
 			};
 		} else {
+			log.debug('auth response', login, record);
 			dispatch.d_login = login;
-			dispatch.d_owner = record['uuid'];
+			dispatch.d_accountid = record['account']['uuid'];
+			dispatch.d_owner = record;
 		}
 
 		worker.w_auths_in.push(dispatch);
@@ -3755,6 +3768,7 @@ Worker.prototype.dispResolveUser = function (dispatch)
 		dispatch.d_auths.forEach(function (odispatch) {
 			odispatch.d_error = dispatch.d_error;
 			odispatch.d_login = dispatch.d_login;
+			odispatch.d_accountid = dispatch.d_accountid;
 			odispatch.d_owner = dispatch.d_owner;
 			worker.w_auths_in.push(odispatch);
 		});
@@ -3773,7 +3787,7 @@ Worker.prototype.dispLocate = function (dispatch)
 	var objname;
 
 	job.j_nlocates++;
-	objname = pathSwapFirst(dispatch.d_objname, dispatch.d_owner);
+	objname = pathSwapFirst(dispatch.d_objname, dispatch.d_accountid);
 	dispatch.d_objname_internal = objname;
 
 	if (this.w_locates_pending.hasOwnProperty(objname)) {
@@ -3831,6 +3845,7 @@ Worker.prototype.dispLocateResponse = function (dispatches, err, locations)
 		} else {
 			l = locations[iobjname];
 			dispatch.d_creator = l['creator'];
+			dispatch.d_roles = l['roles'] || [];
 			dispatch.d_objectid = l['contentLength'] === 0 ?
 			    '/dev/null' : l['objectid'];
 			dispatch.d_locations = l['sharks'].filter(
@@ -3848,6 +3863,8 @@ Worker.prototype.dispLocateResponse = function (dispatches, err, locations)
 
 		dispatch.d_locates.forEach(function (odispatch) {
 			odispatch.d_error = dispatch.d_error;
+			odispatch.d_creator = dispatch.d_creator;
+			odispatch.d_roles = dispatch.d_roles;
 			odispatch.d_objectid = dispatch.d_objectid;
 			odispatch.d_locations = dispatch.d_locations;
 			worker.w_locates_in.push(odispatch);
@@ -3900,6 +3917,14 @@ Worker.prototype.dispLocateValidLoc = function (input, loc)
 
 Worker.prototype.dispDispatch = function (dispatch)
 {
+	if (dispatch.d_error === undefined && !this.isAuthorized(dispatch)) {
+		dispatch.d_error = {
+		    'code': EM_AUTHORIZATION,
+		    'message': sprintf('permission denied: "%s"',
+			dispatch.d_objname)
+		};
+	}
+
 	if (dispatch.d_error === undefined &&
 	    dispatch.d_job.j_cancelled !== undefined) {
 		dispatch.d_error = {
@@ -3942,7 +3967,7 @@ Worker.prototype.dispMap = function (dispatch)
 	value['input'] = dispatch.d_objname;
 	value['p0input'] = dispatch.d_pi === 0 ? dispatch.d_objname :
 	    dispatch.d_origin['value']['p0input'];
-	value['account'] = dispatch.d_owner;
+	value['account'] = dispatch.d_accountid;
 	value['creator'] = dispatch.d_creator;
 	value['objectid'] = dispatch.d_objectid;
 	value['mantaComputeId'] = agent.a_record['value']['instance'];
@@ -4125,7 +4150,7 @@ Worker.prototype.dispReduce = function (dispatch)
 		task.t_value['mantaComputeId']].a_record['value']['generation'],
 	    'input': dispatch.d_objname,
 	    'p0input': dispatch.d_p0objname,
-	    'account': dispatch.d_owner,
+	    'account': dispatch.d_accountid,
 	    'creator': dispatch.d_creator,
 	    'objectid': dispatch.d_objectid,
 	    'servers': dispatch.d_locations.map(function (l) {
@@ -4605,6 +4630,57 @@ Worker.prototype.quiesced = function ()
 	    !this.w_ourdomains[this.w_uuid].hasOwnProperty(q['name']));
 };
 
+Worker.prototype.isAuthorized = function (dispatch)
+{
+	var job = dispatch.d_job.j_job;
+	var cond, rqarg, err;
+
+	if (!job['auth'].hasOwnProperty('principal')) {
+		return (legacyIsAuthorized(dispatch.d_job,
+		    dispatch.d_accountid, dispatch.d_objname));
+	}
+
+	cond = mod_jsprim.deepCopy(job['auth']['conditions']);
+	cond['fromjob'] = true;
+
+	rqarg = {
+	    'mahi': this.w_mahi,
+	    'context': {
+		'action': 'getobject',
+		'conditions': cond,
+		'principal': job['auth']['principal'],
+		'resource': {
+		    'owner': dispatch.d_owner,
+		    'key': dispatch.d_objname_internal,
+		    'roles': dispatch.d_roles
+		}
+	    }
+	};
+
+	this.w_log.debug('authorize request', rqarg['context']);
+
+	try {
+		err = null;
+		mod_libmanta.authorize(rqarg);
+	} catch (ex) {
+		err = ex;
+	}
+
+	if (err) {
+		/*
+		 * XXX Work around MANTA-2228. We can't provide the real stack,
+		 * but we can at least make sure bunyan logs it as an error.
+		 */
+		if (!err.stack)
+			Error.captureStackTrace(err);
+		this.w_log.debug(err, 'unauthorized');
+		return (false);
+	}
+
+	this.w_log.debug('authorized');
+	return (true);
+};
+
 /*
  * Kang (introspection) entry points
  */
@@ -4700,7 +4776,13 @@ function keyIsAnonymous(key, jobid)
 	return (re.test(key));
 }
 
-function isAuthorized(job, account, key)
+/*
+ * Returns true if the given account, operating under the given job, is allowed
+ * to access the given key under the legacy authorization mechanism.  This is
+ * only used for jobs specified for use with the legacy authentication
+ * mechanism.
+ */
+function legacyIsAuthorized(job, account, key)
 {
 	/*
 	 * Common case: user is allowed access to their own objects.
@@ -4711,7 +4793,7 @@ function isAuthorized(job, account, key)
 	/*
 	 * Operators are allowed to access anyone's objects.
 	 */
-	if (job.j_job['auth']['groups'].indexOf('operators') != -1)
+	if (mod_mautil.jobIsPrivileged(job.j_job['auth']))
 		return (true);
 
 	/*

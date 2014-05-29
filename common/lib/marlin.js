@@ -281,19 +281,27 @@ MarlinApi.prototype.close = function ()
  *   owner	owning user
  *		(required)
  *
- *   authToken	authn token
- *		(required)
- *
  *   auth	authentication object, including:
  *		(required)
  *
  *	login		effective user's login name
  *
+ *	token		authn token
+ *
  *	uuid		effective user's uuid
+ *	(legacy)
  *
  *	groups		effective user's groups
+ *	(legacy)
  *
- *	token		authn token
+ *	principal	access-control principal
+ *
+ *	conditions	access-control conditions
+ *
+ *		"login" and "token" are required.  Either "uuid" and "groups"
+ *		(for legacy access-control behavior) OR "principal" and
+ *		"conditions" (for modern access-control behavior) is required.
+ *		If all are specified, modern behavior is used.
  *
  *   transient  indicates that the job is "transient", meaning its inputs will
  *   		be removed automatically and it may not be listed by default
@@ -306,8 +314,6 @@ function jobCreate(api, conf, options, callback)
 {
 	mod_assert.ok(Array.isArray(conf['phases']),
 	    'expected array: "phases"');
-	mod_assert.equal(typeof (conf['authToken']), 'string',
-	    'expected string: "authToken"');
 	mod_assert.equal(typeof (conf['owner']), 'string',
 	    'expected string: "owner"');
 	mod_assert.equal(typeof (conf['auth']), 'object',
@@ -320,9 +326,11 @@ function jobCreate(api, conf, options, callback)
 		 * Muskie should only allow operators to specify "options", but
 		 * the test suite allows unprivileged users to do so.
 		 */
-		if (!mod_jsprim.isEmpty(conf['options']))
+		if (!mod_jsprim.isEmpty(conf['options'])) {
 			mod_assert.ok((options && options.istest) ||
-			    conf['auth']['groups'].indexOf('operators') != -1);
+			    mod_mautil.jobIsPrivileged(conf['auth']),
+			    'only operators can specify job options');
+		}
 	}
 
 	if (arguments.length == 3) {
@@ -337,7 +345,7 @@ function jobCreate(api, conf, options, callback)
 	    'jobId': key,
 	    'name': conf['name'] || '',
 	    'auth': conf['auth'],
-	    'authToken': conf['authToken'],
+	    'authToken': conf['auth']['token'],
 	    'owner': conf['owner'],
 	    'phases': mod_jsprim.deepCopy(conf['phases']),
 	    'state': 'queued',
@@ -813,8 +821,7 @@ function jobFetchErrorsImpl(api, jobid, options, extra)
 		var summary = 'phase ' + value['phaseNum'] + ': ';
 
 		if (value['input']) {
-			summary += 'map input ' +
-			    JSON.stringify(value['input']);
+			summary += 'input ' + JSON.stringify(value['input']);
 
 			if (value['phaseNum'] > 0 && value['p0input'])
 				summary += ' (from job input ' +

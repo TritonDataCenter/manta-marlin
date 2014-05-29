@@ -75,7 +75,7 @@ function catest_init_global
 	# of the unresolved $MANTA_URL with "authcache".
 	#
 	local sedreg='https?://[a-zA-Z0-9]+([^:/]*)([:/].*)?'
-	local sedrep='tcp://authcache\1:6379'
+	local sedrep='http://authcache\1:80'
 	[[ -z $MAHI_URL ]] &&
 	    export MAHI_URL=$(resolve $nameserver \
 		$(json manta.url < $agentconfig | sed -Ee \

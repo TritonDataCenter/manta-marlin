@@ -58,16 +58,14 @@ module.exports = {
 	    'required': true,
 	    'type': 'object',
 	    'properties': {
-		'host': mod_schema.sStringRequiredNonEmpty,
-		'port': mod_schema.sTcpPortRequired,
-		'redis_options': {
-		    'type': 'object'
-		},
-
-		'connectTimeout': mod_schema.sInterval,
-		'maxTimeout': mod_schema.sInterval,
-		'cache': {
-		    'type': 'object'
+		'url': mod_schema.sStringRequiredNonEmpty,
+		'maxAuthCacheSize': mod_schema.sNonNegativeInteger,
+		'maxAuthCacheAgeMs': mod_schema.sNonNegativeInteger,
+		'maxTranslationCacheSize': mod_schema.sNonNegativeInteger,
+		'maxTranslationCacheAgeMs': mod_schema.sNonNegativeInteger,
+		'typeTable': {
+		    'type': 'object',
+		    'required': true
 		}
 	    }
 	},
