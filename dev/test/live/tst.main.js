@@ -1123,16 +1123,18 @@ var testcases = {
 	        '(from job input "/%user%/stor/obj1")',
 	    'input': '/%user%/stor',
 	    'p0input': '/%user%/stor/obj1',
-	    'code': EM_RESOURCENOTFOUND,
-	    'message': 'no such object: "/%user%/stor"'
+	    'code': EM_INVALIDARGUMENT,
+	    'message': 'objects of type "directory" are not supported: ' +
+	        '"/%user%/stor"'
 	}, {
 	    'phaseNum': '1',
 	    'what': 'phase 1: input "/%user%/stor" ' +
 	        '(from job input "/%user%/stor/obj1")',
 	    'input': '/%user%/stor',
 	    'p0input': '/%user%/stor/obj1',
-	    'code': EM_RESOURCENOTFOUND,
-	    'message': 'no such object: "/%user%/stor"'
+	    'code': EM_INVALIDARGUMENT,
+	    'message': 'objects of type "directory" are not supported: ' +
+	        '"/%user%/stor"'
 	}, {
 	    'phaseNum': '1',
 	    'what': 'phase 1: input "/%user%/jobs" ' +
