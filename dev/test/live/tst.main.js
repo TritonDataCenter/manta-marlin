@@ -89,8 +89,8 @@ var errors_disperrors0 = [ {
     'what': 'phase 0: input "/%user%/stor"',
     'input': '/%user%/stor',
     'p0input': '/%user%/stor',
-    'code': EM_RESOURCENOTFOUND,
-    'message': 'no such object: "/%user%/stor"'
+    'code': EM_INVALIDARGUMENT,
+    'message': 'objects of type "directory" are not supported: "/%user%/stor"'
 }, {
     'phaseNum': '0',
     'what': 'phase 0: input "/%user%/stor/"',
