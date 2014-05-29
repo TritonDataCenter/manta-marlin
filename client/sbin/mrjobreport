@@ -32,16 +32,16 @@ EOF
 
 function tasktimes
 {
-	local script
+	local s
 
-	script="this.machine = this.value.machine || 'none'"
-	script="$script; this.dispatched = Date.parse(this.value.timeDispatched) || 0"
-	script="$script; this.accepted = Date.parse(this.value.timeAccepted) || 0"
-	script="$script; this.done  = Date.parse(this.value.timeDone) || 0"
-	script="$script; this.started = Date.parse(this.value.timeStarted) || 0"
-	script="$script; this.committed = Date.parse(this.value.timeCommitted) || 0"
+	s="this.machine = this.value.machine || 'none'"
+	s="$s; this.dispatched = Date.parse(this.value.timeDispatched) || 0"
+	s="$s; this.accepted = Date.parse(this.value.timeAccepted) || 0"
+	s="$s; this.done  = Date.parse(this.value.timeDone) || 0"
+	s="$s; this.started = Date.parse(this.value.timeStarted) || 0"
+	s="$s; this.committed = Date.parse(this.value.timeCommitted) || 0"
 	
-	json -ga -e "$script"	\
+	json -ga -e "$s"	\
 	    value.taskId 	\
 	    value.mantaComputeId 	\
 	    machine		\

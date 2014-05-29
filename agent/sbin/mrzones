@@ -82,10 +82,9 @@ if [[ -n "$opt_z" ]]; then
 	list_zones | json -Hac "this.zonename == '$opt_z'" state
 elif [[ "$opt_x" == "true" ]]; then
 	[[ $opt_l == "true" ]] && usage "-l cannot be used with -z"
-	list_zones | \
-	    json -Hac "this.state == 'disabled'" -e \
-	        'this.d = (this.disableErrorMessage || "").replace(/\n/g, " ");' \
-	        zonename disableTime d |
+	list_zones | json -Hac "this.state == 'disabled'" -e \
+	    'this.d = (this.disableErrorMessage || "").replace(/\n/g, " ");' \
+	    zonename disableTime d |
 	    while read zonename since msg; do
 	    	printf "%s (since %s)\n    %s\n" $zonename $since "$msg"
 	    done
