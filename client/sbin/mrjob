@@ -21,7 +21,13 @@ var mod_vasync = require('vasync');
 var mod_wordwrap = require('wordwrap');
 
 var mod_mahi = require('mahi');
-var mod_mautil = require('../lib/util');
+var mod_mautil;
+
+try {
+	mod_mautil = require('../lib/util');
+} catch (ex) {
+	mod_mautil = require('../../common/lib/util');
+}
 
 var sprintf = mod_extsprintf.sprintf;
 var wrap = mod_wordwrap(80);
