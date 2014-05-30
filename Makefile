@@ -96,6 +96,7 @@ BASH_FILES	 = \
     client/sbin/mrerrors		\
     client/sbin/mrextractjob		\
     dev/tools/catest			\
+    dev/tools/endtoend.sh		\
     dev/tools/mru			\
     jobsupervisor/boot/configure.sh     \
     jobsupervisor/sbin/mrsup

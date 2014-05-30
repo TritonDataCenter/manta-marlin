@@ -648,9 +648,13 @@ function jobAddKey(api, jobid, key, options, callback)
 		mod_jsprim.iso8601(Date.now())
 	};
 
+	if (options.job && options.job.worker)
+		record['domain'] = options.job.worker;
+
 	var log = options.log || api.ma_log;
 
-	log.debug('job "%s": adding key "%s"', jobid, key);
+	log.debug('job "%s": adding key "%s"%s', jobid, key,
+	    record['domain'] ? ' with domain' : '');
 	api.ma_client.putObject(bucket, mod_uuid.v4(), record, function (err) {
 		if (err) {
 			log.warn(err, 'job "%s": failed to add key "%s"',
