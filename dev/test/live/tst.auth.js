@@ -93,9 +93,7 @@ function initAuthzUfdsConfig()
 	    'template': 'poseidon',
 	    'keyid': process.env['MANTA_KEY_ID'],
 	    'policies': {
-	        'readall': 'can getobject',
-	        'readjob': 'can getobject when fromjob = true',
-	        'readhttp': 'can getobject when fromjob = false'
+	        'readall': 'can getobject'
 	    },
 	    'roles': {}
 	};
