@@ -4370,6 +4370,14 @@ Worker.prototype.doDelete = function (delete_request, now)
 				worker.w_log.warn(err,
 				    'delete "%s": failed', key);
 				err = null;
+			} else if (err['code'] == 'ECONNRESET') {
+				/*
+				 * We sometimes see transient ECONNRESETs from
+				 * the front door, but transient issues are not
+				 * errors.
+				 */
+				worker.w_log.warn(err,
+				    'delete "%s": failed', key);
 			} else {
 				worker.w_log.error(err,
 				    'delete "%s": failed', key);
