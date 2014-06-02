@@ -116,7 +116,7 @@ function maHttpProxy(args, callback)
 		}
 
 		state['error'] = true;
-		request.log.error(err, 'error proxying request "%s": %s',
+		request.log.warn(err, 'error proxying request "%s": %s',
 		    state['summary'], where);
 
 		if (!state['wroteHeader']) {
@@ -134,7 +134,7 @@ function maHttpProxy(args, callback)
 		request.log.trace('proxy: initial request end');
 	});
 	response.on('close', function () {
-		request.log.error('response closed unexpectedly');
+		request.log.warn('response closed unexpectedly');
 		subrequest.destroy();
 	});
 
@@ -172,7 +172,7 @@ function maHttpProxy(args, callback)
 			continuefunc();
 
 		response.on('close', function () {
-			request.log.error('response closed unexpectedly');
+			request.log.warn('response closed unexpectedly');
 			subresponse.destroy();
 		});
 	});
