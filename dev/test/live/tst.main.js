@@ -192,8 +192,8 @@ var testcases = {
 	'job': {
 	    'phases': [ {
 		'type': 'map',
-		'image': '13.3.5',
-		'exec': 'grep 13.3.5 /etc/motd'
+		'image': '13.3.6',
+		'exec': 'grep 13.3.6 /etc/motd'
 	    } ]
 	},
 	'inputs': [ '/%user%/stor/obj1' ],
