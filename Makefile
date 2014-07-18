@@ -98,7 +98,7 @@ BASH_FILES	 = \
     dev/tools/catest			\
     dev/tools/endtoend.sh		\
     dev/tools/mru			\
-    jobsupervisor/boot/configure.sh     \
+    jobsupervisor/boot/setup.sh		\
     jobsupervisor/sbin/mrsup
 
 DOC_FILES	 = index.restdown ops.restdown
@@ -138,6 +138,7 @@ include ./dev/tools/mk/Makefile.smf.defs
 ifneq ($(USE_LOCAL_NODE),true)
     NODE_PREBUILT_VERSION = v0.10.24
     NODE_PREBUILT_TAG = zone
+    NODE_PREBUILT_IMAGE = fd2cc906-8938-11e3-beab-4359c665ac99
 
     include ./dev/tools/mk/Makefile.node_prebuilt.defs
 else
@@ -264,9 +265,9 @@ $(BUILD)/node: $(NODE_EXEC)
 $(PROTO_MARLIN_ROOT)/$(BUILD)/docs: docs
 	rm -rf "$@" && mkdir -p "$(@D)" && cp -r $(BUILD)/docs "$@"
 
-PROTO_FILES += $(PROTO_BOOT_ROOT)/configure.sh
-$(PROTO_BOOT_ROOT)/configure.sh:
-	mkdir -p $(@D) && ln -fs /opt/smartdc/marlin/boot/configure.sh $@
+PROTO_FILES += $(PROTO_BOOT_ROOT)/setup.sh
+$(PROTO_BOOT_ROOT)/setup.sh:
+	mkdir -p $(@D) && ln -fs /opt/smartdc/marlin/boot/setup.sh $@
 
 #
 # We deliver two sets of tools for use by users inside Marlin zones: the
@@ -287,7 +288,7 @@ $(PROTO_BOOT_ROOT)/configure.sh:
 # installed.
 #
 USER_TOOLS_MANTA = mfind mget mjob mln mlogin mls mmd5 mmkdir mput mrm mrmdir \
-    msign muntar 
+    msign muntar
 USER_TOOLS_MCB = maggr mcat mpipe msplit mtee
 PROTO_USER_TOOLS_ROOT = $(PROTO_MARLIN_ROOT)/ubin
 
