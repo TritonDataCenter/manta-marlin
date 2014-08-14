@@ -344,12 +344,16 @@ PROTO_TARBALL 		 = $(BUILD)/$(MG_RELEASE_TARBALL)
 BITS_PROTO_TARBALL	 = $(BITS_DIR)/$(MG_NAME)/$(MG_RELEASE_TARBALL)
 
 MG_AGENT_TARBALL	 = $(MG_NAME)-$(STAMP).tar.gz
+MG_AGENT_MANIFEST	 = $(MG_NAME)-$(STAMP).manifest
 AGENT_TARBALL	 	 = $(BUILD)/$(MG_AGENT_TARBALL)
+AGENT_MANIFEST	 	 = $(BUILD)/$(MG_AGENT_MANIFEST)
 BITS_AGENT_TARBALL	 = $(BITS_DIR)/$(MG_NAME)/$(MG_AGENT_TARBALL)
+BITS_AGENT_MANIFEST	 = $(BITS_DIR)/$(MG_NAME)/$(MG_AGENT_MANIFEST)
 
 CLEAN_FILES		+= $(MG_PROTO) \
 			   $(BUILD)/$(MG_NAME)-pkg-*.tar.bz2 \
-			   $(BUILD)/$(MG_NAME)-*.tar.gz
+			   $(BUILD)/$(MG_NAME)-*.tar.gz \
+			   $(BUILD)/$(MG_NAME)-*.manifest
 
 #
 # "release" target creates two tarballs: the first to be used as an input for
@@ -357,7 +361,7 @@ CLEAN_FILES		+= $(MG_PROTO) \
 # via apm.
 #
 .PHONY: release
-release: $(PROTO_TARBALL) $(AGENT_TARBALL)
+release: $(PROTO_TARBALL) $(AGENT_TARBALL) $(AGENT_MANIFEST)
 
 $(PROTO_TARBALL): proto
 	$(TAR) -C $(MG_PROTO) -cjf $@ root site
@@ -365,11 +369,22 @@ $(PROTO_TARBALL): proto
 $(AGENT_TARBALL): proto
 	$(TAR) -C $(MG_PROTO)/root/opt/smartdc -czf $@ $(MG_NAME)
 
+$(AGENT_MANIFEST): $(AGENT_TARBALL)
+	cat agent/manifest.tmpl | sed \
+		-e "s/UUID/$$(uuid -v4)/" \
+		-e "s/VERSION/$$(json version < package.json)/" \
+		-e "s/BUILDSTAMP/$(STAMP)/" \
+		-e "s/SIZE/$$(stat --printf="%s" $(AGENT_TARBALL))/" \
+		-e "s/SHA/$$(openssl sha1 $(AGENT_TARBALL) \
+		    | cut -d ' ' -f2)/" \
+		> $@
+
 #
 # "publish" target copies the release tarball into BITS_DIR.
 #
 .PHONY: publish
-publish: check-bitsdir $(BITS_PROTO_TARBALL) $(BITS_AGENT_TARBALL)
+publish: check-bitsdir $(BITS_PROTO_TARBALL) $(BITS_AGENT_TARBALL) \
+	$(BITS_AGENT_MANIFEST)
 
 .PHONY: check-bitsdir
 check-bitsdir:
@@ -382,6 +397,9 @@ $(BITS_PROTO_TARBALL): $(PROTO_TARBALL) | $(dir $(BITS_PROTO_TARBALL))
 	cp $< $@
 
 $(BITS_AGENT_TARBALL): $(AGENT_TARBALL) | $(dir $(BITS_PROTO_TARBALL))
+	cp $< $@
+
+$(BITS_AGENT_MANIFEST): $(AGENT_MANIFEST) | $(dir $(BITS_PROTO_TARBALL))
 	cp $< $@
 
 $(dir $(BITS_PROTO_TARBALL)):
