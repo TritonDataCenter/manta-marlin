@@ -367,11 +367,12 @@ $(PROTO_TARBALL): proto
 	$(TAR) -C $(MG_PROTO) -cjf $@ root site
 
 $(AGENT_TARBALL): proto
+	uuid -v4 > $(MG_PROTO)/root/opt/smartdc/$(MG_NAME)/image_uuid
 	$(TAR) -C $(MG_PROTO)/root/opt/smartdc -czf $@ $(MG_NAME)
 
 $(AGENT_MANIFEST): $(AGENT_TARBALL)
 	cat agent/manifest.tmpl | sed \
-		-e "s/UUID/$$(uuid -v4)/" \
+		-e "s/UUID/$$(cat $(MG_PROTO)/root/opt/smartdc/$(MG_NAME)/image_uuid)/" \
 		-e "s/VERSION/$$(json version < package.json)/" \
 		-e "s/BUILDSTAMP/$(STAMP)/" \
 		-e "s/SIZE/$$(stat --printf="%s" $(AGENT_TARBALL))/" \
