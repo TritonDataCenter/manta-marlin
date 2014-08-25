@@ -1,4 +1,14 @@
 /*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+/*
+ * Copyright (c) 2014, Joyent, Inc.
+ */
+
+/*
  * lib/agent/lackey.js: per-zone lackey (formerly known as the in-zone agent),
  * responsible for running and monitoring compute zone jobs and servicing HTTP
  * requests from the user.
