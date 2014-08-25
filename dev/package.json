@@ -53,5 +53,6 @@
 	"scripts": {
 		"postinstall": "./npm/postinstall.sh",
 		"preuninstall": "./npm/preuninstall.sh"
-	}
+	},
+	"license": "MPL-2.0"
 }
