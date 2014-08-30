@@ -24,7 +24,7 @@
 		"jsprim": "0.5.0",
 		"kang": "0.0.5",
 		"kstat": "0.5.0",
-		"libmanta": "git+ssh:/git@github.com:joyent/node-libmanta.git#master",
+		"libmanta": "git+ssh://git@github.com:joyent/node-libmanta.git#master",
 		"lstream": "0.0.3",
 		"mahi": "git+ssh://git@github.com:joyent/node-mahi.git#master",
 		"manta": "git+ssh://git@github.com:joyent/node-manta.git#master",
