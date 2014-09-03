@@ -19,9 +19,9 @@ Marlin is a facility for running compute jobs on Manta storage nodes.  This
 document describes the desired end state for version 1.
 
 **For an overview of what Marlin is and how users interact with it, see the
-Manta documentation in muskie.git.  Really, go read that first.  This document
-assumes familiarity with that, including how the rest of the Manta object store
-works.**
+public Manta user documentation, then the Manta operator documentation in
+manta.git.  Really, go read that first.  This document assumes familiarity with
+that, including how the rest of the Manta object store works.**
 
 
 # First principles
@@ -69,10 +69,6 @@ command line.
 
 There are lots more examples in the public (muskie) documentation.
 
-## XXX: Finding active customers (with a join)
-
-## XXX: Hadoop
-
 ## Build system
 
 Marlin could be an effective distributed build system, at least for Joyent
@@ -89,14 +85,14 @@ repos that save a "git bundle" into Manta, then the distributed build system is
 a pretty simple map job:
 
     "phases": [ {
-        "dataset": "smartos-1.8.4",
+        "image": "smartos-1.8.4",
         "exec": "git clone $mr_input_file repo && cd repo && make &&
             mpipe < build/dist/latest.tar.bz2"
     } ]
 
 The input objects would be the git bundle for each repo in Manta.  If different
-repos needed to be built with different datasets, those would have to be
-separate jobs.
+repos needed to be built with different images, those would have to be separate
+jobs.
 
 
 # Marlin implementation

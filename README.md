@@ -32,14 +32,14 @@ Since it's useful to run the Marlin client tools (mrjob, mrjobreport, mrerrors,
 etc.) on an OS X laptop, the build system includes hacks to allow just those
 bits to build on OS X.  To use these tools:
 
-    $ git clone git@git.joyent.com:marlin.git
+    $ git clone git@github.com:joyent/manta-marlin.git
     ...
-    $ cd marlin
+    $ cd manta-marlin
     $ make deps
 
 or just:
 
-    $ npm install git+ssh://git@git.joyent.com:marlin.git
+    $ npm install git+ssh://git@github.com:joyent/manta-marlin.git
 
 At this point, you'll have several tools available inside the "sbin" directory:
 
@@ -50,18 +50,18 @@ At this point, you'll have several tools available inside the "sbin" directory:
 * mrjobreport: summarize performance of a job's execution
 
 By default, these tools assume they can contact the 1.moray shard at
-localhost:2020.  For the us-east production deployment, it's recommended to set
-up an ssh tunnel so that this works.  "mrjob" also supports a MORAY\_URL
-environment variable.
+localhost:2020.  For a production deployment, it's recommended to set up an ssh
+tunnel so that this works.  "mrjob" also supports a MORAY\_URL environment
+variable.
 
 
 # Development
 
 The standard Marlin development environment is a SmartOS zone deployed on a
-system with a single-system Manta deployed on it.  This is usually COAL or a bh1
-lab machine.  In principle, you can develop Marlin on a different system from
-the one where you deploy it, but the existing tools are optimized for the
-single-system case.
+system with a single-system Manta deployed on it.  This is usually COAL or an
+Emeryville lab machine.  In principle, you can develop Marlin on a different
+system from the one where you deploy it, but the existing tools are optimized
+for the single-system case.
 
 If you are using COAL for Marlin development, you may need to increase the
 ram and disk sizes for the COAL VM.  For example, for 4GB RAM and 70GB disk,
@@ -78,15 +78,15 @@ edit your usb-headnode/build.spec.local:
 
 The usual procedure is:
 
-1. Reflash.  See usb-headnode.git.
+1. Reflash.  See sdc-headnode.git.
 2. Deploy Manta.  See manta-deployment.git.
 3. Set up your dev zone.  From the global zone, run:
 
     /opt/smartdc/agents/lib/node_modules/cabase/tools/devsetup -t manta dap
 
 Replace "dap" with whatever username you want to use.  If
-http://manta-beta.joyentcloud.com/$user/public/.ssh/id_rsa.pub exists, this
-script will download that to `$HOME/.ssh/authorized_keys` in the new zone.
+http://us-east.manta.joyent.com/$user/public/.ssh/id_rsa.pub exists, this script
+will download that to `$HOME/.ssh/authorized_keys` in the new zone.
 
 ## Dev zone: gritty details
 
@@ -96,9 +96,9 @@ The above script takes care of setting up /etc/resolv.conf in your development
 zone to refer to the Manta name servers and adds several environment variables
 to the new user's profile script:
 
-    $ export MAHI_URL=http://authcache.bh1.joyent.us/
-    $ export MORAY_URL=tcp://1.moray.bh1.joyent.us:2020/
-    $ export MANTA_URL=https://manta.bh1.joyent.us
+    $ export MAHI_URL=http://authcache.sf-1.joyent.us/
+    $ export MORAY_URL=tcp://1.moray.sf-1.joyent.us:2020/
+    $ export MANTA_URL=https://manta.sf-1.joyent.us
     $ export MANTA_USER=poseidon
     $ export MANTA_KEY_ID=ff:4a:ad:ac:92:86:ec:d2:5a:9d:88:c8:e8:12:8d:15
     $ export MANTA_TLS_INSECURE=1
@@ -139,8 +139,8 @@ in a non-standard configuration.
 
 This part's easy:
 
-    $ git clone git@git.joyent.com:marlin.git
-    $ cd marlin
+    $ git clone git@github.com:joyent/manta-marlin.git
+    $ cd manta-marlin
     $ . env.sh
     $ make
     ...
@@ -161,7 +161,7 @@ is to copy the config.json file from an existing Marlin worker deployed on the
 same system, modify the port number (since the default is a privileged port),
 **disable the worker whose configuration you copied**, and then run:
 
-    $ cd marlin
+    $ cd manta-marlin
     $ . dev/env.sh
     $ make
     $ node build/proto/root/opt/smartdc/marlin/lib/worker/server.js \
