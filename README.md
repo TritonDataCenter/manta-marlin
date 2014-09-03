@@ -8,13 +8,14 @@
     Copyright (c) 2014, Joyent, Inc.
 -->
 
-# Marlin: Manta Compute Engine
+# manta-marlin
 
-Repository: <git@git.joyent.com:marlin.git>
-Browsing: <https://mo.joyent.com/marlin>
-Who: Dave Pacheco
-Docs: <https://mo.joyent.com/docs/marlin>
-Tickets/bugs: <https://devhub.joyent.com/jira/browse/MANTA>
+This repository is part of the Joyent Manta project.  For contribution
+guidelines, issues, and general documentation, visit the main
+[Manta](http://github.com/joyent/manta) project page.
+
+Marlin is the Manta compute engine.  It comprises a service, an agent, and a set
+of client tools for executing arbitrary user jobs on objects stored in Manta.
 
 
 # Overview
