@@ -3726,26 +3726,16 @@ Worker.prototype.dispResolveUser = function (dispatch)
 	 * accounts, not users.  That said, if the account has an "anonymous"
 	 * user, then want the details for that user.  To accomplish this, we
 	 * use the mahi.getUser entry point on the account's "anonymous" user.
-	 * Note that if the anonymous user doesn't exist, mahi still returns a
-	 * record that describes the account.  So we don't actually need to
+	 * Note that we ask mahi to return a record describing the account even
+	 * if the anonymous user doesn't exist.  So we don't actually need to
 	 * check which case we're in.  The logic in libmanta.authorize()
 	 * handles this.
 	 */
-	this.w_mahi.getUser(ANONYMOUS, login, function (err, record) {
+	this.w_mahi.getUser(ANONYMOUS, login, true, function (err, record) {
 		worker.w_dtrace.fire('auth-done',
 		    function () { return ([ login, err ? err.name : '' ]); });
 		mod_assert.equal(worker.w_auths_pending[login], dispatch);
 		delete (worker.w_auths_pending[login]);
-
-		/*
-		 * As described above, even if we failed to find the "anonymous"
-		 * user, mahi would still have returned a record describing the
-		 * *account*.  And whichever case we're in, we just pass this
-		 * object directly to libmanta.authorize(), so we don't care
-		 * which case we're in.
-		 */
-		if (err && err['name'] == 'UserDoesNotExistError')
-			err = null;
 
 		if (!err &&
 		    (!record || !record['account'] ||
