@@ -72,11 +72,7 @@ module.exports = {
 		'maxAuthCacheSize': mod_schema.sNonNegativeInteger,
 		'maxAuthCacheAgeMs': mod_schema.sNonNegativeInteger,
 		'maxTranslationCacheSize': mod_schema.sNonNegativeInteger,
-		'maxTranslationCacheAgeMs': mod_schema.sNonNegativeInteger,
-		'typeTable': {
-		    'type': 'object',
-		    'required': true
-		}
+		'maxTranslationCacheAgeMs': mod_schema.sNonNegativeInteger
 	    }
 	},
 	'locator': {

@@ -177,6 +177,7 @@ var mod_extsprintf = require('extsprintf');
 var mod_fs = require('fs');
 var mod_path = require('path');
 
+var mod_apertureConfig = require('aperture-config');
 var mod_jsprim = require('jsprim');
 var mod_libmanta = require('libmanta');
 var mod_mahi = require('mahi');
@@ -647,6 +648,7 @@ Worker.prototype.initMahi = function ()
 	for (var k in this.w_conf['auth'])
 		conf[k] = this.w_conf['auth'][k];
 	conf['log'] = this.w_log.child({ 'component': 'mahi' });
+	conf['typeTable'] = mod_apertureConfig.config.typeTable;
 
 	this.w_mahi = mod_mahi.createClient(conf);
 };
