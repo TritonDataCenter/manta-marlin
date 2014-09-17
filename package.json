@@ -15,7 +15,6 @@
 		"mrmeter": "client/sbin/mrmeter"
 	},
 	"dependencies": {
-		"aperture-config": "git+ssh://git@github.com:joyent/aperture-config.git#master",
 		"assert-plus": "0.1.2",
 		"bunyan": "0.20.0",
 		"dtrace-provider": "0.2.8",

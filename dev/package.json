@@ -12,6 +12,7 @@
 		"mrzones": "sbin/mrzones"
 	},
 	"dependencies": {
+		"aperture-config": "git+ssh://git@github.com:joyent/aperture-config.git#master",
 		"assert-plus": "0.1.2",
 		"bunyan": "0.20.0",
 		"catstreams": "0.0.4",
