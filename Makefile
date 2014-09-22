@@ -109,7 +109,7 @@ BASH_FILES	 = \
     jobsupervisor/boot/setup.sh		\
     jobsupervisor/sbin/mrsup
 
-DOC_FILES	 = index.restdown
+DOC_FILES	 = index.md
 
 JSON_DIRS        = $(COMPONENT_DIRS:%=%/package.json %/etc %/sapi_manifests)
 JSON_DIRS	+= $(COMPONENT_DIRS:%=%/etc)
