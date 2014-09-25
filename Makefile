@@ -77,7 +77,7 @@ endif
 #
 # Tools
 #
-BASHSTYLE	 = $(NODE) dev/tools/bashstyle
+BASHSTYLE	 = dev/tools/bashstyle
 CATEST		 = dev/tools/catest
 CC      	 = gcc
 SMF_DTD		 = dev/tools/service_bundle.dtd.1
