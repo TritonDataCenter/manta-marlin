@@ -853,7 +853,7 @@ function jobTestVerifyFetchOutputContent(verify, callback)
 		log.info('fetching output "%s"', objectpath);
 		manta.get(objectpath, function (err, mantastream) {
 			if (err) {
-				subcallback(err);
+				subcallback(new VError(err, '%s', err.name));
 				return;
 			}
 

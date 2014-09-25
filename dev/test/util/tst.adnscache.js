@@ -49,7 +49,7 @@ function setup(_, next)
 {
 	log = new mod_bunyan({
 	    'name': 'tst.adnscache.js',
-	    'level': 'debug'
+	    'level': process.env['LOG_LEVEL'] || 'debug'
 	});
 
 	log.info('setup');
@@ -93,7 +93,7 @@ function checkResolved(_, next)
 	ip = cache.lookupv4('www.joyent.com');
 	mod_assert.ok(looksLikeIp4(ip));
 	mod_assert.equal(0, cache.update());
-	setTimeout(function () { next(); }, 2000);
+	setTimeout(function () { next(); }, 2500);
 }
 
 function forceUpdate(_, next)

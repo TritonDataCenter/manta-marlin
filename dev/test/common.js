@@ -138,9 +138,16 @@ function ensureAccount(login, callback)
 	config[login] = {
 	    'template': 'poseidon',
 	    'keyid': process.env['MANTA_KEY_ID'],
-	    'subusers': [],
-	    'roles': {},
-	    'policies': {}
+	    'subusers': [ 'testuser' ],
+	    'roles': {
+		'testrole': {
+		    'user': 'testuser',
+		    'policy': 'readall'
+		}
+	    },
+	    'policies': {
+		'readall': 'can readobject'
+	    }
 	};
 
 	/*
