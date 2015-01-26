@@ -1,5 +1,5 @@
 {
-	"instanceUuid": "{{ZONE_UUID}}",
+	"instanceUuid": "{{auto.ZONENAME}}",
 	"mantaComputeId": "worker-000",
 	"port": 80,
 	"manta": {
