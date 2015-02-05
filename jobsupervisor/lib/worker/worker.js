@@ -4667,7 +4667,7 @@ Worker.prototype.isAuthorized = function (dispatch)
 	    }
 	};
 
-	this.w_log.debug('authorize request', rqarg['context']);
+	this.w_log.debug(rqarg['context'], 'authorize request');
 
 	try {
 		err = null;

@@ -80,9 +80,9 @@ exports.ufdsMakeAccounts = ufdsMakeAccounts;
  *            "template": "poseidon",
  *            "keyid": "35:28:81:b7:c6:d9:b1:b3:0f:63:8d:7c:1d:d8:45:fe",
  *            "policies": {
- *                "readall": "can readobject",
- *                "readjob": "can readobject when fromjob=true",
- *                "readhttp": "can readobject when fromjob=false"
+ *                "readall": "can getobject",
+ *                "readjob": "can getobject when fromjob=true",
+ *                "readhttp": "can getobject when fromjob=false"
  *            },
  *            "roles": {
  *                "authzA1-readall": {

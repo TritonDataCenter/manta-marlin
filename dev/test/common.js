@@ -146,7 +146,7 @@ function ensureAccount(login, callback)
 		}
 	    },
 	    'policies': {
-		'readall': 'can readobject'
+		'readall': 'can getobject'
 	    }
 	};
 
