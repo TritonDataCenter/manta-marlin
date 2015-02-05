@@ -40,6 +40,52 @@ var mMaxConflictRetries = 5;	/* max "etag conflict" retries */
 exports.createBus = createBus;
 exports.mergeRecords = mergeRecords;
 
+/*
+ * The hardcoding of errors here is deeply regrettable.  See txnHandleError()
+ * for details.  The only error messages that should generally be included here
+ * are errors that (a) have no programmatic error code that we can use instead
+ * of the message to identify them, (b) correspond to transient errors (i.e.,
+ * errors for which the client could reasonably retry and expect success), and
+ * (c) indicate that the request in question *definitely* did not succeed.
+ * The goal is that Moray itself should allow us to identify cases (a) and (b)
+ * programmatically without resorting to looking at each error's message, but
+ * this table exists because that's not always the case.
+ *
+ * The third constraint is the trickiest.  Since some of the operations may not
+ * be idempotent (e.g., PUT with a specific etag), it's better to avoid assuming
+ * failure when we actually don't know whether the request succeeded or failed.
+ */
+var mGenericTransientErrors = {
+	/* Node errors (possibly remote), usually having name "Error" */
+	'connect ECONNREFUSED': true,
+	'connect ECONNRESET': true,
+
+	/*
+	 * See above.  This is one of those cases where we don't actually know
+	 * that the request didn't complete successfully.  However, we see this
+	 * case often enough in production that it's worth attempting to handle.
+	 * In the worst case, we'll retry a non-idempotent operation that
+	 * already succeeded, which should generally fail with an EtagConflict
+	 * error that (if we don't have conflict resolution logic already) may
+	 * cause Marlin to erroneously abandon the task.  If this happens, we'll
+	 * be able to diagnose it from the logs and have a better sense of how
+	 * to deal with that failure mode.
+	 */
+	'read ECONNRESET': true,
+
+	/* Moray errors. */
+	'no active connections': true,
+
+	/* Postgres errors, usually having name "error" */
+	'cannot execute SELECT FOR UPDATE in a read-only transaction': true,
+	'cannot execute UPDATE in a read-only transaction': true,
+	'deadlock detected': true,
+	/* JSSTYLED */
+	'remaining connection slots are reserved for non-replication superuser connections': true,
+	'sorry, too many clients already': true,
+	'the database system is starting up': true
+};
+
 function createBus(conf, options)
 {
 	mod_assert.equal(typeof (conf), 'object');
@@ -577,6 +623,8 @@ MorayBus.prototype.txnPut = function (client, txn, now)
 
 MorayBus.prototype.txnHandleError = function (txn, err)
 {
+	var err_transient = false;
+
 	switch (err.name) {
 	/*
 	 * It would be preferable if node-moray told us whether this was a
@@ -590,7 +638,24 @@ MorayBus.prototype.txnHandleError = function (txn, err)
 	case 'UnsolicitedMessageError':
 	case 'ConnectTimeoutError':	/* server-side */
 	case 'NoDatabasePeersError':
+	case 'PoolShuttingDownError':
 	case 'QueryTimeoutError':
+		err_transient = true;
+		break;
+
+	/*
+	 * This is even more regrettable because these don't even have proper
+	 * error codes.  See MORAY-182 and the comment near the top of this
+	 * file.
+	 */
+	case 'error':
+	case 'Error':
+		err_transient = mGenericTransientErrors.hasOwnProperty(
+		    err.message);
+		break;
+	}
+
+	if (err_transient) {
 		this.txnReportTransientError(txn, err);
 		this.txnRetry(txn);
 		return;
