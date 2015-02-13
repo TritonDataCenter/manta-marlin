@@ -157,7 +157,7 @@ function configure
 	lp_manta_logroot="$(json manta.logroot < $1)"
 
 	script="this.x = this.nameservers[Math.floor("
-	script="$script Math.random() * this.nameservers.length - 1)]"
+	script="$script Math.random() * this.nameservers.length)]"
 	lp_nameserver="$(json -e "$script" x < $1 2>/dev/null)"
 
 	[[ -n "$MANTA_USER" ]] || fail "config error: manta.user not present"
