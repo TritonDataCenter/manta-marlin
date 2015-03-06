@@ -168,8 +168,14 @@ function configure
 	    fail "config error: manta.logroot not present"
 
 	if [[ -n "$lp_nameserver" ]]; then
+		#
+		# Newer versions of dig(1) sometimes emit warnings to stdout,
+		# even with +short and even when the query is otherwise
+		# successful.  Ignore those here.  They start with ";;".
+		#
 		echo "will use nameserver $lp_nameserver to resolve $host"
-		host=$(dig $host @$lp_nameserver +short | head -1)
+		host=$(dig $host @$lp_nameserver +short | \
+		    grep -v '^;;' | head -1)
 		[[ -n "$host" ]] || \
 		    fail "failed to resolve $host from $lp_nameserver"
 	fi
