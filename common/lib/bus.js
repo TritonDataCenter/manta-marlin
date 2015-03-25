@@ -13,6 +13,7 @@
  */
 
 var mod_assert = require('assert');
+var mod_assertplus = require('assert-plus');
 var mod_events = require('events');
 var mod_url = require('url');
 var mod_util = require('util');
@@ -133,6 +134,8 @@ function MorayBus(morayconf, dnsconf, tunconf, options)
 
 	/* other operations */
 	this.mb_init_buckets = undefined;
+	this.mb_init_reindex = undefined;
+	this.mb_reindex = undefined;
 }
 
 mod_util.inherits(MorayBus, EventEmitter);
@@ -814,6 +817,12 @@ MorayBus.prototype.txnFini = function (txn, err, meta)
 	bus.flush();
 };
 
+/*
+ * initBuckets() is called by the consumer (in this case, the only consumer is
+ * the jobsupervisor) to update Moray with the latest version of the bucket
+ * schema.  This does not kick off any reindexing operations.  The caller should
+ * do that separately by calling initReindex().
+ */
 MorayBus.prototype.initBuckets = function (buckets, callback)
 {
 	mod_assert.equal(typeof (buckets), 'object');
@@ -865,6 +874,126 @@ MorayBus.prototype.initBucketsConnected = function (buckets, callback)
 		bus.mb_init_buckets = undefined;
 		callback(err);
 	});
+};
+
+/*
+ * initReindex() is called by the consumer (in this case, the jobsupervisor) to
+ * kick off any reindexing operations that are required for any of the buckets
+ * that we would have updated during initBuckets().
+ *
+ * For background: Moray keeps indexes for fields specified in the bucket
+ * schema.  Our caller normally has already called initBuckets(), which may have
+ * updated Moray with a new schema that specifies new fields (and therefore new
+ * indexes to be created).  But Moray does not proactively create these indexes.
+ * We have to do that by calling reindexObjects() until no more objects are
+ * found.  Until that completes, Moray will not use the field's index.
+ *
+ * This operation can in principle take a long time, depending on the number of
+ * rows in each bucket.  In a sense, the caller probably doesn't need to care
+ * when this operation completes, since Moray serves queries using the new
+ * fields without the index.  However, that path is potentially very expensive
+ * and can also impact correctness when limits are used (i.e., always).  As a
+ * result, the caller is advised to avoid making queries using the new fields
+ * until this operation has completed.  To avoid having to keep track of which
+ * fields are new, the caller just blocks startup on this completing.
+ */
+MorayBus.prototype.initReindex = function (buckets, callback)
+{
+	var bus = this;
+
+	mod_assert.ok(this.mb_client !== undefined);
+	mod_assert.ok(this.mb_init_reindex == undefined);
+	mod_assert.ok(this.mb_reindex == undefined);
+
+	this.mb_reindex = {};
+
+	mod_jsprim.forEachKey(buckets, function (k, bkt) {
+		var cfg = mod_schema.sBktConfigs[k];
+		if (cfg['nocreate'] === undefined ||
+		    cfg['nocreate'] === false) {
+			bus.mb_reindex[bkt] = {
+			    'bucket': bkt,
+			    'records_per_rq': 500,
+
+			    'nrqs': 0,
+			    'nerrs': 0,
+			    'nupdated': 0,
+			    'pending': false,
+			    'last_error': null,
+			    'last_count': 0,
+
+			    'last_start_time': null,
+			    'last_done_time': null,
+			    'last_done_ok_time': null,
+			    'last_error_time': null
+			};
+		}
+	});
+
+	this.mb_init_reindex = mod_vasync.forEachParallel({
+	    'inputs': Object.keys(this.mb_reindex),
+	    'func': this.reindexBucket.bind(this)
+	}, function (err) {
+		/* reindexBucket() continues until it succeeds. */
+		mod_assert.ok(!err);
+		callback();
+	});
+};
+
+MorayBus.prototype.reindexBucket = function (bucket, callback)
+{
+	var bus, client, info;
+
+	mod_assert.ok(this.mb_client !== undefined);
+
+	bus = this;
+	client = this.mb_client;
+	info = this.mb_reindex[bucket];
+	mod_assertplus.string(info.bucket);
+	mod_assertplus.equal(bucket, info.bucket);
+	mod_assertplus.bool(info.pending);
+	mod_assertplus.ok(!info.pending);
+
+	info.nrqs++;
+	info.pending = true;
+	info.last_start_time = new Date();
+	bus.mb_log.info(info, 'reindex suboperation: start');
+	client.reindexObjects(bucket, info.records_per_rq,
+	    function onReindexResponse(err, res) {
+		info.last_done_time = new Date();
+		info.pending = false;
+
+		if (!err && (res === null || res === undefined ||
+		    typeof (res.processed) != 'number')) {
+			err = new VError('moray server unexpectedly ' +
+			    'returned bad value: "%s"',
+			    mod_util.inspect(res));
+		}
+
+		if (err) {
+			bus.mb_log.warn(err, info,
+			    'reindex suboperation: error');
+			info.last_error = err;
+			info.last_error_time = info.last_done_time;
+			info.nerrs++;
+
+			setTimeout(function retryReindex() {
+				bus.reindexBucket(bucket, callback);
+			}, 3000);
+		} else {
+			bus.mb_log.info(res, 'reindex suboperation: done');
+			info.last_done_ok_time = info.last_done_time;
+			info.last_count = res.processed;
+			info.nupdated += res.processed;
+
+			if (res.processed === 0) {
+				bus.mb_log.info(info, 'reindex: all done');
+				callback();
+			} else {
+				bus.reindexBucket(bucket, callback);
+			}
+		}
+	    });
 };
 
 /*

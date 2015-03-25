@@ -618,13 +618,20 @@ Worker.prototype.start = function ()
 Worker.prototype.initMoray = function ()
 {
 	var worker = this;
+	var buckets = this.w_conf['buckets'];
 
 	this.w_log.info('initializing moray buckets');
 	this.w_init_barrier.start('moray');
-	this.w_bus.initBuckets(this.w_conf['buckets'], function (err) {
+	this.w_bus.initBuckets(buckets, function (err) {
 		if (!err) {
 			worker.w_log.info('moray buckets okay');
-			worker.initPoll();
+
+			worker.w_init_barrier.start('moray reindex');
+			worker.w_bus.initReindex(buckets, function () {
+				worker.w_init_barrier.done('moray reindex');
+				worker.initPoll();
+			});
+
 			worker.w_init_barrier.done('moray');
 			return;
 		}

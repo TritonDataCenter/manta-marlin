@@ -336,7 +336,7 @@ var sMorayJob = {
 		'timeDone': sDateTime,
 
 		/* internal wrasse state */
-		'archiver': sString,
+		'wrasse': sString,
 		'timeArchiveStarted': sDateTime,
 		'timeArchiveDone': sDateTime,
 
@@ -745,7 +745,7 @@ sBktConfigs['health'] = {
  */
 sBktConfigs['job'] = {
     'options': {
-	'version': 3
+	'version': 4
     },
     'index': {
 	'jobId':		{ 'type': 'string', 'unique': true },
@@ -757,7 +757,12 @@ sBktConfigs['job'] = {
 	'timeCancelled':	{ 'type': 'string' },
 	'timeInputDone':	{ 'type': 'string' },
 	'timeInputDoneRead':	{ 'type': 'string' },
-	'timeDone':		{ 'type': 'string' }
+	'timeDone':		{ 'type': 'string' },
+	'timeArchiveDone':      { 'type': 'string' },
+	'wrasse':		{ 'type': 'string' },
+
+	/* indexes for debugging only */
+	'timeArchiveStarted':   { 'type': 'string' }
     }
 };
 
