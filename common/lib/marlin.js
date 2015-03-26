@@ -80,6 +80,7 @@ exports.MarlinMeterReader = mod_meter.MarlinMeterReader;
  *    jobArchiveStart		Start a job archival (wrasse only)
  *    jobArchiveDone		Complete a job archival (wrasse only)
  *    jobArchiveHeartbeat	Heartbeats a job during archival (wrasse only)
+ *    jobArchiveReset		Resets archive status for a job
  *    jobValidate		Validate job input
  *    jobsList			List jobs matching criteria
  *    taskDone			Mark a task finished (dev only)
@@ -263,6 +264,7 @@ function MarlinApi(args)
 	    jobArchiveStart,
 	    jobArchiveDone,
 	    jobArchiveHeartbeat,
+	    jobArchiveReset,
 	    jobValidate,
 	    jobsList,
 	    taskDone,
@@ -605,7 +607,7 @@ function jobFetchAndUpdate(api, jobid, options, callback, updatef)
  * jobCancel(jobid, options, callback): Cancel job "jobid".
  *
  * Upon completion, invokes callback(err, record), where "record" is the
- * *previous* job record (which can be useful for warning on odd conditions.
+ * *previous* job record (which can be useful for warning on odd conditions).
  */
 function jobCancel(api, jobid, options, callback)
 {
@@ -1061,7 +1063,7 @@ function jobFetchFailedJobInputs(api, jobid, options)
  * options should include "wrasse" as the instance uuid
  *
  * Upon completion, invokes callback(err, record), where "record" is the
- * *previous* job record (which can be useful for warning on odd conditions.
+ * *previous* job record (which can be useful for warning on odd conditions).
  */
 function jobArchiveStart(api, jobid, options, callback)
 {
@@ -1079,7 +1081,7 @@ function jobArchiveStart(api, jobid, options, callback)
  * as completely archived.  Only updates the `timeArchiveDone` field.
  *
  * Upon completion, invokes callback(err, record), where "record" is the
- * *previous* job record (which can be useful for warning on odd conditions.
+ * *previous* job record (which can be useful for warning on odd conditions).
  */
 function jobArchiveDone(api, jobid, options, callback)
 {
@@ -1098,7 +1100,7 @@ function jobArchiveDone(api, jobid, options, callback)
  * a job (writes the job back so _time gets updated).
  *
  * Upon completion, invokes callback(err, record), where "record" is the
- * *previous* job record (which can be useful for warning on odd conditions.
+ * *previous* job record (which can be useful for warning on odd conditions).
  */
 function jobArchiveHeartbeat(api, jobid, options, callback)
 {
@@ -1107,7 +1109,38 @@ function jobArchiveHeartbeat(api, jobid, options, callback)
 		options = {};
 	}
 
-	jobFetchAndUpdate(api, jobid, options, callback,  function () {});
+	jobFetchAndUpdate(api, jobid, options, callback, function () {});
+}
+
+/*
+ * jobArchiveReset(job, options, callback): reset archive state.  This is used
+ * to work around MANTA-2611.
+ *
+ * Upon completion, invokes callback(err, record), where "record" is the
+ * *previous* job record (which can be useful for warning on odd conditions).
+ */
+function jobArchiveReset(api, jobid, options, callback)
+{
+	if (arguments.length == 3) {
+		callback = options;
+		options = {};
+	}
+
+	jobFetchAndUpdate(api, jobid, options, callback, function (job) {
+		if (job['timeArchiveDone']) {
+			return (new VError('job "%s": already archived',
+			    job['jobId']));
+		}
+
+		if (job['state'] != 'done') {
+			return (new VError('job "%s": expected state "done",' +
+			    ' but found "%s"', job['jobId'], job['state']));
+		}
+
+		delete (job['timeArchiveStarted']);
+		delete (job['wrasse']);
+		return (null);
+	});
 }
 
 /*

@@ -85,6 +85,7 @@ var msUsage = [
     '       mrjob endinput jobid',
     '       mrjob delete   jobid',
     '       mrjob taskdone [-c code] [-e message] [-o noutput] taskid',
+    '       mrjob archive-reset jobid',
     '',
     'DETAILED JOB INSPECTION',
     '',
@@ -242,6 +243,11 @@ var msHelp = [
     '',
     '       Lists information about the given task and its retries.',
     '',
+    '   archive-reset jobid',
+    '',
+    '       Resets archive-related properties (used to work around known ',
+    '       defects).',
+    '',
     '   archive-status',
     '',
     '       Shows information about job archival backlog.  This is not ',
@@ -303,6 +309,7 @@ var msCommands = {
     'delete': cmdDelete,
     'taskdone': cmdTaskdone,
     'taskhistory': cmdTaskhistory,
+    'archive-reset': cmdArchiveReset,
     'archive-status': cmdArchiveStatus
 };
 
@@ -1884,6 +1891,31 @@ function taskHistoryPrint(entry)
 	}
 
 	println('');
+}
+
+function cmdArchiveReset()
+{
+	if (process.argv.length != 4)
+		usage();
+
+	var opts = {
+	    'retry': {
+		'retries': 1,
+		'maxTimeout': 1000
+	    }
+	};
+
+	clientInit(function (api) {
+		api.jobArchiveReset(process.argv[3], opts, function (err) {
+			if (err) {
+				console.error('%s: %s', msArg0, err.message);
+				process.exit(1);
+			}
+
+			clientFini();
+		});
+	});
+
 }
 
 function cmdArchiveStatus()
