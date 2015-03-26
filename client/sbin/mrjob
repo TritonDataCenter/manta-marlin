@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* vim: set ft=javascript: */
 /*
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -6,7 +7,7 @@
  */
 
 /*
- * Copyright (c) 2014, Joyent, Inc.
+ * Copyright (c) 2015, Joyent, Inc.
  */
 
 /*
@@ -93,7 +94,12 @@ var msUsage = [
     '       mrjob log         jobid',
     '       mrjob outputs     jobid',
     '       mrjob retries     jobid',
-    '       mrjob taskhistory taskid'
+    '       mrjob taskhistory taskid',
+    '',
+    'SYSTEM HEALTH',
+    '',
+    '       mrjob archive-status',
+    ''
 ].join('\n');
 
 var msHelp = [
@@ -236,6 +242,12 @@ var msHelp = [
     '',
     '       Lists information about the given task and its retries.',
     '',
+    '   archive-status',
+    '',
+    '       Shows information about job archival backlog.  This is not ',
+    '       necessarily a consistent snapshot, so counters may not add up ',
+    '       exactly as expected.',
+    '',
     'MORAY',
     '',
     '   The remote Moray instance to use must be specified via the MORAY_URL ',
@@ -290,7 +302,8 @@ var msCommands = {
     'retries': cmdRetries,
     'delete': cmdDelete,
     'taskdone': cmdTaskdone,
-    'taskhistory': cmdTaskhistory
+    'taskhistory': cmdTaskhistory,
+    'archive-status': cmdArchiveStatus
 };
 
 /* default set of columns for list-of-jobs */
@@ -1870,6 +1883,109 @@ function taskHistoryPrint(entry)
 		break;
 	}
 
+	println('');
+}
+
+function cmdArchiveStatus()
+{
+	var parser, option;
+	var fetchoptions;
+
+	fetchoptions = {};
+	parser = new mod_getopt.BasicParser('l(force-legacy)',
+	    process.argv.slice(1));
+	while ((option = parser.getopt()) !== undefined) {
+		switch (option.option) {
+		case 'l':
+			fetchoptions.forceLegacyFetch = true;
+			break;
+
+		default:
+			usage();
+			break;
+		}
+	}
+
+	if (process.argv.length > parser.optind() + 1) {
+		usage();
+	}
+
+	clientInit(function (api) {
+		api.fetchArchiveStatus(fetchoptions, function (err, astat) {
+			if (err) {
+				console.error('%s: fetching archive status: %s',
+				    msArg0, err.message);
+				process.exit(1);
+			}
+
+			printArchiveStatus(astat);
+			clientFini();
+		});
+	});
+}
+
+function printArchiveStatus(astat)
+{
+	var total, done, archived, assigned, unassigned, now, j;
+
+	total = astat.nJobsTotal;
+	done = astat.nJobsDone;
+	archived = astat.nJobsArchived;
+	assigned = astat.nJobsAssigned;
+	unassigned = done - archived - assigned;
+	now = Date.now();
+
+	println('%-22s %6d', 'TOTAL JOBS', total);
+	[
+	    [ 'queued or running', total - done, 'job completion'],
+	    [ 'done, unassigned',  unassigned,   'wrasse assignment' ],
+	    [ 'done, assigned',    assigned,     'wrasse archival' ],
+	    [ 'done, archived',    archived,
+	        'expiration, then wrasse deletion' ]
+	].forEach(function (row) {
+		if (row.length == 2) {
+			println('    %-18s %6d', row[0] + ':', row[1]);
+		} else {
+			println('    %-18s %6d (waiting for %s)',
+			    row[0] + ':', row[1], row[2]);
+		}
+	});
+	println('');
+
+	if (astat.jobNextDelete !== null) {
+		j = astat.jobNextDelete;
+		println('NEXT JOB TO DELETE: archived at  %s (%9s ago)',
+		    j.timeArchiveDone,
+		    formatDuration(now - Date.parse(j.timeArchiveDone)));
+		println('                             job %s', j.id);
+	} else {
+		println('NEXT JOB TO DELETE: none');
+	}
+	println('');
+
+	if (astat.jobLastArchived !== null) {
+		j = astat.jobLastArchived;
+		println('LAST JOB ARCHIVED:           at  %s (%9s ago)',
+		    j.timeArchiveDone,
+		    formatDuration(now - Date.parse(j.timeArchiveDone)));
+		println('                             job %s', j.id);
+	} else {
+		println('LAST JOB ARCHIVED: none');
+	}
+	println('');
+
+	println('JOBS AWAITING ASSIGNMENT (%d jobs, %d oldest shown)',
+	    unassigned, astat.jobsArchiveUnassigned.length);
+	astat.jobsArchiveUnassigned.forEach(function (job) {
+		println('%s (job done: %s)', job.id, job.timeDone);
+	});
+	println('');
+
+	println('JOBS AWAITING ARCHIVE COMPLETION (%d jobs, %d oldest shown)',
+	    assigned, astat.jobsArchiveAssigned.length);
+	astat.jobsArchiveAssigned.forEach(function (job) {
+		println('%s (job done: %s)', job.id, job.timeDone);
+	});
 	println('');
 }
 

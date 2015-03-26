@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2014, Joyent, Inc.
+ * Copyright (c) 2015, Joyent, Inc.
  */
 
 /*
@@ -14,6 +14,7 @@
  */
 
 var mod_assert = require('assert');
+var mod_assertplus = require('assert-plus');
 var mod_events = require('events');
 var mod_fs = require('fs');
 var mod_moray = require('moray');
@@ -83,6 +84,9 @@ exports.MarlinMeterReader = mod_meter.MarlinMeterReader;
  *    jobsList			List jobs matching criteria
  *    taskDone			Mark a task finished (dev only)
  *    taskFetchHistory		Fetch history of a given task
+ *
+ *    fetchArchiveStatus	Fetch job archival status.  This should only
+ *    				be used for reporting to operators.
  *
  *    close			Close all open clients.
  *
@@ -232,6 +236,8 @@ function MarlinApi(args)
 
 	this.ma_buckets = mod_jsprim.deepCopy(conf['buckets']);
 	this.ma_images = conf['images'].slice(0);
+	this.ma_limit_archiving = 10;
+	this.ma_limit_archive_queued = 10;
 
 	/*
 	 * Purely for convenience, the actual implementations of these methods
@@ -260,7 +266,8 @@ function MarlinApi(args)
 	    jobValidate,
 	    jobsList,
 	    taskDone,
-	    taskFetchHistory
+	    taskFetchHistory,
+	    fetchArchiveStatus
 	];
 
 	methods.forEach(function (func) {
@@ -1913,4 +1920,353 @@ function taskHistorySanitize(entry)
 	});
 
 	return (rv);
+}
+
+/*
+ * Fetches the current status of job archival, in terms of overall counts and
+ * some example jobs.  The object passed to callback() contains:
+ *
+ *     nJobsTotal	(integer) count of total jobs in the bucket
+ *     nJobsDone	(integer) count of jobs in state "done"
+ *     nJobsArchived	(integer) count of jobs archived
+ *     nJobsAssigned    (integer) count of jobs assigned to a wrasse but not
+ *				  archived yet
+ *
+ *     jobNextDelete    (job)	  next job to be deleted
+ *     jobLastArchived  (job)     last job archived
+ *
+ *     jobsArchiveAssigned   (array of jobs, abridged)
+ *     jobsArchiveUnassigned (array of jobs, abridged)
+ *
+ * Each "job" above has:
+ *
+ *     "id"                  (string)
+ *     "timeDone"            (ISO8601 date string)
+ *     "timeArchiveStarted"  (ISO8601 date string, or null if not yet assigned)
+ *     "timeArchiveDone"     (ISO8601 date string, or null if not yet archived)
+ *
+ * Note that before MANTA-2348, we did not have indexes on the fields required
+ * to do this operation efficiently.  The first thing we do here is check for
+ * the presence of these indexes.  If we don't find them, we do a much more
+ * annoying, much more expensive check.
+ */
+function fetchArchiveStatus(api, options, callback)
+{
+	var bucket;
+
+	mod_assertplus.object(options, 'options');
+	mod_assertplus.func(callback, 'callback');
+
+	if (options.forceLegacyFetch) {
+		fetchArchiveStatusLegacy(api, callback);
+		return;
+	}
+
+	bucket = api.ma_buckets['job'];
+	api.ma_client.getBucket(bucket, function (err, config) {
+		if (err) {
+			callback(new VError(err, 'fetch bucket "%s"', bucket));
+			return;
+		}
+
+		if (config.index.hasOwnProperty('timeArchiveStarted') &&
+		    config.index.hasOwnProperty('timeArchiveDone') &&
+		    config.index.hasOwnProperty('wrasse')) {
+			fetchArchiveStatusWithIndexes(api, callback);
+		} else {
+			console.error('warning: archive-related indexes ' +
+			    'missing on bucket: "%s"', bucket);
+			fetchArchiveStatusLegacy(api, callback);
+		}
+	});
+}
+
+/*
+ * Implements fetchArchiveStatus() when indexes are available for all desired
+ * fields.  This is relatively cheap: we issue a number of separate queries to
+ * count jobs in various stages through the archive process, and we also fetch a
+ * few sample jobs from these stages.
+ */
+function fetchArchiveStatusWithIndexes(api, callback)
+{
+	var requests;
+
+	/*
+	 * This table describes a bunch of queries we want to make, and also
+	 * holds the results of each query.  We'll execute these in parallel
+	 * below and then take the results (by name) and form the desired output
+	 * object.
+	 */
+	requests = {
+	    'countAllJobs': {
+		'count': -1,
+		'results': null,
+	        'filter': 'jobId=*',
+		'limit': 1
+	    },
+	    'countDoneJobs': {
+		'count': -1,
+		'results': null,
+	        'filter': '(&(jobId=*)(state=done))',
+		'limit': 1
+	    },
+	    'listJobNextDelete': {
+		'count': -1,
+		'results': null,
+	        'filter': '(&(jobId=*)(state=done)(timeArchiveDone=*))',
+		'limit': 1,
+		'sort': {
+		    'attribute': 'timeArchiveDone',
+		    'order': 'asc'
+		}
+	    },
+	    'listJobLastArchived': {
+		'count': -1,
+		'results': null,
+	        'filter': '(&(jobId=*)(state=done)(timeArchiveDone=*))',
+		'limit': 1,
+		'sort': {
+		    'attribute': 'timeArchiveDone',
+		    'order': 'desc'
+		}
+	    },
+	    'listJobsArchiveAssigned': {
+		'count': -1,
+		'results': null,
+		'filter': '(&(jobId=*)(state=done)(!(timeArchiveDone=*))' +
+		    '(timeArchiveStarted=*))',
+		'limit': api.ma_limit_archiving,
+		'sort': {
+		    'attribute': 'timeDone',
+		    'order': 'asc'
+		}
+	    },
+	    'listJobsArchiveUnassigned': {
+		'count': -1,
+		'results': null,
+		'filter': '(&(jobId=*)(state=done)(!(timeArchiveStarted=*)))',
+		'limit': api.ma_limit_archive_queued,
+		'sort': {
+		    'attribute': 'timeDone',
+		    'order': 'asc'
+		}
+	    }
+	};
+
+	mod_vasync.forEachParallel({
+	    'inputs': Object.keys(requests),
+	    'func': function kickOffRequest(rqname, subcb) {
+		archiveStatusFind(api, rqname, requests[rqname], subcb);
+	    }
+	}, function (err, results) {
+		if (err) {
+			callback(err);
+			return;
+		}
+
+		archiveStatusFini(requests, callback);
+	});
+}
+
+/*
+ * Given a single request from the table in fetchArchiveStatusWithIndexes, make
+ * the request and save the results.
+ */
+function archiveStatusFind(api, rqname, rqinfo, callback)
+{
+	var bucket, options, req;
+
+	bucket = api.ma_buckets['job'];
+
+	options = {};
+	if (rqinfo.limit)
+		options.limit = rqinfo.limit;
+	if (rqinfo.sort)
+		options.sort = rqinfo.sort;
+
+	rqinfo.results = [];
+	req = api.ma_client.findObjects(bucket, rqinfo.filter, options);
+	req.on('error', function (err) {
+		callback(new VError(err, 'archive: %s', rqname));
+	});
+
+	req.on('record', function (record) {
+		var v = record.value;
+		rqinfo.count = record._count;
+		rqinfo.results.push(archiveJobInfo(v));
+	});
+
+	req.on('end', function () {
+		if (rqinfo.count == -1)
+			rqinfo.count = 0;
+		callback();
+	});
+}
+
+/*
+ * Take the combined results of each of the requests described in
+ * fetchArchiveStatusWithIndexes() and form the desired output object.
+ */
+function archiveStatusFini(requests, callback)
+{
+	var rv = {};
+	rv.nJobsTotal = requests['countAllJobs'].count;
+	rv.nJobsDone = requests['countDoneJobs'].count;
+	rv.nJobsArchived = requests['listJobNextDelete'].count;
+	rv.nJobsAssigned = requests['listJobsArchiveAssigned'].count;
+	rv.jobLastArchived = requests['listJobLastArchived'].results[0] || null;
+	rv.jobNextDelete = requests['listJobNextDelete'].results[0] || null;
+	rv.jobsArchiveAssigned = requests['listJobsArchiveAssigned'].results;
+	rv.jobsArchiveUnassigned =
+	    requests['listJobsArchiveUnassigned'].results;
+	callback(null, rv);
+}
+
+/*
+ * Implements fetchArchiveStatus() for the case where we don't have the
+ * requisite indexes.  This is a considerably more expensive operation, and it's
+ * also much more annoying to implement.  We cannot rely on Moray's _count field
+ * for any of the non-indexed fields (since that reflects the count reported by
+ * the database, which doesn't know about the additional constraints).  We also
+ * must specify a limit at least as large as the jobs table in order to make
+ * sure Moray actually finds all matching records.
+ */
+function fetchArchiveStatusLegacy(api, callback)
+{
+	var client, bucket, rv;
+	var countall, countdone;
+	var maxarchiving, maxqueued, archivefilter;
+
+	client = api.ma_client;
+	bucket = api.ma_buckets['job'];
+	rv = {
+	    'nJobsTotal': -1,
+	    'nJobsDone': -1,
+	    'nJobsArchived': 0,
+	    'nJobsAssigned': 0,
+	    'jobLastArchived': null,
+	    'jobNextDelete': null,
+	    'jobsArchiveAssigned': [],
+	    'jobsArchiveUnassigned': []
+	};
+
+	countall = {
+	    'count': -1,
+	    'results': null,
+	    'filter': 'jobId=*',
+	    'limit': 1
+	};
+
+	countdone = {
+	    'count': -1,
+	    'results': null,
+	    /* XXX commonize filters */
+	    'filter': '(&(jobId=*)(state=done))',
+	    'limit': 1
+	};
+
+	console.error('warning: using legacy approach (this is expensive)');
+
+	maxarchiving = api.ma_limit_archiving;
+	maxqueued = api.ma_limit_archive_queued;
+	archivefilter = '(&(jobId=*)(state=done))';
+
+	mod_vasync.waterfall([
+	    function fetchTotalCount(subcb) {
+		archiveStatusFind(api, 'countAllJobs', countall, subcb);
+	    },
+	    function fetchDoneCount(subcb) {
+		archiveStatusFind(api, 'countDoneJobs', countdone, subcb);
+	    },
+	    function fetchDoneJobs(subcb) {
+		var req;
+
+		console.error('warning: will scan through all %d completed ' +
+		    'jobs', countdone.count);
+		req = client.findObjects(bucket, archivefilter,
+		    { 'limit': countdone.count });
+		req.on('error', subcb);
+		req.on('record', function (record) {
+			var v = record['value'];
+
+			if (v.timeArchiveDone) {
+				rv.nJobsArchived++;
+				if (rv.jobLastArchived === null ||
+				    rv.jobLastArchived.timeArchiveDone <
+				    v.timeArchiveDone) {
+					rv.jobLastArchived = archiveJobInfo(v);
+				}
+
+				if (rv.jobNextDelete === null ||
+				    rv.jobNextDelete.timeArchiveDone >
+				    v.timeArchiveDone) {
+					rv.jobNextDelete = archiveJobInfo(v);
+				}
+			} else if (v.timeArchiveStarted) {
+				rv.nJobsAssigned++;
+				legacyListInsert(rv.jobsArchiveAssigned, v,
+				    v.timeDone, maxarchiving);
+			} else {
+				legacyListInsert(rv.jobsArchiveUnassigned, v,
+				    v.timeDone, maxqueued);
+			}
+		});
+		req.on('end', function () {
+			rv.nJobsTotal = countall.count;
+			rv.nJobsDone = countdone.count;
+			rv.jobsArchiveAssigned = rv.jobsArchiveAssigned.map(
+			    archiveJobInfo);
+			rv.jobsArchiveUnassigned = rv.jobsArchiveUnassigned.map(
+			    archiveJobInfo);
+			subcb(null, rv);
+		});
+	    }
+	], callback);
+}
+
+/*
+ * Given a job's "value" (from its Moray record), return a summary appropriate
+ * for fetchArchiveStatus().  See that function for the interface definition.
+ */
+function archiveJobInfo(v)
+{
+	mod_assertplus.string(v.jobId);
+	mod_assertplus.string(v.timeDone);
+
+	return ({
+	    'id': v['jobId'],
+	    'timeDone': v['timeDone'],
+	    'timeArchiveStarted': v['timeArchiveStarted'] || null,
+	    'timeArchiveDone': v['timeArchiveDone'] || null
+	});
+}
+
+/*
+ * Assuming "list" is a list of the first "maxlen" jobs in ascending order by
+ * "sortval", insert "v" into the list.  This is used to keep track of the N
+ * oldest jobs.  This is O(N), but N is bounded to a small constant (10).
+ */
+function legacyListInsert(list, v, sortval, maxlen)
+{
+	var i;
+
+	/*
+	 * We start from the back of the list since by far the most likely case
+	 * is that "sortval" is not going to be one of the first "maxlen"
+	 * values.
+	 */
+	mod_assertplus.string(sortval);
+	v._sortval = sortval;
+	for (i = list.length - 1; i >= 0; i--) {
+		if (sortval >= list[i]._sortval)
+			break;
+	}
+
+	if (list.length == maxlen && i == list.length - 1) {
+		return;
+	}
+
+	list.splice(i + 1, 0, v);
+	if (list.length > maxlen)
+		list.splice(maxlen, list.length - maxlen);
 }
