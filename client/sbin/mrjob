@@ -99,7 +99,7 @@ var msUsage = [
     '',
     'SYSTEM HEALTH',
     '',
-    '       mrjob archive-status',
+    '       mrjob archive-status [-j]',
     ''
 ].join('\n');
 
@@ -248,11 +248,13 @@ var msHelp = [
     '       Resets archive-related properties (used to work around known ',
     '       defects).',
     '',
-    '   archive-status',
+    '   archive-status [-j]',
     '',
     '       Shows information about job archival backlog.  This is not ',
     '       necessarily a consistent snapshot, so counters may not add up ',
     '       exactly as expected.',
+    '',
+    '       With -j / --json, emits output for programmatic consumption.',
     '',
     'MORAY',
     '',
@@ -1922,14 +1924,19 @@ function cmdArchiveStatus()
 {
 	var parser, option;
 	var fetchoptions;
+	var json = false;
 
 	fetchoptions = {};
-	parser = new mod_getopt.BasicParser('l(force-legacy)',
+	parser = new mod_getopt.BasicParser('l(force-legacy)j(json)',
 	    process.argv.slice(1));
 	while ((option = parser.getopt()) !== undefined) {
 		switch (option.option) {
 		case 'l':
 			fetchoptions.forceLegacyFetch = true;
+			break;
+
+		case 'j':
+			json = true;
 			break;
 
 		default:
@@ -1944,13 +1951,30 @@ function cmdArchiveStatus()
 
 	clientInit(function (api) {
 		api.fetchArchiveStatus(fetchoptions, function (err, astat) {
+			var out;
+
 			if (err) {
 				console.error('%s: fetching archive status: %s',
 				    msArg0, err.message);
 				process.exit(1);
 			}
 
-			printArchiveStatus(astat);
+			if (json) {
+				out = {};
+				[
+				    'nJobsTotal',
+				    'nJobsDone',
+				    'nJobsArchived',
+				    'nJobsAssigned',
+				    'jobNextDelete',
+				    'jobLastArchived'
+				].forEach(function (k) {
+					out[k] = astat[k];
+				});
+				console.log(JSON.stringify(out));
+			} else {
+				printArchiveStatus(astat);
+			}
 			clientFini();
 		});
 	});
