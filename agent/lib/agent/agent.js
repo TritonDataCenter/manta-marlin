@@ -847,6 +847,13 @@ mAgent.prototype.zoneMaybeTimeout = function (zone, now)
 	if (stream.s_group.g_multikey && !this.taskStreamHasWork(stream))
 		return (false);
 
+	/*
+	 * If the stream already has an error recorded, then it's being aborted,
+	 * and we don't want to bother checking for another error.
+	 */
+	if (stream.s_error !== undefined)
+		return (false);
+
 	return (true);
 };
 
