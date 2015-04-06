@@ -68,7 +68,7 @@ function not_much_more(value, bound)
 
 function in_range(value, expected)
 {
-	return (value >= expected && not_much_more(value, 2 * expected));
+	return (value >= expected && not_much_more(value, 3 * expected));
 }
 
 function print_checkpoint(cp)
@@ -107,7 +107,7 @@ spin_for(1500);
 checkpoint = stat.checkpoint();
 print_checkpoint(checkpoint);
 msects = hrtime2msec(checkpoint['metricsCumul']['hrtimestamp']);
-mod_assert.ok(msects >= 1500 && msects < 3000);
+mod_assert.ok(msects >= 1500 && msects < 4500);
 mod_assert.ok(in_range(elapsed(checkpoint['metricsCumul']), 1500 * MICROSEC));
 mod_assert.ok(!checkpoint.hasOwnProperty('metricsDelta'));
 
@@ -132,9 +132,9 @@ spin_for(2500);
 checkpoint = stat.checkpoint();
 print_checkpoint(checkpoint);
 msects = hrtime2msec(checkpoint['metricsDelta']['hrtimestamp']);
-mod_assert.ok(msects >= 2500 && msects < 4000);
+mod_assert.ok(msects >= 2500 && msects < 8000);
 msects = hrtime2msec(checkpoint['metricsCumul']['hrtimestamp']);
-mod_assert.ok(msects >= 4500 && msects < 6000);
+mod_assert.ok(msects >= 4500 && msects < 12000);
 mod_assert.ok(in_range(elapsed(checkpoint['metricsDelta']), 2500 * MICROSEC));
 mod_assert.ok(in_range(elapsed(checkpoint['metricsCumul']), 4500 * MICROSEC));
 
@@ -142,8 +142,9 @@ mod_assert.ok(in_range(elapsed(checkpoint['metricsCumul']), 4500 * MICROSEC));
  * Check that stat() shows since-zero stats.
  */
 stats = stat.stats();
+console.log('stats', stats);
 mod_assert.ok(hrtime2msec(stats['hrtimestamp']) >= 4500);
-mod_assert.ok(hrtime2msec(stats['hrtimestamp']) < 6000);
+mod_assert.ok(hrtime2msec(stats['hrtimestamp']) < 9000);
 mod_assert.ok(in_range(elapsed(stats), 4500 * MICROSEC));
 
 /*
