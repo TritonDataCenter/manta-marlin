@@ -51,6 +51,10 @@ var extrainputs_disperrors = [
     '/%user%/jobs/'
 ];
 
+/*
+ * Many of these errors should really be EM_INVALIDARGUMENT rather than
+ * EM_RESOURCENOTFOUND.  See MANTA-2470 for details.
+ */
 var errors_disperrors0 = [ {
     'phaseNum': '0',
     'what': 'phase 0: input "/notavalidusername/stor/obj1"',
@@ -99,8 +103,8 @@ var errors_disperrors0 = [ {
     'what': 'phase 0: input "/%user%/stor"',
     'input': '/%user%/stor',
     'p0input': '/%user%/stor',
-    'code': EM_INVALIDARGUMENT,
-    'message': 'objects of type "directory" are not supported: "/%user%/stor"'
+    'code': EM_RESOURCENOTFOUND,
+    'message': 'no such object: "/%user%/stor"'
 }, {
     'phaseNum': '0',
     'what': 'phase 0: input "/%user%/stor/"',
@@ -1077,6 +1081,9 @@ var testcases = {
 	 * Unlike the phase-0 errors above, many of these errors are duplicated
 	 * because we test both /foo and /foo/, and these both get normalized to
 	 * /foo by the "mcat" mechanism.
+	 *
+	 * As above, see MANTA-2470 for why many of these are
+	 * EM_RESOURCENOTFOUND instead of EM_INVALIDARGUMENT.
 	 */
 	'errors': errors_disperrors0.concat([ {
 	    'phaseNum': '1',
@@ -1133,18 +1140,16 @@ var testcases = {
 	        '(from job input "/%user%/stor/obj1")',
 	    'input': '/%user%/stor',
 	    'p0input': '/%user%/stor/obj1',
-	    'code': EM_INVALIDARGUMENT,
-	    'message': 'objects of type "directory" are not supported: ' +
-	        '"/%user%/stor"'
+	    'code': EM_RESOURCENOTFOUND,
+	    'message': 'no such object: "/%user%/stor"'
 	}, {
 	    'phaseNum': '1',
 	    'what': 'phase 1: input "/%user%/stor" ' +
 	        '(from job input "/%user%/stor/obj1")',
 	    'input': '/%user%/stor',
 	    'p0input': '/%user%/stor/obj1',
-	    'code': EM_INVALIDARGUMENT,
-	    'message': 'objects of type "directory" are not supported: ' +
-	        '"/%user%/stor"'
+	    'code': EM_RESOURCENOTFOUND,
+	    'message': 'no such object: "/%user%/stor"'
 	}, {
 	    'phaseNum': '1',
 	    'what': 'phase 1: input "/%user%/jobs" ' +

@@ -617,7 +617,7 @@ function jobSubmit(api, testspec, callback)
 
 		req.on('response', function (response) {
 			log.info('auth token response: %d',
-			    response.statusCode);
+			    response.statusCode, response.headers);
 
 			if (response.statusCode != 201) {
 				stepcb(new VError(
