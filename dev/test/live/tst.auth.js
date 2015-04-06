@@ -230,6 +230,7 @@ function initAuthzTestCases()
 	    'label': 'authzB1',		/* jobMauthzB1, jobRauthzB1 */
 	    'account_objects': authzAccountA,
 	    'account': authzAccountB,
+	    'user': authzUserB1,
 	    'ok': [ 0, 2 ]
 	}, {
 	    'label': 'authzOp',		/* jobMauthzOp, jobRauthzOp */
