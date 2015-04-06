@@ -33,7 +33,7 @@ var testcases = {
 	    ]
 	},
 	'inputs': [],
-	'timeout': 180 * 1000,
+	'timeout': 600 * 1000,
 	'expected_outputs': [ /%user%\/jobs\/.*\/stor\/reduce\.1\./ ],
 	'expected_output_content': [ '   1000    3000    9000\n' ],
 	'errors': []
@@ -49,7 +49,7 @@ var testcases = {
 	    ]
 	},
 	'inputs': [],
-	'timeout': 300 * 1000,
+	'timeout': 600 * 1000,
 	'expected_outputs': [ /%user%\/jobs\/.*\/stor\/reduce\.2\./ ],
 	'expected_output_content': [ '1000\n' ],
 	'errors': []

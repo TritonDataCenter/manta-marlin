@@ -846,14 +846,19 @@ function jobTestVerifyFetchOutputs(verify, callback)
 function jobTestVerifyFetchOutputContent(verify, callback)
 {
 	var manta = verify['api'].manta;
+	var concurrency = 15;
+	var errors = [];
+	var queue;
 
-	mod_vasync.forEachParallel({
-	    'inputs': verify['outputs'],
-	    'func': function (objectpath, subcallback) {
+	queue = mod_vasync.queue(
+	    function fetchOneOutputContent(objectpath, qcallback) {
 		log.info('fetching output "%s"', objectpath);
 		manta.get(objectpath, function (err, mantastream) {
 			if (err) {
-				subcallback(new VError(err, '%s', err.name));
+				log.warn(err, 'error fetching output "%s"',
+				    objectpath);
+				errors.push(err);
+				qcallback();
 				return;
 			}
 
@@ -864,11 +869,20 @@ function jobTestVerifyFetchOutputContent(verify, callback)
 
 			mantastream.on('end', function () {
 				verify['content'].push(data);
-				subcallback();
+				qcallback();
 			});
 		});
-	    }
-	}, callback);
+	    }, concurrency);
+	queue.on('end', function () {
+		if (errors.length === 0) {
+			callback();
+		} else {
+			callback(new VError(errors[0],
+			    'first of "%d" errors', errors.length));
+		}
+	});
+	verify['outputs'].forEach(function (o) { queue.push(o); });
+	queue.close();
 }
 
 /*
