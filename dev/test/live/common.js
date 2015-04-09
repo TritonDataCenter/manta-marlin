@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2014, Joyent, Inc.
+ * Copyright (c) 2015, Joyent, Inc.
  */
 
 /*
@@ -341,13 +341,68 @@ function jobTestRunner(testcases, argv, concurrency)
  */
 function jobTestCaseRun(api, testspec, options, callback)
 {
-	populateData(api.manta, testspec, testspec['inputs'], function (err) {
-		if (err)
-			callback(err);
-		else
-			jobTestSubmitAndVerify(
-			    api, testspec, options, callback);
+	var login, inputs, dirs, objects;
+
+	login = testspec['account_objects'] || testspec['account'] ||
+	    DEFAULT_USER;
+
+	/*
+	 * Expand the named parameters in all of the inputs.
+	 */
+	inputs = testspec['inputs'].map(function (input) {
+		return (replaceParams(testspec, input));
 	});
+
+	/*
+	 * Partition out the objects (as opposed to directories) from the list
+	 * of inputs.  Sort them and uniquify them.
+	 */
+	objects = inputs.filter(function (input) {
+		return (!mod_jsprim.endsWith(input, 'dir'));
+	}).sort();
+	objects = objects.filter(function (objname, i) {
+		return (i === 0 || objname != objects[i - 1]);
+	});
+
+	/*
+	 * Now partition out the directories from the list of inputs.  Combine
+	 * that with the dirnames of the objects (found above).  This is the
+	 * full list of directories we need to precreate.  As with objects, we
+	 * sort and uniquify them.
+	 */
+	dirs = inputs.filter(function (input) {
+		return (mod_jsprim.endsWith(input, 'dir'));
+	}).concat(objects.map(function (input) {
+		return (mod_path.dirname(input));
+	})).sort();
+	dirs = dirs.filter(function (dirname, i) {
+		return (i === 0 || dirname != dirs[i - 1]);
+	});
+
+	mod_vasync.waterfall([
+	    function ensureAccount(subcallback) {
+		log.info('making sure account "%s" exists', login);
+		mod_testcommon.ensureAccount(login,
+		    function (err) { subcallback(err); });
+	    },
+	    function populateDirs(subcallback) {
+		log.info('populating directories', dirs);
+		mod_vasync.forEachPipeline({
+		    'inputs': dirs,
+		    'func': function doMkdir(dirname, subsubcb) {
+			api.manta.mkdirp(dirname, subsubcb);
+		    }
+		}, function (err) { subcallback(err); });
+	    },
+	    function populateInputs(subcallback) {
+		log.info('populating objects', objects);
+		populateData(api.manta, testspec, objects, subcallback);
+	    },
+	    function submitAndVerify(subcallback) {
+		log.info('submitting job');
+		jobTestSubmitAndVerify(api, testspec, options, subcallback);
+	    }
+	], callback);
 }
 
 /*
@@ -363,54 +418,22 @@ function jobTestCaseRun(api, testspec, options, callback)
  */
 function populateData(manta, testspec, keys, callback)
 {
-	var login;
-
-	login = testspec['account_objects'] || testspec['account'] ||
-	    DEFAULT_USER;
-	log.info('populating keys', keys);
+	var final_err, dirs, queue;
 
 	if (keys.length === 0) {
-		mod_testcommon.ensureAccount(login, function (err) {
-			callback(err);
-		});
+		setImmediate(callback);
 		return;
 	}
 
-	var final_err;
-	var dirs = keys.filter(
+	dirs = keys.filter(
 	    function (key) { return (mod_jsprim.endsWith(key, 'dir')); });
-	keys = keys.filter(
-	    function (key) { return (!mod_jsprim.endsWith(key, 'dir')); });
-	var done = {};
-
-	var queue = mod_vasync.queuev({
+	mod_assert.ok(dirs.length === 0);
+	queue = mod_vasync.queuev({
 	    'concurrency': 15,
 	    'worker': function (key, subcallback) {
 		    if (final_err) {
 			    subcallback();
 			    return;
-		    }
-
-		    if (done[key]) {
-			    subcallback();
-			    return;
-		    }
-
-		    done[key] = true;
-		    key = replaceParams(testspec, key);
-
-		    if (mod_jsprim.endsWith(key, 'dir')) {
-			manta.mkdir(key, function (err) {
-				/* Work around node-manta#24. */
-				if (err && err.name == 'ConcurrentRequestError')
-					log.warn(
-					    'ignoring ConcurrentRequestError');
-				else if (err)
-					final_err = err;
-
-				subcallback();
-			});
-			return;
 		    }
 
 		    var data;
@@ -423,49 +446,20 @@ function populateData(manta, testspec, keys, callback)
 		    var stream = new StringInputStream(data);
 
 		    log.info('PUT key "%s"', key);
-
 		    manta.put(key, stream, { 'size': data.length },
 		        function (err) {
-				/* Work around node-manta#24. */
-				if (err && err.name == 'ConcurrentRequestError')
-					log.warn(
-					    'ignoring ConcurrentRequestError');
-				else if (err)
+				if (err)
 					final_err = err;
-
 				subcallback();
 			});
 	    }
 	});
 
-	var putKeys = function (keylist) {
-		keylist.forEach(function (key) {
-			if (key.indexOf('notavalid') == -1)
-				queue.push(key);
-		});
-	};
-
-	mod_testcommon.ensureAccount(login, function (err) {
-		if (err) {
-			callback(err);
-		} else {
-			if (dirs.length > 0) {
-				putKeys(dirs);
-			} else {
-				putKeys(keys);
-				keys = [];
-			}
-		}
+	queue.drain = function () { callback(final_err); };
+	keys.forEach(function (key) {
+		if (key.indexOf('notavalid') == -1)
+			queue.push(key);
 	});
-
-	queue.drain = function () {
-		if (keys.length > 0) {
-			putKeys(keys);
-			keys = [];
-		} else {
-			callback(final_err);
-		}
-	};
 }
 
 /*

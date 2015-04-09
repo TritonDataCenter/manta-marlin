@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2014, Joyent, Inc.
+ * Copyright (c) 2015, Joyent, Inc.
  */
 
 /*
@@ -214,6 +214,7 @@ var mod_bus = require('../bus');
 var mod_libmanta = require('libmanta');
 var mod_mautil = require('../util');
 var mod_meter = require('../meter');
+var mod_pathabbr = require('../path-abbrev');
 var mod_provider = require('../provider');
 var mod_schema = require('../schema');
 var mod_agent_zone = require('./zone');
@@ -2736,7 +2737,7 @@ mAgent.prototype.taskStreamAdvance = function (stream, callback)
 {
 	var agent = this;
 	var stop, now, task, group, taskvalue, zone;
-	var rootkeypath, localkeypath;
+	var rootkeypath, abbrpath, localkeypath;
 
 	mod_assert.ok(!stream.s_pending,
 	    'concurrent calls to maTaskStreamAdvance');
@@ -2806,22 +2807,50 @@ mAgent.prototype.taskStreamAdvance = function (stream, callback)
 		return;
 	}
 
+	/*
+	 * Determine the path under the hyprlofs mountpoint where we'll map the
+	 * file representing the contents of the user's object.  This is usually
+	 * the same as object's path in Manta, but may be modified if the name
+	 * violates system or filesystem constraints (e.g., NAME_MAX or
+	 * PATH_MAX).  Note that we don't have to worry about colliding with
+	 * other file or object names because we only map one file in at a time,
+	 * and we still use the object name everywhere else.  Users should be
+	 * using MANTA_INPUT_FILE (rather than assuming the path is related to
+	 * MANTA_INPUT_OBJECT), so in theory, we should be able to pick anything
+	 * at all.
+	 */
 	taskvalue = task.t_record['value'];
-
-	if (taskvalue['input'][0] != '/') {
+	abbrpath = mod_pathabbr.pathAbbreviate({ 'path': taskvalue['input'] });
+	if (abbrpath instanceof Error) {
 		/*
 		 * This should be impossible because it would have been caught
 		 * by the worker, but we handle it defensively.
 		 */
 		this.taskMarkFailed(task, now, {
 		    'code': EM_INVALIDARGUMENT,
-		    'message': 'malformed object name'
+		    'message': abbrpath.message
 		});
 		this.taskDoneRunning(task, callback);
 		return;
 	}
 
-	localkeypath = taskvalue['input'].substr(1);
+	if (abbrpath.shortened) {
+		stream.s_log.warn({
+		    'taskId': taskvalue['taskId'],
+		    'origPath': taskvalue['input'],
+		    'shorterPath': abbrpath.abbrpath
+		}, 'truncated very long file path');
+	}
+
+	/*
+	 * Chop the leading '/' so that we have a path relative to the hyprlofs
+	 * root.
+	 */
+	mod_assert.ok(abbrpath.abbrpath.charAt(0) == '/');
+	localkeypath = abbrpath.abbrpath.substr(1);
+	task.t_localfile = mod_path.join(
+	    this.ma_zones[stream.s_machine].z_manta_root, localkeypath);
+	task.t_shortened = abbrpath.shortened;
 
 	if (taskvalue['objectid'] == '/dev/null') {
 		rootkeypath = maZeroByteFilename;
@@ -2894,8 +2923,9 @@ mAgent.prototype.taskStreamAdvance = function (stream, callback)
 			 * adding mappings, either of which would likely require
 			 * engineering support.
 			 */
-			suberr = new VError(suberr, 'failed to load %j from %s',
-			    taskvalue, rootkeypath);
+			suberr = new VError(suberr, 'failed to load %j from ' +
+			    '%s (at local path "%s")', taskvalue, rootkeypath,
+			    localkeypath);
 			stream.s_log.error(suberr);
 			agent.taskMarkFailed(task, new Date(), {
 			    'code': EM_RESOURCENOTFOUND,
@@ -3827,14 +3857,25 @@ function maTaskApiFail(request, response, next)
 	if (!error['message'] || typeof (error['message']) != 'string')
 		error['message'] = 'no message given';
 
-	/*
-	 * If the zone reports that there were anonymous allocation failures,
-	 * append a note to the recorded error message.  This greatly helps
-	 * debugging programs which don't gracefully handle allocation failures.
-	 */
-	if (agent.streamSawAllocFailures(stream))
+	if (agent.streamSawAllocFailures(stream)) {
+		/*
+		 * If the zone reports that there were anonymous allocation
+		 * failures, append a note to the recorded error message.  This
+		 * greatly helps debugging programs which don't gracefully
+		 * handle allocation failures.
+		 */
 		error['message'] +=
 		    ' (WARNING: ran out of memory during execution)';
+	} else if (stream.s_task && stream.s_task.t_shortened) {
+		/*
+		 * Similarly, if we had to shorten the filename because their
+		 * object name was too long, let the user know.  This may give
+		 * them a hint that they're depending on the object's filename.
+		 */
+		error['message'] += ' (WARNING: input file was mapped at ' +
+		    'an unusual location because the object name was too ' +
+		    'long)';
+	}
 
 	now = new Date();
 
@@ -4109,6 +4150,8 @@ function maTask(record, agent)
 	this.t_nout_pending = 0;		/* nr of pending taskoutputs */
 	this.t_done = false;			/* task ended */
 	this.t_async_error = undefined;		/* for tasks done early */
+	this.t_localfile = null;		/* local file path */
+	this.t_shortened = false;		/* local path was shortened */
 }
 
 /*
@@ -4207,7 +4250,7 @@ function maTaskStream(agent, stream_id, group, machine)
 	this.s_load_assets = undefined;		/* assets vasync cookie */
 	this.s_pipeline = undefined;		/* dispatch vasync cookie */
 	this.s_error = undefined;		/* stream error */
-	this.s_statvfs = false;
+	this.s_statvfs = false;			/* statvfs pending */
 
 	/* used to serialize "commit" and "fail" */
 	this.s_pending = false;
@@ -4401,10 +4444,10 @@ maTaskStream.prototype.streamState = function (agent)
 		rv['taskInputKeys'] = [ task.t_record['value']['input'] ];
 		rv['taskInputDone'] = true;
 
-		if (group.g_map_keys)
-			rv['taskInputFile'] = mod_path.join(
-			    agent.ma_zones[this.s_machine].z_manta_root,
-			    rv['taskInputKeys'][0]);
+		if (group.g_map_keys) {
+			mod_assert.equal(typeof (task.t_localfile), 'string');
+			rv['taskInputFile'] = task.t_localfile;
+		}
 	}
 
 	return (rv);
