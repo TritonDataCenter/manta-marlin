@@ -1719,6 +1719,107 @@ var testcases = {
 	} ]
     },
 
+    'jobMinitFailMulti': {
+	/*
+	 * Tests for alternate TaskInitErrors.  This is a little tricky to
+	 * exercise: we need to make sure there are tasks queued at the agent
+	 * for this job at the point when at least one of the other tasks
+	 * failed.  We just submit a relatively large number of tasks and expect
+	 * at least one of each kind.
+	 */
+	'job': {
+	    'phases': [ {
+		'type': 'map',
+		'init': 'ls /nonexistent',
+		'exec': 'wc'
+	    } ]
+	},
+	'inputs': [ '/%user%/stor/obj1' ],
+	'timeout': 180 * 1000,
+	'expected_outputs': [],
+	'skip_input_end': true,
+	'errors': [],
+	'post_submit': function (api, jobid) {
+		var maxinputs = 150;
+
+		mod_vasync.waterfall([
+		    function fetchInput(callback) {
+			var req, inputs;
+
+			inputs = [];
+			log.info('fetching input');
+			req = api.jobFetchInputs(jobid);
+			req.on('error', callback);
+			req.on('key', function (key) { inputs.push(key); });
+			req.on('end', function () {
+				log.info('found inputs', inputs);
+				mod_assert.equal(inputs.length, 1);
+				callback(null, inputs[0]);
+			});
+		    },
+
+		    function dupInputs(input, callback) {
+			var queue, j;
+
+			log.info('duplicating inputs');
+			queue = mod_vasync.queue(function addKey(key, qcb) {
+				testcases['jobMinitFailMulti'].inputs.push(key);
+				api.jobAddKey(jobid, key, qcb);
+			}, 15);
+			for (j = 0; j < maxinputs - 1; j++)
+				queue.push(input);
+			queue.on('drain', function () { callback(); });
+		    },
+
+		    function endInput(callback) {
+			log.info('ending input');
+			api.jobEndInput(jobid, { 'retry': { 'retries': 3 } },
+			    callback);
+		    }
+		], function (err) {
+			if (err)
+				throw (err);
+		});
+	},
+	'error_count': [ 150, 150 ],
+	'verify': function (verify) {
+		var originit = 0;
+		var cascadeinit = 0;
+
+		log.info('verifying errors');
+		verify['errors'].forEach(function (err) {
+			mod_assert.equal(err.phaseNum, '0');
+			mod_assert.ok(
+			    /* JSSTYLED */
+			    /phase 0: input "\/.*\/stor\/obj1"/.test(err.what));
+			mod_assert.ok(/\/.*\/stor\/obj1/.test(err.input));
+			mod_assert.ok(/\/.*\/stor\/obj1/.test(err.p0input));
+			mod_assert.equal(err.code, EM_TASKINIT);
+
+			if (err.message == 'user command exited with code 2') {
+				originit++;
+			} else {
+				mod_assert.equal(err.message,
+				    'task aborted because a previous task ' +
+				    'failed to initialize (see other ' +
+				    'errors for details)');
+				cascadeinit++;
+			}
+		});
+
+		/*
+		 * We should have at least one of each kind.
+		 */
+		log.info({
+		    'original errors': originit,
+		    'cascade errors': cascadeinit
+		}, 'found errors');
+		mod_assert.ok(originit > 0);
+		mod_assert.ok(cascadeinit > 0);
+		mod_assert.equal(150, originit + cascadeinit);
+	}
+    },
+
     'jobMinitCore': {
 	'job': {
 	    'phases': [ {

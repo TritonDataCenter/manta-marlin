@@ -792,8 +792,10 @@ function jobTestVerifyFetchJob(verify, callback)
 			err.retry = true;
 		}
 
-		if (!err)
+		if (!err) {
+			log.info('job has completed');
 			verify['job'] = job['value'];
+		}
 
 		callback(err);
 	});

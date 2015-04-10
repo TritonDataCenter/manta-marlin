@@ -295,6 +295,12 @@ var maCancelError = {
     'message': 'job was cancelled'
 };
 
+var maOtherTaskInitFailedError = {
+    'code': EM_TASKINIT,
+    'message': 'task aborted because a previous task failed to initialize ' +
+	'(see other errors for details)'
+};
+
 /*
  * These fields of task records may be changed by the supervisor after we've
  * read the record.  When we merge our own changes, we must be sure to preserve
@@ -2025,13 +2031,20 @@ mAgent.prototype.taskStreamAbort = function (stream, error)
  * will keep retrying many times, which is probably a big waste.  We may want to
  * abort the whole job in this case.
  */
-mAgent.prototype.taskGroupError = function (group, error)
+mAgent.prototype.taskGroupError = function (group, error, firsterror)
 {
 	var agent = this;
 	var now = new Date();
 	var tasks = group.g_tasks;
+	var task0;
 
 	group.g_tasks = [];
+
+	if (firsterror !== undefined && tasks.length > 0) {
+		task0 = tasks.shift();
+		agent.taskMarkFailed(task0, now, firsterror);
+		agent.taskRemove(task0);
+	}
 
 	tasks.forEach(function (task) {
 		agent.taskMarkFailed(task, now, error);
@@ -2765,9 +2778,38 @@ mAgent.prototype.taskStreamAdvance = function (stream, callback)
 	if (stop || stream.s_group.g_tasks.length === 0) {
 		if (stream.s_error &&
 		    stream.s_error['code'] == EM_TASKINIT) {
+			/*
+			 * Given that this stream is dead as a result of a
+			 * TaskInitError, we'll proactively abort all tasks in
+			 * the task group, since it's unlikely any of them will
+			 * be able to initialize properly.  But there are two
+			 * cases for error reporting:
+			 *
+			 * (1) The stream was processing a task.  This commonly
+			 *     means the task had an "init" script that failed.
+			 *     In this case, the specific TaskInitError was
+			 *     already associated with the task that had failed.
+			 *     We don't want to apply the same error to other
+			 *     tasks.  For example, the error may say "init
+			 *     script exited with status 2", but that only
+			 *     happened once, not for all the other queued
+			 *     tasks.  For those tasks, we indicate that the
+			 *     task failed because some other task failed to
+			 *     initialized.
+			 *
+			 * (2) The stream was not processing a task.  This
+			 *     commonly means that we failed to fetch an asset
+			 *     or the like.  In this case, the error was not
+			 *     reported on a task already, so we want the
+			 *     _first_ task to have that error, but subsequent
+			 *     tasks should have the OtherTaskInitFailedError
+			 *     mentioned in case 1.
+			 */
 			stream.s_log.warn('failed to initialize stream; ' +
 			    'assuming task group failure');
-			this.taskGroupError(stream.s_group, stream.s_error);
+			this.taskGroupError(stream.s_group,
+			    maOtherTaskInitFailedError,
+			    task === undefined ? stream.s_error : undefined);
 		}
 
 		if (stop)
