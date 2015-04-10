@@ -2072,6 +2072,47 @@ var testcases = {
 	    'code': EM_USERTASK,
 	    'message': 'user command exited with code 1'
 	} ]
+    },
+
+    'jobMcanceledRequests': {
+	/*
+	 * This job generates a 1MB object, uploads it, and then executes
+	 * a bunch of aborted downloads for it.  This is a regression test for
+	 * past known issues around the way the lackey and agent proxy HTTP
+	 * requests to the front door.
+	 *
+	 * We deliberately don't use "pipefail" here because many of the pieces
+	 * of this pipeline will fail with EPIPE, and that's part of the point.
+	 */
+	'job': {
+	    'phases': [ {
+	        'type': 'map',
+		'exec': [
+		    'set -o errexit',
+		    'set -o xtrace',
+		    'objname="$(yes 123456789012345 | head -n 65536 | mpipe)"',
+		    '# Try this once to make sure that worked.',
+		    'curl -sS $MANTA_URL/$objname | wc',
+		    'for (( i = 0; i < 100; i++ )) {',
+		    '    sleep 0.1',
+		    '    echo "request $i"',
+		    '    #',
+		    '    # This both terminates the HTTP request early and',
+		    '    # causes the command to exit success, both by ',
+		    '    # design.',
+		    '    #',
+		    '    curl -sS $MANTA_URL/$objname | true',
+		    '}',
+		    'exit 0'
+		].join('\n')
+	    } ]
+	},
+	'inputs': [ '/%user%/stor/obj1' ],
+	'timeout': 60 * 1000,
+	'expected_outputs': [
+	    /\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
+	],
+	'errors': []
     }
 };
 

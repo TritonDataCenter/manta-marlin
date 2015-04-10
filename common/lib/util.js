@@ -145,7 +145,7 @@ function maHttpProxy(args, callback)
 	});
 	response.on('close', function () {
 		request.log.warn('response closed unexpectedly');
-		subrequest.destroy();
+		subrequest.abort();
 	});
 
 	if (server_args['headers']['expect'] == '100-continue') {
@@ -180,11 +180,6 @@ function maHttpProxy(args, callback)
 
 		if (response.statusCode < 400 && continuefunc)
 			continuefunc();
-
-		response.on('close', function () {
-			request.log.warn('response closed unexpectedly');
-			subresponse.destroy();
-		});
 	});
 
 	return (state);
