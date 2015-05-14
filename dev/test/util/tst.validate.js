@@ -46,6 +46,8 @@ var test_cases = [
       { 'name': '' } ],
     [ /property "phases".*number value found.*array is required/,
       { 'name': '', 'phases': 3 } ],
+    [ /property "phases":.*array/,
+      { 'name': '', 'phases': {} } ],
     [ /property "phases":.*minimum/,
       { 'name': '', 'phases': [] } ],
     [ /phases\[0\].exec.*required/,
@@ -75,9 +77,19 @@ var test_cases = [
 
     /* bad semantic values */
     [ /property "phases\[0\].image": unsupported version: "0.0.1"/,
-      { 'name': '', 'phases': [ { 'exec': 'wc', 'image': '0.0.1' } ] } ]
+      { 'name': '', 'phases': [ { 'exec': 'wc', 'image': '0.0.1' } ] } ],
+
+    /* null values */
+    [ /job must not be null/, null ],
+    [ /property "phases":.*array/, { 'name': 'foobar', 'phases': null } ],
+    [ /property "phases\[0\]": must not be null/,
+        { 'name': 'foobar', 'phases': [ null ] } ],
+    [ /property "phases\[0\].assets.*array/,
+        { 'name': 'foobar', 'phases': [ { 'exec': 'asdf', 'assets': null } ] } ],
+    [ /property "phases\[0\].disk.*number/,
+        { 'name': 'foobar', 'phases': [ { 'exec': 'asdf', 'disk': null } ] } ]
 ];
-/* END JSSSTYLED */
+/* END JSSTYLED */
 
 var client;
 mod_test.pipeline({ 'funcs': [ setup, run, teardown ] });
@@ -98,13 +110,18 @@ function run(_, next)
 			if (err === null) {
 				mod_test.log.info('validated okay');
 				mod_assert.ok(testcase[0] === null,
-				    'test case validated, but expected an error');
+				    'test case validated, ' +
+				    'but expected an error');
 			} else {
-				mod_test.log.info('validate failed', err.message);
+				mod_test.log.info('validate failed',
+				    err.message);
 				mod_assert.ok(testcase[0] !== null,
-				    'test case failed, but expected it to validate');
+				    'test case failed, but ' +
+				    'expected it to validate');
 				mod_assert.ok(testcase[0].test(err.message),
-				    'expected error message ' + testcase[0].source);
+				    'expected error message "' +
+				    testcase[0].source + '", but found ' +
+				    '"' + err.message  + '"');
 			}
 		});
 	});

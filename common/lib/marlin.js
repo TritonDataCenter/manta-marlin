@@ -1306,8 +1306,23 @@ function jobValidate(api, job, isprivileged)
 	if (error)
 		return (error);
 
+	/*
+	 * Work around json-schema#46, which allows "null" to pass for objects
+	 * with required properties.  Note that this only applies to properties
+	 * with type "object" (as in "phases[0]"), not "array" (as in "phases"
+	 * or "phases[i].assets").
+	 */
+	if (job === null)
+		return (new Error('job must not be null'));
+
 	for (i = 0; i < job['phases'].length; i++) {
 		ph = job['phases'][i];
+
+		/* See comment above about json-schema#46. */
+		if (ph === null)
+			return (new VError(
+			    'property "phases[%d]": must not be null', i));
+
 		if (!ph.hasOwnProperty('image'))
 			continue;
 
