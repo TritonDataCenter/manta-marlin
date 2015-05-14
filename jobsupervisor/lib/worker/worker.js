@@ -1406,7 +1406,7 @@ Worker.prototype.onRecordTaskCommit = function (record, barrier, job, phase,
 
 			if (nretries > 0) {
 				phase.p_nretryneeded--;
-				mod_assert.ok(phase.p_nretryneeded > 0);
+				mod_assert.ok(phase.p_nretryneeded >= 0);
 			}
 		}
 
