@@ -1479,7 +1479,7 @@ var testcases = {
 	'job': {
 	    'phases': [ {
 		'type': 'map',
-		'exec': 'env | egrep "^(MANTA_|HOME)" | sort'
+		'exec': 'env | egrep "^(MANTA_|HOME|DTRACE_)" | sort'
 	    } ]
 	},
 	'inputs': [ '/%user%/stor/obj1' ],
@@ -1489,6 +1489,7 @@ var testcases = {
 	],
 	'errors': [],
 	'expected_output_content': [
+	    'DTRACE_DOF_INIT_DISABLE=1\n' +
 	    'HOME=/root\n' +
 	    'MANTA_INPUT_FILE=/manta/%user%/stor/obj1\n' +
 	    'MANTA_INPUT_OBJECT=/%user%/stor/obj1\n' +
@@ -1507,7 +1508,8 @@ var testcases = {
 		'type': 'reduce',
 		'count': 3,
 		/* Workaround MANTA-992 */
-		'exec': 'cat > /dev/null; env | egrep "^(MANTA_|HOME)" | sort'
+		'exec': 'cat > /dev/null; env | ' +
+		    'egrep "^(MANTA_|HOME|DTRACE_)" | sort'
 	    } ]
 	},
 	'inputs': [],
@@ -1519,6 +1521,7 @@ var testcases = {
 	],
 	'errors': [],
 	'expected_output_content': [
+	    'DTRACE_DOF_INIT_DISABLE=1\n' +
 	    'HOME=/root\n' +
 	    'MANTA_JOB_ID=$jobid\n' +
 	    'MANTA_NO_AUTH=true\n' +
@@ -1527,6 +1530,7 @@ var testcases = {
 	    'MANTA_URL=http://localhost:80/\n' +
 	    'MANTA_USER=%user%\n',
 
+	    'DTRACE_DOF_INIT_DISABLE=1\n' +
 	    'HOME=/root\n' +
 	    'MANTA_JOB_ID=$jobid\n' +
 	    'MANTA_NO_AUTH=true\n' +
@@ -1535,6 +1539,7 @@ var testcases = {
 	    'MANTA_URL=http://localhost:80/\n' +
 	    'MANTA_USER=%user%\n',
 
+	    'DTRACE_DOF_INIT_DISABLE=1\n' +
 	    'HOME=/root\n' +
 	    'MANTA_JOB_ID=$jobid\n' +
 	    'MANTA_NO_AUTH=true\n' +

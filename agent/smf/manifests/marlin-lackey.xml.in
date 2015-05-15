@@ -20,7 +20,13 @@
 	<service_fmri value="svc:/system/filesystem/local" />
 </dependency>
 
-<exec_method type="method" name="start" exec="/opt/marlin/build/node/bin/node --abort-on-uncaught-exception /opt/marlin/lib/agent/lackey.js /var/run/.marlin.$(zonename).sock &amp;" timeout_seconds="30" />
+<exec_method type="method" name="start" exec="/opt/marlin/build/node/bin/node --abort-on-uncaught-exception /opt/marlin/lib/agent/lackey.js /var/run/.marlin.$(zonename).sock &amp;" timeout_seconds="30">
+  <method_context>
+    <method_environment>
+      <envvar name="DTRACE_DOF_INIT_DISABLE" value="1" />
+    </method_environment>
+  </method_context>
+</exec_method>
 <exec_method type="method" name="stop" exec=":kill" timeout_seconds="30" />
 
 <instance name="default" enabled="true" />

@@ -982,6 +982,7 @@ function MarlinExecutor(args, isInit, log)
 	this.mex_isinit = isInit;
 	this.mex_reduce = !isInit && args['taskPhase']['type'] == 'reduce';
 	this.mex_env = {
+	    'DTRACE_DOF_INIT_DISABLE': 1,
 	    'HOME': '/root',
 	    'PATH': mazTaskPath,
 	    'MANTA_OUTPUT_BASE': args['taskOutputBase'],
