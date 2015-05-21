@@ -2637,6 +2637,7 @@ function maTaskStreamLoadAsset(agent, stream, asset, callback)
 	var zone = agent.ma_zones[stream.s_machine];
 	var dstpath = mod_path.join(zone.z_root, 'assets', asset);
 	var uripath = asset.split('/').map(encodeURIComponent).join('/');
+	var failed = false;
 
 	mod_mkdirp(mod_path.dirname(dstpath), function (err) {
 		if (err) {
@@ -2662,12 +2663,23 @@ function maTaskStreamLoadAsset(agent, stream, asset, callback)
 			});
 
 			request.on('error', function (suberr) {
+				if (failed) {
+					stream.s_log.warn({
+					    'err': suberr,
+					    'asset': asset
+					}, 'ignoring subsequent failure ' +
+					'fetching asset');
+					return;
+				}
+
+				failed = true;
 				output.end();
 				callback(suberr);
 			});
 
 			request.on('response', function (response) {
 				if (response.statusCode != 200) {
+					failed = true;
 					output.end();
 					callback(new VError(
 					    'error retrieving asset "%s" ' +
