@@ -2637,8 +2637,17 @@ function maTaskStreamLoadAsset(agent, stream, asset, callback)
 	var zone = agent.ma_zones[stream.s_machine];
 	var dstpath = mod_path.join(zone.z_root, 'assets', asset);
 	var uripath = asset.split('/').map(encodeURIComponent).join('/');
-	var failed = false;
+	var done = false;
 
+	/*
+	 * The use of "done" below is unfortunate, but it's necessary because
+	 * there are cases where we generate our own error (as when we got a
+	 * non-200 status code) and we also get an Error from Node (as when
+	 * there's a subsequent ETIMEDOUT or ECONNRESET).  We need to keep track
+	 * of this.  You might think this only applies to the error cases, but
+	 * we've also seen cases where we've received "end" after "error", so we
+	 * also need to guard the "end" callback below.
+	 */
 	mod_mkdirp(mod_path.dirname(dstpath), function (err) {
 		if (err) {
 			callback(err);
@@ -2650,7 +2659,7 @@ function maTaskStreamLoadAsset(agent, stream, asset, callback)
 
 		output.on('error', callback);
 
-		output.on('open', function () {
+		output.on('open', function onAssetOpen() {
 			var request = mod_http.get({
 			    'host': agent.ma_dns_cache.lookupv4(
 				agent.ma_manta_host),
@@ -2662,8 +2671,8 @@ function maTaskStreamLoadAsset(agent, stream, asset, callback)
 			    }
 			});
 
-			request.on('error', function (suberr) {
-				if (failed) {
+			request.on('error', function onAssetError(suberr) {
+				if (done) {
 					stream.s_log.warn({
 					    'err': suberr,
 					    'asset': asset
@@ -2672,14 +2681,14 @@ function maTaskStreamLoadAsset(agent, stream, asset, callback)
 					return;
 				}
 
-				failed = true;
+				done = true;
 				output.end();
 				callback(suberr);
 			});
 
-			request.on('response', function (response) {
+			request.on('response', function onAssetRsp(response) {
 				if (response.statusCode != 200) {
-					failed = true;
+					done = true;
 					output.end();
 					callback(new VError(
 					    'error retrieving asset "%s" ' +
@@ -2689,7 +2698,17 @@ function maTaskStreamLoadAsset(agent, stream, asset, callback)
 				}
 
 				response.pipe(output);
-				response.on('end', callback);
+				response.on('end', function onAssetEnd() {
+					if (!done) {
+						done = true;
+						callback();
+					} else {
+						stream.s_log.warn({
+						    'asset': asset
+						}, 'saw "end" after asset ' +
+						    'fetch was already done');
+					}
+				});
 			});
 		});
 	});
