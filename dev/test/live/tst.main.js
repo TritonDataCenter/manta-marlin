@@ -1475,6 +1475,38 @@ var testcases = {
 	]
     },
 
+    'jobMpwd': {
+    	'job': {
+	    'phases': [ {
+		'type': 'map',
+		'exec': 'pwd'
+	    } ]
+	},
+	'inputs': [ '/%user%/stor/obj1' ],
+	'timeout': 30 * 1000,
+	'expected_outputs': [
+	    /\/%user%\/jobs\/.*\/stor\/%user%\/stor\/obj1\.0\./
+	],
+	'errors': [],
+	'expected_output_content': [ '/\n' ]
+    },
+
+    'jobRpwd': {
+    	'job': {
+	    'phases': [ {
+		'type': 'reduce',
+		'exec': 'pwd'
+	    } ]
+	},
+	'inputs': [  ],
+	'timeout': 30 * 1000,
+	'expected_outputs': [
+	    /\/%user%\/jobs\/.*\/stor\/reduce\.0\./
+	],
+	'errors': [],
+	'expected_output_content': [ '/\n' ]
+    },
+
     'jobMenv': {
 	'job': {
 	    'phases': [ {
