@@ -637,6 +637,29 @@ function jobSubmit(api, testspec, callback)
 			jobid = result;
 			stepcb(err);
 		    });
+	    },
+
+	    function (_, stepcb) {
+		/*
+		 * Create the directories that Muskie normally creates.  Wrasse
+		 * needs these in order to archive the job.
+		 */
+		var base, dirs;
+		base = sprintf('/%%jobuser%%/jobs/%s', jobid);
+		dirs = [
+		    replaceParams(testspec, base),
+		    replaceParams(testspec, base + '/live'),
+		    replaceParams(testspec, base + '/stor')
+		];
+		log.info({ 'dirs': dirs }, 'creating job directories');
+		mod_vasync.forEachPipeline({
+		    'inputs': dirs,
+		    'func': function (dir, subcallback) {
+			api.manta.mkdir(dir, subcallback);
+		    }
+		}, function (err) {
+			stepcb(err);
+		});
 	    }
 	];
 
