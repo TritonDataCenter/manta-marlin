@@ -1135,6 +1135,19 @@ MarlinExecutor.prototype.start = function ()
 		 * we'll handle that below by ending the input stream.
 		 */
 		instream.on('request-drain', function () {
+			/*
+			 * This case should be impossible to hit.  When we set
+			 * mex_done, we would have aborted the stream, after
+			 * which it should not emit this event.  Checking here
+			 * is just defensive (e.g., in case this event had
+			 * already been enqueued when we aborted the stream).
+			 */
+			if (executor.mex_done) {
+				log.warn(
+				    'CatStreams emitted request-drain ' +
+				    'after abort');
+				return;
+			}
 			executor.emit('drain', executor.mex_batch);
 		});
 	}
@@ -1192,9 +1205,11 @@ MarlinExecutor.prototype.start = function ()
 			executor.mex_done = true;
 
 			if (executor.mex_instream !== undefined &&
-			    executor.mex_instream.readable)
+			    executor.mex_instream.readable) {
 				log.info('task exited before reading ' +
-				    'all of its input');
+				    'all of its input (aborting catstreams)');
+				executor.mex_instream.abort();
+			}
 		});
 	});
 };
@@ -1210,9 +1225,9 @@ MarlinExecutor.prototype.batch = function (state)
 
 	state['taskInputKeys'].forEach(function (iobject) {
 		stream.cat(function (options) {
-			var path, s, f;
+			var path, h, s, f;
 			path = mod_mantacbin.mantaObjectNameEncode(iobject);
-			s = new HttpStream({
+			h = new HttpStream({
 			    'client': cache.get(remote),
 			    'path': path,
 			    'log': log.child({ 'httpstream': path }),
@@ -1222,8 +1237,11 @@ MarlinExecutor.prototype.batch = function (state)
 
 			if (mazFuzzInput) {
 				f = new FuzzStream();
-				s.pipe(f);
+				f.abort = function () { h.abort(); };
+				h.pipe(f);
 				s = f;
+			} else {
+				s = h;
 			}
 
 			return (s);

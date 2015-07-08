@@ -1475,6 +1475,88 @@ var testcases = {
 	]
     },
 
+    'jobMbackdoorCommit': {
+	/*
+	 * Verifies that if the user invokes our /commit API behind our backs,
+	 * although their job may go off the rails, the agent should not crash.
+	 * Note that we don't get any outputs from this job because outputs must
+	 * be saved before commit.
+	 */
+	'job': {
+	    'phases': [ {
+		'type': 'map',
+		'exec': 'curl -i -X POST http://localhost/my/jobs/task/commit'
+	    } ]
+	},
+	'inputs': [ '/%user%/stor/obj1' ],
+	'timeout': 20 * 1000,
+	'errors': [],
+	'expected_outputs': []
+    },
+
+    'jobRbackdoorCommit': {
+	/*
+	 * Similar to jobMbackdoorCommit, but in the context of a reducer, which
+	 * goes through a pretty different code path internally.
+	 */
+	'job': {
+	    'phases': [ {
+		'type': 'reduce',
+		'exec': 'curl -i -X POST http://localhost/my/jobs/task/commit'
+	    } ]
+	},
+	'inputs': [],
+	'timeout': 20 * 1000,
+	'errors': [],
+	'expected_outputs': []
+    },
+
+    'jobMerrorBackdoorFail': {
+	/*
+	 * Similar to jobMbackdoorCommit, but uses the "fail" API, which goes
+	 * through a different code path and produces an error.
+	 */
+	'job': {
+	    'phases': [ {
+		'type': 'map',
+		'exec': 'curl -i -X POST http://localhost/my/jobs/task/fail'
+	    } ]
+	},
+	'inputs': [ '/%user%/stor/obj1' ],
+	'timeout': 20 * 1000,
+	'errors': [ {
+	    'phaseNum': '0',
+	    'what': 'phase 0: input "/%user%/stor/obj1"',
+	    'code': EM_USERTASK,
+	    'message': 'no message given',
+	    'input': '/%user%/stor/obj1',
+	    'p0input': '/%user%/stor/obj1'
+	} ],
+	'expected_outputs': []
+    },
+
+    'jobRerrorBackdoorFail': {
+	/*
+	 * Similar to jobRbackdoorCommit, but uses the "fail" API, which goes
+	 * through a different code path and produces an error.
+	 */
+	'job': {
+	    'phases': [ {
+		'type': 'reduce',
+		'exec': 'curl -i -X POST http://localhost/my/jobs/task/fail'
+	    } ]
+	},
+	'inputs': [],
+	'timeout': 20 * 1000,
+	'errors': [ {
+	    'phaseNum': '0',
+	    'what': 'phase 0: reduce',
+	    'code': EM_USERTASK,
+	    'message': 'no message given'
+	} ],
+	'expected_outputs': []
+    },
+
     'jobMpwd': {
     	'job': {
 	    'phases': [ {

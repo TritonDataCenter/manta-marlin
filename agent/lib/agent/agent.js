@@ -1963,6 +1963,7 @@ mAgent.prototype.taskAsyncDone = function (task)
 	var agent = this;
 	var stream = task.t_stream;
 	var now = new Date();
+	var zone = this.ma_zones[stream.s_machine];
 
 	stream.s_log.info('reduce task "%s" asyncDone', task.t_id);
 	stream.s_rqqueue.push(function (callback) {
@@ -1971,7 +1972,28 @@ mAgent.prototype.taskAsyncDone = function (task)
 		else
 			agent.taskMarkOk(task, stream.s_machine,
 			    stream.s_noutput, now);
-		agent.taskDoneRunning(task, callback);
+		agent.taskDoneRunning(task, function () {
+			callback();
+
+			/*
+			 * Recall that in this case, the lackey completed this
+			 * task some time ago.  (It could be many minutes -- it
+			 * depends on how long it took for us to see
+			 * end-of-input for the task.)  There's a good chance we
+			 * have a request queued from the lackey asking for more
+			 * work that's blocked.  We have to handle that request
+			 * to wake up the lackey, now that we've advanced the
+			 * stream and there may be more work to do.
+			 *
+			 * Moreover, from the lackey's perspective, there was no
+			 * reason to heartbeat all this time, since it wasn't
+			 * doing anything.  So we need to reset the lackey's
+			 * heartbeat timer here to avoid timing it out
+			 * prematurely.
+			 */
+			maZoneHeartbeat(zone);
+			agent.zoneWakeup(zone);
+		});
 	}, function () {});
 };
 
@@ -3743,7 +3765,8 @@ function maTaskApiValidate(request, response, next)
 	var zone = request.maZone;
 
 	if (zone.z_taskstream &&
-	    zone.z_taskstream.s_state == maTaskStream.TASKSTREAM_S_RUNNING)
+	    zone.z_taskstream.s_state == maTaskStream.TASKSTREAM_S_RUNNING &&
+	    zone.z_taskstream.s_task !== undefined)
 		return (true);
 
 	next(new mod_restify.ConflictError('invalid zone state'));
