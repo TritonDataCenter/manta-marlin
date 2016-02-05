@@ -2279,7 +2279,6 @@ function fetchArchiveStatusLegacy(api, callback)
 function archiveJobInfo(v)
 {
 	mod_assertplus.string(v.jobId);
-	mod_assertplus.string(v.timeDone);
 
 	return ({
 	    'id': v['jobId'],
