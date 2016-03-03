@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2014, Joyent, Inc.
+ * Copyright (c) 2016, Joyent, Inc.
  */
 
 /*
@@ -59,7 +59,7 @@ exports.AsyncDnsCache = AsyncDnsCache;
  * To be completely consistent with the DNS TTL (that is, to avoid ever using a
  * record after its TTL has expired), you might set triggerInterval = 10000 and
  * graceInterval = 0, which says to never use an expired record, and attempt to
- * update a record no sooner than10 seconds before it will expire.
+ * update a record no sooner than 10 seconds before it will expire.
  *
  * If such strictness is not required, you could just as well set
  * triggerInterval = 0 and graceInterval = 10000, which says to update a record
@@ -89,7 +89,39 @@ function AsyncDnsCache(args)
 		'nameserver ' + i + ' must be a string');
 	});
 
-	this.dns_nameservers = args['nameServers'].slice(0);
+	this.dns_nameservers = args['nameServers'].map(function (s) {
+		return ({
+			/* ip address of DNS server */
+			'dnss_ip': s,
+
+			/*
+			 * Old nameservers (still in use) only support DNS over
+			 * UDP with small packets.  More recent versions support
+			 * EDNS and TCP-based DNS, and in large deployments,
+			 * those modes are necessary in order to receive valid
+			 * responses (because there are too many matching DNS
+			 * entries).  To figure out what mode to use, we keep
+			 * track of what we think is supported by this DNS
+			 * server.  "null" indicates we don't know, "true"
+			 * indicates support, and "false" indicates that we
+			 * don't know.
+			 */
+			'dnss_tcpok': null,
+			'dnss_ednsok': null,
+
+			/*
+			 * The following values are only provided for debugging.
+			 * These values reflect the last time a successful DNS
+			 * response was received using each of these modes.
+			 */
+			'dnss_last_udp_ok': null,
+			'dnss_last_tcp_ok': null,
+			'dnss_last_edns_ok': null,
+			'dnss_last_mode': null,
+			'dnss_last_time': null
+		});
+	});
+
 	this.dns_interval = args['triggerInterval'];
 	this.dns_grace = args['graceInterval'];
 	this.dns_hosts = {};
@@ -166,41 +198,97 @@ AsyncDnsCache.prototype.update = function ()
 	return (count);
 };
 
+/*
+ * Given information about a DNS server (namely, one of the elements of
+ * this.dns_nameservers), return arguments used to construct a native-dns
+ * Request object.  Here, we decide whether to use normal UDP, EDNS, or TCP.
+ */
+AsyncDnsCache.prototype.createRequest = function (servinfo, question)
+{
+	var rqargs;
+
+	rqargs = {
+	    'question': question,
+	    'timeout': 5000,
+	    'cache': false,
+	    'server': {
+		'address': servinfo.dnss_ip,
+		'port': 53
+	    }
+	};
+
+	/*
+	 * We try TCP first, since modern deployments support TCP-based DNS and
+	 * TCP is necessary to return the large responses used in large
+	 * deployments.  If we've tried TCP and it failed, then we'll try EDNS,
+	 * which at least supports returning more results than the normal UDP
+	 * mode.  If we've tried that and it failed, then we'll use plain, small
+	 * UDP packets (and this will not work on large deployments).
+	 *
+	 * We could do this the other way: try UDP first, then EDNS if that
+	 * fails, then TCP if that fails.  That's harder because it's possible
+	 * for UDP or EDNS to work for some hostnames, but not other hostnames
+	 * that have a lot more records.  As a result, a successful UDP result
+	 * does not imply that UDP works in general.
+	 */
+	if (servinfo.dnss_tcpok === null || servinfo.dnss_tcpok) {
+		rqargs['server']['type'] = 'tcp';
+	} else if (servinfo.dnss_ednsok === null || servinfo.dnss_ednsok) {
+		rqargs['server']['type'] = 'udp';
+		rqargs['try_edns'] = true;
+	} else {
+		rqargs['server']['type'] = 'udp';
+	}
+
+	return (rqargs);
+};
+
 AsyncDnsCache.prototype.kickEntry = function (hostname)
 {
-	var cache, now, entry, which, s, q, r, onerr;
+	var cache, now, entry, which, servinfo;
+	var question, rqargs, request, onerr, summary;
+	var mode_unsupported = false;
 
 	cache = this;
 	now = Date.now();
 	entry = this.dns_hosts[hostname];
 	which = Math.floor(Math.random() * this.dns_nameservers.length);
-	s = this.dns_nameservers[which];
+	servinfo = this.dns_nameservers[which];
 
-	q = mod_nativedns.Question({ 'name': hostname });
-	r = mod_nativedns.Request({
-	    'question': q,
-	    'server': { 'address': s, 'port': 53, 'type': 'udp' },
-	    'timeout': 1000
-	});
+	question = mod_nativedns.Question({ 'name': hostname });
+	rqargs = this.createRequest(servinfo, question);
+	request = mod_nativedns.Request(rqargs);
 
-	onerr = function (err) {
-		cache.dns_log.warn(err,
-		    'failed to resolve "%s" from nameserver "%s"', hostname, s);
+	summary = {
+	    'hostname': hostname,
+	    'server': rqargs['server'],
+	    'mode': rqargs['server']['type'] == 'tcp' ? 'tcp' :
+	        rqargs['try_edns'] ? 'edns' : 'udp'
 	};
 
-	r.on('timeout', function () { onerr(new VError('timed out')); });
+	onerr = function (err) {
+		cache.dns_log.warn(err, summary, 'failed to resolve hostname');
+	};
 
-	r.on('message', function (err, answer) {
-		if (!err && answer.answer.length === 0)
+	request.on('timeout', function () {
+		mode_unsupported = true;
+		onerr(new VError('timed out'));
+	});
+
+	request.on('message', function (err, answer) {
+		if (err) {
+			mode_unsupported = true;
+		} else if (answer.answer.length === 0) {
 			err = new VError('request returned 0 results');
+		}
 
 		if (err) {
 			onerr(err);
 			return;
 		}
 
-		cache.dns_log.trace('answers for hostname "%s" from "%s"',
-		    hostname, s, answer.answer);
+		summary['answers'] = answer.answer;
+		cache.dns_log.trace(summary, 'found answers');
 
 		var msgtime = Date.now();
 		var i, a, e;
@@ -226,17 +314,37 @@ AsyncDnsCache.prototype.kickEntry = function (hostname)
 		}
 	});
 
-	r.on('end', function () {
+	request.on('end', function () {
 		mod_assert.equal(entry['pending'], now);
 		entry['pending'] = undefined;
+
+		/*
+		 * If the failure mode is consistent with this mode being
+		 * unsupported, and we didn't previously know whether the mode
+		 * was supported, then indicate this here.
+		 */
+		if (mode_unsupported) {
+			if (summary['mode'] == 'tcp') {
+				cache.dns_log.warn({
+				    'mode': 'tcp'
+				}, 'mode appears to be unsupported');
+				servinfo.dnss_tcpok = false;
+			} else if (summary['mode'] == 'edns') {
+				cache.dns_log.warn({
+				    'mode': 'edns'
+				}, 'mode appears to be unsupported');
+				servinfo.dnss_ednsok = false;
+			}
+		}
+
 		if (cache.dns_onresolve)
 			cache.dns_onresolve();
 	});
 
-	this.dns_log.trace('attempting to resolve "%s" from "%s"', hostname, s);
+	this.dns_log.trace(summary, 'resolving');
 	mod_assert.ok(entry['pending'] === undefined);
 	entry['pending'] = now;
-	r.send();
+	request.send();
 };
 
 /*
