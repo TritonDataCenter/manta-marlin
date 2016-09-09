@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2014, Joyent, Inc.
+ * Copyright (c) 2016, Joyent, Inc.
  */
 
 /*
@@ -568,7 +568,8 @@ function mazDoneBatch(batch)
 			process.exit(1);
 		}
 
-		if (batch['taskInputDone'] || mazCurrentTask === undefined)
+		if (batch['taskInputDone'] || mazCurrentTask === undefined ||
+		    mazExecutorResult !== undefined)
 			return;
 
 		mazParentRequest('GET /my/jobs/task/task?wait=true', 200,
@@ -579,6 +580,10 @@ function mazDoneBatch(batch)
 			if (suberr) {
 				mazLog.fatal(suberr, 'fatal error on batching');
 				process.exit(1);
+			}
+
+			if (mazExecutorResult !== undefined) {
+				return;
 			}
 
 			mazLog.info('next batch', task);

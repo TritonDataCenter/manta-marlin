@@ -70,13 +70,13 @@ function setup(_, next)
 	});
 
 	mod_assert.throws(function () {
-		cache.lookupv4('www.joyent.com');
-	}, '"www.joyent.com" is not known to this cache');
+		cache.lookupv4('us-east.manta.joyent.com');
+	}, '"us-east.manta.joyent.com" is not known to this cache');
 
-	cache.add('www.joyent.com');
-	mod_assert.ok(cache.lookupv4('www.joyent.com') === null);
+	cache.add('us-east.manta.joyent.com');
+	mod_assert.ok(cache.lookupv4('us-east.manta.joyent.com') === null);
 	cache.update();
-	mod_assert.ok(cache.lookupv4('www.joyent.com') === null);
+	mod_assert.ok(cache.lookupv4('us-east.manta.joyent.com') === null);
 
 	cache.add('127.0.0.1');
 	mod_assert.equal(cache.lookupv4('127.0.0.1'), '127.0.0.1');
@@ -90,7 +90,7 @@ function checkResolved(_, next)
 	 * Check that we've resolved the IP, and an immediate "update" doesn't
 	 * bother making a new request.
 	 */
-	ip = cache.lookupv4('www.joyent.com');
+	ip = cache.lookupv4('us-east.manta.joyent.com');
 	mod_assert.ok(looksLikeIp4(ip));
 	mod_assert.equal(0, cache.update());
 	setTimeout(function () { next(); }, 2500);
@@ -106,7 +106,7 @@ function forceUpdate(_, next)
 	advanced = false;
 	mod_assert.equal(1, cache.update());
 	mod_assert.equal(0, cache.update());
-	ip = cache.lookupv4('www.joyent.com');
+	ip = cache.lookupv4('us-east.manta.joyent.com');
 	mod_assert.ok(looksLikeIp4(ip));
 }
 
@@ -117,7 +117,7 @@ function checkResolvedAgain(_, next)
 	 * the grace period.
 	 */
 	log.info('checkResolved');
-	ip = cache.lookupv4('www.joyent.com');
+	ip = cache.lookupv4('us-east.manta.joyent.com');
 	mod_assert.ok(looksLikeIp4(ip));
 	mod_assert.equal(0, cache.update());
 	setTimeout(function () { next(); }, 4000);
@@ -126,7 +126,7 @@ function checkResolvedAgain(_, next)
 function checkGrace(_, next)
 {
 	log.info('checkGrace');
-	ip = cache.lookupv4('www.joyent.com');
+	ip = cache.lookupv4('us-east.manta.joyent.com');
 	mod_assert.ok(looksLikeIp4(ip));
 	setTimeout(function () { next(); }, 2000);
 }
@@ -134,7 +134,7 @@ function checkGrace(_, next)
 function checkGraceExpired(_, next)
 {
 	log.info('checkGraceExpired');
-	ip = cache.lookupv4('www.joyent.com');
+	ip = cache.lookupv4('us-east.manta.joyent.com');
 	mod_assert.ok(ip === null);
 	next();
 }

@@ -28,7 +28,7 @@
 		"libmanta": "git+ssh://git@github.com:joyent/node-libmanta.git#master",
 		"lstream": "0.0.3",
 		"mahi": "git+ssh://git@github.com:joyent/node-mahi.git#master",
-		"manta": "git+ssh://git@github.com:joyent/node-manta.git#master",
+		"manta": "^3.0.0",
 		"manta-compute-bin": "git+ssh://git@github.com:joyent/manta-compute-bin.git#master",
 		"memorystream": "0.2.0",
 		"mkdirp": "0.3.1",
