@@ -32,7 +32,7 @@
 		"manta-compute-bin": "git+https://github.com/joyent/manta-compute-bin.git#master",
 		"memorystream": "0.2.0",
 		"mkdirp": "0.3.1",
-		"moray": "git+https://github.com/joyent/node-moray.git#master",
+		"moray": "git+https://github.com/joyent/node-moray.git#fd5781bc25a9bfe2ba82167664639753fb9f0ca5",
 		"native-dns": "0.2.1",
 		"node-uuid": "1.4.0",
 		"panic": "0.2.1",
