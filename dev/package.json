@@ -40,7 +40,7 @@
 		"restify": "2.3.5",
 		"retry": "0.6.0",
 		"semver": "1.1.4",
-		"sdc-clients": "git+https://github.com/joyent/node-sdc-clients.git#master",
+		"ufds": "1.2.0",
 		"spawn-async": "0.0.1",
 		"statvfs": "2.0.0",
 		"strsplit": "1.0.0",

@@ -30,7 +30,7 @@ var mod_verror = require('verror');
 var mod_mahi = require('mahi');
 var mod_manta = require('manta');
 var mod_marlin = require('../lib/marlin');
-var mod_sdc = require('sdc-clients');
+var UFDS = require('ufds');
 var mod_maufds = require('../lib/ufds');
 
 var VError = mod_verror.VError;
@@ -97,7 +97,7 @@ function setup(callback)
 
 	barrier.start('ufds');
 	log.info({ 'url': ufds_url }, 'connecting to ufds');
-	ufds_client = new mod_sdc.UFDS({
+	ufds_client = new UFDS({
 	    'url': ufds_url,
 	    'bindDN': 'cn=root',
 	    'bindPassword': 'secret'

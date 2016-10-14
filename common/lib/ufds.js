@@ -41,7 +41,7 @@ exports.ufdsMakeAccounts = ufdsMakeAccounts;
  *     			if we develop a better approach to waiting on
  *     			replication), this dependency could be removed.
  *
- *     ufds		UFDS client object (from node-sdc-clients.git)
+ *     ufds		UFDS client object (from node-ufds.git)
  *
  *     config		A configuration object, which has this general form:
  *
