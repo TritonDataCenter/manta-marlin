@@ -23,5 +23,5 @@ for (i = 0; i < 10 * 1024 * 1024; i++)
 http.createServer(function (req, res) {
 	res.writeHead(200, { 'content-type': 'text/plain' });
 	res.end(data);
-}).listen(8087, '127.0.0.1');
-console.log('server running at 127.0.0.1:8087');
+}).listen(9100, '127.0.0.1');
+console.log('server running at 127.0.0.1:9100');

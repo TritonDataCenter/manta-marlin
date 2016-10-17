@@ -20,10 +20,19 @@ var restify = require('restify');
 var mod_localutil = require('../../common/lib/util');
 
 var log;
+var noutstanding = 0;
+var baseport = 9100;
 
 function main()
 {
 	var server;
+
+	if (process.argv.length > 2) {
+		baseport = parseInt(process.argv[2], 10);
+		if (isNaN(baseport)) {
+			throw (new Error('bad base port'));
+		}
+	}
 
 	log = new bunyan({ 'name': 'testproxy', 'level': 'trace' });
 	server = restify.createServer({
@@ -41,7 +50,7 @@ function main()
 	/* JSSTYLED */
 	server.get(/.*/, proxy);
 
-	server.listen(8080, function () {
+	server.listen(baseport + 1, function () {
 	    console.log('%s listening at %s', server.name, server.url);
 	});
 }
@@ -55,13 +64,16 @@ function proxy(request, response, next)
 	    'response': response,
 	    'server': {
 		'host': '127.0.0.1',
-		'port': 8087
+		'port': baseport
 	    }
 	};
 
 	log.info('maHttpProxy dispatched');
+	noutstanding++;
 	mod_localutil.maHttpProxy(proxyargs, function (err, res) {
-		log.info('maHttpProxy callback called');
+		noutstanding--;
+		log.info({ 'noutstanding': noutstanding },
+		    'maHttpProxy callback called');
 		next();
 	});
 }

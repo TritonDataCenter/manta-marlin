@@ -22,7 +22,7 @@
 		"jsprim": "0.5.0",
 		"lstream": "0.0.3",
 		"mahi": "git+https://github.com/joyent/node-mahi.git#master",
-		"moray": "git+https://github.com/joyent/node-moray.git#fd5781bc25a9bfe2ba82167664639753fb9f0ca5",
+		"moray": "^2.0.0",
 		"node-uuid": "1.4.0",
 		"posix-getopt": "1.0.0",
 		"retry": "0.6.0",

@@ -227,8 +227,8 @@ function MarlinApi(args)
 	    'host': url['hostname'],
 	    'port': parseInt(url['port'], 10),
 	    'log': args['log'].child({'component': 'moray'}),
-	    'reconnect': true,
-	    'retry': conf['moray']['retry']
+	    'retry': conf['moray']['retry'],
+	    'unwrapErrors': true
 	});
 
 	this.ma_client.on('close', this.emit.bind(this, 'close'));

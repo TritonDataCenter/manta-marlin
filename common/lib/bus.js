@@ -277,9 +277,9 @@ MorayBus.prototype.connect = function ()
 	    'host': this.mb_host,
 	    'port': this.mb_port,
 	    'log': this.mb_log.child({ 'component': 'moray' }),
-	    'reconnect': true,
 	    'retry': this.mb_reconnect,
-	    'dns': this.mb_dns
+	    'dns': this.mb_dns,
+	    'unwrapErrors': true
 	});
 
 	client.on('error', function (err) {

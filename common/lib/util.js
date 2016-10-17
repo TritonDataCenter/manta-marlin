@@ -93,7 +93,8 @@ function maHttpProxy(args, callback)
 	    'summary': request.method + ' ' + request.url,
 	    'error': false,
 	    'wroteHeader': false,
-	    'request_args': server_args
+	    'request_args': server_args,
+	    'callback_invoked': false
 	};
 
 	server_args['method'] = request.method;
@@ -121,6 +122,8 @@ function maHttpProxy(args, callback)
 			return;
 
 		if (!err) {
+			mod_assert.ok(!state['callback_invoked']);
+			state['callback_invoked'] = true;
 			callback(null, res);
 			return;
 		}
@@ -131,9 +134,15 @@ function maHttpProxy(args, callback)
 
 		if (!state['wroteHeader']) {
 			response.send(err);
+			mod_assert.ok(!state['callback_invoked']);
+			state['callback_invoked'] = true;
 			callback(err);
 		} else {
 			response.end();
+			if (!state['callback_invoked']) {
+				state['callback_invoked'] = true;
+				callback();
+			}
 		}
 	};
 
@@ -146,6 +155,14 @@ function maHttpProxy(args, callback)
 	response.on('close', function () {
 		request.log.warn('response closed unexpectedly');
 		subrequest.abort();
+
+		/*
+		 * Depending on the state we're in when the abort is processed,
+		 * we may receive no more events, so we need to process the
+		 * completion now.
+		 */
+		checkDone('response close',
+		    new Error('response closed unexpectedly'));
 	});
 
 	if (server_args['headers']['expect'] == '100-continue') {
