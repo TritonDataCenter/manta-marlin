@@ -141,7 +141,7 @@ This part's easy:
 
     $ git clone git@github.com:joyent/manta-marlin.git
     $ cd manta-marlin
-    $ . env.sh
+    $ . dev/env.sh
     $ make
     ...
     $ make check
@@ -154,12 +154,13 @@ the Manta tools (mls, mput, etc.)
 
 ## Running the code
 
-There are two main components in Marlin: the worker and the agent.
+There are two main components in Marlin: the job supervisor (formerly called the "worker")
+ and the agent.
 
-The worker can be run directly out of the repo.  The easiest way to get started
-is to copy the config.json file from an existing Marlin worker deployed on the
+The supervisor can be run directly out of the repo.  The easiest way to get started
+is to copy the config.json file from an existing Marlin supervisor deployed on the
 same system, modify the port number (since the default is a privileged port),
-**disable the worker whose configuration you copied**, and then run:
+**disable the supervisor whose configuration you copied**, and then run:
 
     $ cd manta-marlin
     $ . dev/env.sh
@@ -167,8 +168,8 @@ same system, modify the port number (since the default is a privileged port),
     $ node build/proto/root/opt/smartdc/marlin/lib/worker/server.js \
           ../config.json | tee ../worker.out | bunyan -o short
 
-With this approach, you can apply changes by stopping the worker, running "make
-proto", and starting the worker again.
+With this approach, you can apply changes by stopping the supervisor, running "make
+proto", and starting the supervisor again.
 
 The agent must be run inside the global zone, since it uses other zones to
 actually execute tasks.  To run your own agent, you'll want to run `tools/mru`
@@ -222,7 +223,7 @@ state -- see "Running the full test suite" below for details.**
 This environment assumes you set up the environment variables and ssh keys as
 described above.  To run the test suite, just run:
 
-    $ tools/catest -a
+    $ dev/tools/catest -a
 
 You can run individual tests manually with just:
 
@@ -257,14 +258,14 @@ Then you can run individual tests just like inside a zone:
 
 ### Stress testing
 
-In one shell, start the worker in a way that will be automatically restarted:
+In one shell, start the supervisor in a way that will be automatically restarted:
 
     $ while :; do LOG_LEVEL=debug node \
         build/proto/root/opt/smartdc/marlin/lib/worker/server.js \
         ../config.json | tee -a ../worker.out | bunyan -linfo; done
 
 In another, start a loop that will *kill* the supervisor a random interval
-between 5 and 30 seconds apart.  There's a script in tools/ for this:
+between 5 and 30 seconds apart.  There's a script in /dev/tools/ for this:
 
     $ dev/tools/test_sup_kill.sh
 
