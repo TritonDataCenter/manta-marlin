@@ -169,7 +169,7 @@
  *     for phases 0 ... i - 1, where i = the reducer's phase.
  *
  * The detailed list of queries used for polling can be found in
- * lib/{worker,agent}/queries.js.
+ * agent/lib/agent/queries.js and jobsupervisor/lib/worker/queries.js.
  */
 
 var mod_assert = require('assert');
