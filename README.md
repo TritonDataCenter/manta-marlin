@@ -5,7 +5,7 @@
 -->
 
 <!--
-    Copyright (c) 2014, Joyent, Inc.
+    Copyright (c) 2016, Joyent, Inc.
 -->
 
 # manta-marlin
@@ -154,8 +154,8 @@ the Manta tools (mls, mput, etc.)
 
 ## Running the code
 
-There are two main components in Marlin: the job supervisor (formerly called the "worker")
- and the agent.
+There are two main components in Marlin: the job supervisor (formerly called the
+"worker") and the agent.
 
 The supervisor can be run directly out of the repo.  The easiest way to get started
 is to copy the config.json file from an existing Marlin supervisor deployed on the
@@ -166,7 +166,7 @@ same system, modify the port number (since the default is a privileged port),
     $ . dev/env.sh
     $ make
     $ node build/proto/root/opt/smartdc/marlin/lib/worker/server.js \
-          ../config.json | tee ../worker.out | bunyan -o short
+          ../config.json | tee ../supervisor.out | bunyan -o short
 
 With this approach, you can apply changes by stopping the supervisor, running "make
 proto", and starting the supervisor again.
@@ -262,7 +262,7 @@ In one shell, start the supervisor in a way that will be automatically restarted
 
     $ while :; do LOG_LEVEL=debug node \
         build/proto/root/opt/smartdc/marlin/lib/worker/server.js \
-        ../config.json | tee -a ../worker.out | bunyan -linfo; done
+        ../config.json | tee -a ../supervisor.out | bunyan -linfo; done
 
 In another, start a loop that will *kill* the supervisor a random interval
 between 5 and 30 seconds apart.  There's a script in /dev/tools/ for this:

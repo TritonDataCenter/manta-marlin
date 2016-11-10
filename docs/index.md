@@ -10,7 +10,7 @@ apisections: Task Control API
 -->
 
 <!--
-    Copyright (c) 2014, Joyent, Inc.
+    Copyright (c) 2016, Joyent, Inc.
 -->
 
 # Marlin
@@ -106,10 +106,10 @@ doubt, check the source.
 End users manage compute jobs through the "jobs" entry points under the main
 Manta API.  See the Manta API documentation for details.
 
-Internally, Marlin worker processes (which are responsible for managing the
+Internally, Marlin supervisor processes (which are responsible for managing the
 distributed execution of jobs) communicate with agents (which actually execute
 user commands) through small JSON records stored in Moray, the Manta metadata
-tier.  This mechanism is documented in the worker source code.
+tier.  This mechanism is documented in the supervisor source code.
 
 On each physical server where jobs are executed, the Marlin agent communicates
 with a lackey running inside each compute zone using a private HTTP API which is
@@ -132,13 +132,14 @@ Marlin makes use of two generic Manta components:
 
 On top of these, Marlin adds two components:
 
-* Job worker tier, which locates new and abandoned jobs in Moray, assigns task
-  groups to individual storage and compute nodes, and monitors job progress.
+* Job supervisor tier, which locates new and abandoned jobs in Moray, assigns
+  task groups to individual storage and compute nodes, and monitors job
+  progress.
 * Compute node agents, which execute and monitor tasks and report progress and
   completion.
 
-There's a cluster of web tier workers and job workers in each datacenter, but
-there's no real DC-awareness among these components.
+There's a cluster of web tier servers and job supervisors in each datacenter,
+but there's no real DC-awareness among these components.
 
 **Job state**
 
@@ -156,8 +157,8 @@ implies that Moray becoming unavailable makes Marlin unavailable, and that
 Moray must be able to keep up with the Marlin workload.  See "Scalability"
 below.
 
-Job state is stored across seeral Moray buckets with indexed fields that allow
-the web tier, job workers, and agents to poll on the subset of jobs and job
+Job state is stored across several Moray buckets with indexed fields that allow
+the web tier, job supervisors, and agents to poll on the subset of jobs and job
 state that they care about.  For details on these buckets and the records
 contained therein, see the documentation in lib/schema.js.  A design constraint
 is that the size of every JSON record in the system must be bounded (and should
@@ -172,32 +173,32 @@ given jobId.  When a new job is submitted, muskie drops the job definition into
 the jobs bucket.
 
 
-**Job workers**
+**Job supervisors**
 
-To synchronize changes to job state, each job is assigned to one worker at a
+To synchronize changes to job state, each job is assigned to one supervisor at a
 time.  This assignment is stored in the job object in Moray.  An assignment is
 valid as long as the job's modification time (mtime) is within the last
 WORKER\_TIMEOUT seconds.  Workers save their jobs periodically to indicate
 liveness.  They also poll periodically for unassigned jobs (to pick them up) and
-jobs that have not been updated within the timeout period (to handle worker
+jobs that have not been updated within the timeout period (to handle supervisor
 failure).
 
 Managing the streaming, distributed execution of jobs is a complex process.  The
-basic idea is that workers query Moray for state changes needing attention (new
-jobs, new job inputs, and completed tasks) and process them by issuing new
+basic idea is that supervisors query Moray for state changes needing attention
+(new jobs, new job inputs, and completed tasks) and process them by issuing new
 tasks, updating job state, and so on.  Each input is processed by locating the
 corresponding object and writing out either a task assignment (for map tasks) or
-a taskinput record (for reduce tasks).  For details, see the worker source.
+a taskinput record (for reduce tasks).  For details, see the supervisor source.
 
 **Compute node agents**
 
-Like workers, the per-storage-node agents periodically poll Moray for state
+Like supervisors, the per-storage-node agents periodically poll Moray for state
 changes needing attention (newly assigned tasks, cancelled tasks, and so on) and
 process them by scheduling execution.  Agents are responsible for assigning
 tasks to zones, managing the lifecycle of those zones, keeping track of output,
 and proxying front-door requests between zones and Manta.  As tasks complete
 (successfully or otherwise), the agent writes new updates to Moray that will be
-processed by the worker.
+processed by the supervisor.
 
 
 **Analysis of distributed system failure modes**
@@ -205,7 +206,7 @@ processed by the worker.
 Invariants:
 
 * All state is stored in Moray, so all components are stateless.
-* At most one worker can ever "own" a job.  Only the owner of a job can write
+* At most one supervisor can ever "own" a job.  Only the owner of a job can write
   task assignments or update the job record in "marlinJobs".
 * To a first approximation, a component is partitioned iff it cannot reach
   Moray.  This is an oversimplification because Moray itself is sharded, so it's
@@ -220,24 +221,25 @@ become visible in the final job state.  It's the user's problem at that point.
 
 If a compute node agent fails transiently (e.g., dumps core and restarts), fails
 for an extended period of time, or becomes partitioned from its Moray shard, any
-running tasks are aborted by the worker.  The worker will retry aborted tasks up
-to once.  This retry should be invisible to the user's code and the rest of the
-system, modulo increased task completion time.  Agents ignore tasks dispatched
-before they began running, which covers the case where the agent actually
-crashes.  To cover the case where the agent simply becomes partitioned, the
-worker explicitly cancels tasks that it has retried elsewhere.
+running tasks are aborted by the supervisor.  The supervisor will retry aborted
+tasks up to once.  This retry should be invisible to the user's code and the
+rest of the system, modulo increased task completion time.  Agents ignore tasks
+dispatched before they began running, which covers the case where the agent
+actually crashes.  To cover the case where the agent simply becomes partitioned,
+the supervisor explicitly cancels tasks that it has retried elsewhere.
 
-If a job worker fails transiently, it can pick up exactly where it left off,
+If a job supervisor fails transiently, it can pick up exactly where it left off,
 since all state is stored in Moray.  This should be invisible to the rest of the
-system, modulo slightly increased job completion time.  If a job worker fails
-for an extended period, another job worker will pick up its jobs.  This becomes
-exactly like the case where a worker fails transiently: the state in Moray is
-sufficient for the new worker to pick up where the old one left off.
+system, modulo slightly increased job completion time.  If a job supervisor
+fails for an extended period, another job supervisor will pick up its jobs.
+This becomes exactly like the case where a supervisor fails transiently: the
+state in Moray is sufficient for the new supervisor to pick up where the old one
+left off.
 
-If a job worker becomes partitioned from one or more Moray shards, it will stop
-processing updates (since it won't see them).  After the job timeout elapses,
-the worker will stop trying to save the record and another worker will pick up
-the job.  This looks just like a worker failure.
+If a job supervisor becomes partitioned from one or more Moray shards, it will
+stop processing updates (since it won't see them).  After the job timeout
+elapses, the supervisor will stop trying to save the record and another
+supervisor will pick up the job.  This looks just like a supervisor failure.
 
 Web tier nodes are completely stateless.  Any failure results in failing any
 in-flight requests.  Persistent failures have no additional impact as long as
@@ -245,13 +247,13 @@ enough nodes are in service to handle load.  Partitions between the web node and
 the Moray shard storing job records would result in failed requests.
 
 If an entire datacenter becomes partitioned from the rest, then its web tier
-nodes certainly won't be able to service any requests.  All of its job workers
-become partitioned (see above -- the work should eventually be picked up by
-workers in other datacenters).  All of its compute node agents effectively also
-become partitioned, and their work *may* be duplicated in other datacenters.
-Importantly, jobs submitted to the majority partition should always be able to
-complete successfully in this state, since there's always enough copies of the
-data to process the job.
+nodes certainly won't be able to service any requests.  All of its job
+supervisors become partitioned (see above -- the work should eventually be
+picked up by supervisors in other datacenters).  All of its compute node agents
+effectively also become partitioned, and their work *may* be duplicated in other
+datacenters.  Importantly, jobs submitted to the majority partition should
+always be able to complete successfully in this state, since there's always
+enough copies of the data to process the job.
 
 **Scalability analysis**
 
@@ -259,22 +261,22 @@ Being stateless, web tier nodes can be scaled arbitrarily horizontally.  If load
 exceeds capacity, requests will queue up and potentially eventually fail, but
 alarms should ring long before that happens.
 
-Similarly, job workers can be scaled arbitrarily horizontally, and capacity
+Similarly, job supervisors can be scaled arbitrarily horizontally, and capacity
 monitoring should allow administrators to ensure that sufficient capacity is
 always available.  The failure mode for excess load is increased job completion
-time.  Task updates may accumulate in Moray faster than the worker can process
-them, but the total space used in Moray is the same regardless of how fast the
-job workers process them, so there's no cascading failure.  If job workers
-cannot update their locks in Moray, the system may thrash as workers try to take
-each others' jobs, but this would be very extreme.
+time.  Task updates may accumulate in Moray faster than the supervisors can
+process them, but the total space used in Moray is the same regardless of how
+fast the job supervisors process them, so there's no cascading failure.  If job
+supervisors cannot update their locks in Moray, the system may thrash as
+supervisors try to take each others' jobs, but this would be very extreme.
 
 Compute nodes rely on the OS to properly balance the workload within that box.
 They may queue tasks after some very large number of concurrent tasks, but it's
 not anticipated that we would ever reach that point in practice.  If this
-becomes a problem, job workers could conceivably redispatch the task to another
-node with the same data available.  If this truly became a serious problem, we
-could support compute agents that download data, rather than operating locally
-(just as reducers already do).
+becomes a problem, job supervisors could conceivably redispatch the task to
+another node with the same data available.  If this truly became a serious
+problem, we could support compute agents that download data, rather than
+operating locally (just as reducers already do).
 
 Given that there's enough capacity in each of the Marlin tiers, the remaining
 question is Moray.  Moray will be sharded, and we will say that each compute
@@ -286,10 +288,10 @@ relatively minimal.  We should be able to reshard to scale this out.
 
 Each compute node can batch its Moray updates from all tasks for up to N
 seconds, sharply reducing the number of requests required.  Similarly, job
-workers can batch job state updates for many jobs up to N seconds.  Batching of
-"location" GET requests is discussed above, under "job workers".  Thus, the
+supervisors can batch job state updates for many jobs up to N seconds.  Batching of
+"location" GET requests is discussed above, under "job supervisors".  Thus, the
 total number of Moray-wide requests should be boundable to something like (# of
-workers \* # of compute zone lackeys) / (N seconds), where N is how frequently
+supervisors \* # of compute zone lackeys) / (N seconds), where N is how frequently
 each agent updates Moray.  These requests should mostly be distributed across
 all shards.
 
@@ -300,7 +302,7 @@ the source.
 Batching requests over multiple records helps network throughput, but not the
 total number of database operations, since each record must be operated on
 separately.  The total number of database operations could still be around (# of
-active tasks \* # of agents \* # of active jobs \* # of job workers).  Again,
+active tasks \* # of agents \* # of active jobs \* # of job supervisors).  Again,
 these are distributed across many Moray shards, which can be scaled
 horizontally.
 
@@ -308,7 +310,7 @@ horizontally.
 ## Cancellation
 
 To cancel a job, the web tier writes an update to the job record.
-Asynchronously, the job worker will need to be polling on the job state
+Asynchronously, the job supervisor will need to be polling on the job state
 occasionally to notice the cancelled flag.  It propagates this to individual
 task assignments, where the compute node agents will notice that the job has
 been cancelled and abort them.  Eventually, all work on the job will complete,
@@ -584,7 +586,7 @@ that this approach is prohibitively painful.
 
 * flesh out maggr
 * apache2json?
-* Crazy idea #1: eliminate the worker by writing a library to lookup input
+* Crazy idea #1: eliminate the supervisor by writing a library to lookup input
   objects and dispatch them to the next phase.  Have muskie do this for phase 0,
   and agents do this for subsequent phases.  (Should this be a service instead
   of a library?)

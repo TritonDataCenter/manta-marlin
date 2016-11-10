@@ -5,11 +5,11 @@
  */
 
 /*
- * Copyright (c) 2014, Joyent, Inc.
+ * Copyright (c) 2016, Joyent, Inc.
  */
 
 /*
- * lib/worker/server.js: worker executable
+ * lib/worker/server.js: supervisor (worker) executable
  */
 
 var mod_bunyan = require('bunyan');
@@ -21,11 +21,11 @@ var mod_mautil = require('../util');
 var mod_worker = require('./worker');
 
 var mwLogLevel = process.env['LOG_LEVEL'] || 'info';
-var mwWorkerInstance;
+var mwSupervisorInstance;
 
 function main()
 {
-	var log, conf, worker, server;
+	var log, conf, supervisor, server;
 
 	if (process.argv.length < 3) {
 		console.error('usage: %s %s config.json', process.argv[0],
@@ -44,7 +44,7 @@ function main()
 	conf = mod_mautil.readConf(log, mod_worker.mwConfSchema,
 	    process.argv[2]);
 
-	worker = mwWorkerInstance = new mod_worker.mwWorker({
+	supervisor = mwSupervisorInstance = new mod_worker.mwSupervisor({
 	    'conf': conf,
 	    'log': log
 	});
@@ -59,15 +59,15 @@ function main()
 	    'component': 'jobworker',
 	    'version': '0.0.1',
 	    'ident': conf['instanceUuid'],
-	    'list_types': worker.kangListTypes.bind(worker),
-	    'list_objects': worker.kangListObjects.bind(worker),
-	    'get': worker.kangGetObject.bind(worker),
-	    'schema': worker.kangSchema.bind(worker),
-	    'stats': worker.kangStats.bind(worker)
+	    'list_types': supervisor.kangListTypes.bind(supervisor),
+	    'list_objects': supervisor.kangListObjects.bind(supervisor),
+	    'get': supervisor.kangGetObject.bind(supervisor),
+	    'schema': supervisor.kangSchema.bind(supervisor),
+	    'stats': supervisor.kangStats.bind(supervisor)
 	}));
 
 	server.post('/quiesce', function (request, response, next) {
-		worker.quiesce(true, function (err) {
+		supervisor.quiesce(true, function (err) {
 			if (!err)
 				response.send(204);
 			next(err);
@@ -75,7 +75,7 @@ function main()
 	});
 
 	server.post('/unquiesce', function (request, response, next) {
-		worker.quiesce(false, function (err) {
+		supervisor.quiesce(false, function (err) {
 			if (!err)
 				response.send(204);
 			next(err);
@@ -86,7 +86,7 @@ function main()
 		var addr = server.address();
 		log.info('server listening at http://%s:%d',
 		    addr['address'], addr['port']);
-		worker.start();
+		supervisor.start();
 	});
 }
 

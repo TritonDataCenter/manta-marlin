@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2014, Joyent, Inc.
+ * Copyright (c) 2016, Joyent, Inc.
  */
 
 /*
@@ -201,9 +201,9 @@ MorayBus.prototype.oneshot = function (bucket, query, options, onrecord, ondone)
  */
 MorayBus.prototype.convertOneshot = function (id, ondone)
 {
-	var worker = this;
+	var bus = this;
 	this.fence(id, function () {
-		delete (worker.mb_subscriptions[id]);
+		delete (bus.mb_subscriptions[id]);
 
 		if (ondone !== undefined)
 			ondone();

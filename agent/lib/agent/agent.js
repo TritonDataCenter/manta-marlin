@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2015, Joyent, Inc.
+ * Copyright (c) 2016, Joyent, Inc.
  */
 
 /*
@@ -18,7 +18,8 @@
  * This agent runs in the global zone of participating compute and storage nodes
  * and manages tasks run on that node.  It's responsible for setting up compute
  * zones for user jobs, executing the jobs, monitoring the user code, tearing
- * down the zones, and emitting progress updates to the appropriate job worker.
+ * down the zones, and emitting progress updates to the appropriate job
+ * supervisor.
  *
  * This agent is tightly-coupled with the lackey that runs in each compute zone
  * and manages tasks execution in that zone.
@@ -1212,12 +1213,12 @@ mAgent.prototype.onRecordTaskInput = function (record, barrier)
 	/*
 	 * If we don't know anything about the corresponding task, we ignore
 	 * this record.  This is unlikely because task records are usually
-	 * written when the job is picked up by the worker, while taskinput
-	 * records cannot be written out until the worker has resolved the input
-	 * object's user and location, so it's tough for the latter to beat the
-	 * former.  But if this does happen, we just assume that we will read
-	 * the task record shortly and will process this taskinput record on one
-	 * of the next go-arounds.
+	 * written when the job is picked up by the supervisor, while taskinput
+	 * records cannot be written out until the supervisor has resolved the
+	 * input object's user and location, so it's tough for the latter to
+	 * beat the former.  But if this does happen, we just assume that we
+	 * will read the task record shortly and will process this taskinput
+	 * record on one of the next go-arounds.
 	 */
 	taskid = record['value']['taskId'];
 
@@ -2919,7 +2920,7 @@ mAgent.prototype.taskStreamAdvance = function (stream, callback)
 	if (abbrpath instanceof Error) {
 		/*
 		 * This should be impossible because it would have been caught
-		 * by the worker, but we handle it defensively.
+		 * by the supervisor, but we handle it defensively.
 		 */
 		this.taskMarkFailed(task, now, {
 		    'code': EM_INVALIDARGUMENT,
@@ -4242,7 +4243,7 @@ function maTask(record, agent)
 	this.t_cancelled = false;		/* task is cancelled */
 	this.t_nread = 0;			/* number of inputs read */
 	this.t_ninputs = record['value']['nInputs'];	/* nr of inputs */
-	this.t_abandoned = false;		/* task stolen by worker */
+	this.t_abandoned = false;		/* task stolen by supervisor */
 	this.t_nout_pending = 0;		/* nr of pending taskoutputs */
 	this.t_done = false;			/* task ended */
 	this.t_async_error = undefined;		/* for tasks done early */
@@ -4274,7 +4275,7 @@ function maTaskGroup(groupid, job, pi, log)
 	this.g_intermediate = undefined; /* outputs are intermediate */
 	this.g_checkpoint = false;	/* checkpoint frequently */
 	this.g_poolid = undefined;	/* zone pool to pick from (image) */
-	this.g_domainid = undefined;	/* worker domain id */
+	this.g_domainid = undefined;	/* supervisor domain id */
 
 	/* dynamic state */
 	this.g_state = maTaskGroup.TASKGROUP_S_INIT;

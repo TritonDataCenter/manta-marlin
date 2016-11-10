@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2015, Joyent, Inc.
+ * Copyright (c) 2016, Joyent, Inc.
  */
 
 /*
@@ -206,8 +206,8 @@ function jobTestRunner(testcases, argv, concurrency)
  *       including output contents).
  *
  *     o The job completed without any job reassignments (which would indicate a
- *       worker crash) or retries (which would indicate an agent crash), unless
- *       being run in "stress" mode.
+ *       supervisor crash) or retries (which would indicate an agent crash),
+ *       unless being run in "stress" mode.
  *
  *     o The various job counters (inputs, tasks, errors, and outputs) match
  *       what we expect.

@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2014, Joyent, Inc.
+ * Copyright (c) 2016, Joyent, Inc.
  */
 
 /*
@@ -208,16 +208,16 @@ var sMorayDomain = {
 		'domainId': sStringRequiredNonEmpty,
 
 		/*
-		 * Domains represent a layer of indirection over workers.
+		 * Domains represent a layer of indirection over supervisors.
 		 * Running jobs are partitioned into domains, and the domain for
 		 * a job doesn't change as long as the job runs.  At most one
-		 * worker instance operates a domain at a time, and there's one
-		 * domain per worker under normal conditions, but a worker may
-		 * operate multiple domains when the worker normally responsible
-		 * for it has failed.
+		 * supervisor instance operates a domain at a time, and there's
+		 * one domain per supervisor under normal conditions, but a
+		 * supervisor may operate multiple domains when the supervisor
+		 * normally responsible for it has failed.
 		 */
-		'operatedBy': sString,	/* worker currently operating domain */
-		'wantTransfer': sString	/* worker that wants to take domain */
+		'operatedBy': sString,	/* supervisor currently operating it */
+		'wantTransfer': sString	/* supervisor that wants to take it */
 	}
 };
 
@@ -449,8 +449,8 @@ var sMorayTask = {
 		 *
 		 * Note that not all tasks go through all of these steps.
 		 *
-		 * All tasks are dispatched: this is the time when the worker
-		 * initially wrote out the record.
+		 * All tasks are dispatched: this is the time when the
+		 * supervisor initially wrote out the record.
 		 */
 		'timeDispatched': sDateTimeRequired,	/* time created */
 
@@ -480,13 +480,14 @@ var sMorayTask = {
 		'timeDone': sDateTime,		/* time execution ended */
 
 		/*
-		 * After the task becomes "done", the worker "commits" it,
+		 * After the task becomes "done", the supervisor "commits" it,
 		 * meaning that it has either processed the results of the task
 		 * already or at least marked them to be processed.  This
 		 * process itself involves several state changes on each
-		 * "taskoutput" record.  It's described in lib/worker/worker.js.
+		 * "taskoutput" record.  It's described in
+		 * jobsupervisor/lib/worker/worker.js.
 		 */
-		'timeCommitted': sDateTime,	/* time worker committed */
+		'timeCommitted': sDateTime,	/* time supervisor committed */
 
 		/*
 		 * Tasks can have very large numbers of outputs, so we mark
@@ -524,29 +525,29 @@ var sMorayTask = {
 		/*
 		 * There are two cases where task processing may stop without
 		 * going through the above path: tasks may be taken over by the
-		 * worker with an error, or they may be cancelled.
+		 * supervisor with an error, or they may be cancelled.
 		 *
-		 * The worker takes over a task when it gives up on the agent
-		 * responsible for executing the task.  This happens if the
-		 * agent fails to heartbeat for too long, and also happens today
-		 * if the agent restarts because we don't support resuming
+		 * The supervisor takes over a task when it gives up on the
+		 * agent responsible for executing the task.  This happens if
+		 * the agent fails to heartbeat for too long, and also happens
+		 * today if the agent restarts because we don't support resuming
 		 * accepted tasks after an agent restart.  When taking over a
-		 * task, the worker updates all the fields of the task that the
-		 * agent would except those pertaining to the actual execution
-		 * of the task.  It also sets timeAbandoned.
+		 * task, the supervisor updates all the fields of the task that
+		 * the agent would except those pertaining to the actual
+		 * execution of the task.  It also sets timeAbandoned.
 		 */
-		'timeAbandoned': sDateTime,	/* time worker abandoned */
+		'timeAbandoned': sDateTime,	/* time supervisor abandoned */
 
 		/*
 		 * Cancellation occurs when the job itself is cancelled.  The
-		 * worker cancels all non-done tasks.  Agents operating on these
-		 * tasks stop execution immediately.
+		 * supervisor cancels all non-done tasks.  Agents operating on
+		 * these tasks stop execution immediately.
 		 */
 		'timeCancelled': sDateTime,	/* time task was cancelled */
 
 		/*
-		 * Tasks may be retried by the worker.  wantRetry is set when
-		 * the task is committed, and a separate lap will read such
+		 * Tasks may be retried by the supervisor.  wantRetry is set
+		 * when the task is committed, and a separate lap will read such
 		 * records and set timeRetried when the retry task is
 		 * dispatched.
 		 */
@@ -617,9 +618,9 @@ var sMorayTaskInput = {
 		/*
 		 * To handle cleaning up intermediate data, once a reduce task
 		 * is completed, wantInputRemoved is set on the input objects.
-		 * The worker scans for these, and if the input identifies an
-		 * intermediate object created by this job, we remove it and set
-		 * timeInputRemoved.
+		 * The supervisor scans for these, and if the input identifies
+		 * an intermediate object created by this job, we remove it and
+		 * set timeInputRemoved.
 		 */
 		'wantInputRemoved': sBooleanWorkaround,
 		'timeInputRemoved': sDateTime
@@ -677,10 +678,10 @@ var sBktJsonSchemas =  {
  * Objects in these buckets must conform to the more constrained schemas above.
  *
  * Any changes to these schemas, even backwards-compatible ones, require
- * updating the version number.  On startup, each component (workers and muskie)
- * tries to create or update schemas for the buckets that it uses, so the
- * version number is required to ensure that components with older versions of
- * the schema don't inadvertently replace newer versions (installed by newer
+ * updating the version number.  On startup, each component (supervisors and
+ * muskie) tries to create or update schemas for the buckets that it uses, so
+ * the version number is required to ensure that components with older versions
+ * of the schema don't inadvertently replace newer versions (installed by newer
  * components) when they restart.
  *
  * Backwards-incompatible changes are more complicated: the impact on existing

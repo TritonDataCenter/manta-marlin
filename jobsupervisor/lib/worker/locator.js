@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2014, Joyent, Inc.
+ * Copyright (c) 2016, Joyent, Inc.
  */
 
 /*
@@ -74,11 +74,11 @@ exports.createLocator = createLocator;
  * deployments.  This locator takes a ring of Moray shards as input and uses
  * them to locate objects.  For future extension, createLocator is used to
  * create an appropriate locator for a given configuration, which is a subset of
- * the standard job worker configuration with the following properties:
+ * the standard job supervisor configuration with the following properties:
  *
  *    locator	The default value is "manta".  See above.
  *
- *    moray	Moray configuration (see generic worker configuration)
+ *    moray	Moray configuration (see generic supervisor configuration)
  *
  *	moray.index: electric moray configuration
  *

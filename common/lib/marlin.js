@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2015, Joyent, Inc.
+ * Copyright (c) 2016, Joyent, Inc.
  */
 
 /*
@@ -194,11 +194,14 @@ function createFinish(conf, moray, callback, filename, err, contents)
 /*
  * Private constructor for Marlin client handle.  Arguments include:
  *
- *    conf.moray		Moray storage configuration (see worker config)
+ *    conf.moray		Moray storage configuration
+ *                              (see supervisor config)
  *
- *    conf.buckets		Bucket names (see worker config)
+ *    conf.buckets		Bucket names
+ *                              (see supervisor config)
  *
- *    conf.images		Supported image versions (see worker config)
+ *    conf.images		Supported image versions
+ *                              (see supervisor config)
  *
  *    log			Bunyan logger
  *
@@ -1160,7 +1163,7 @@ function jobArchiveReset(api, jobid, options, callback)
  *
  *    jobId		List only job with specified jobId.
  *
- *    worker		List only jobs with specified worker.
+ *    worker		List only jobs with specified worker (jobsupervisor).
  *
  *    doneSince		List only jobs completed in last specified number of
  *			seconds.

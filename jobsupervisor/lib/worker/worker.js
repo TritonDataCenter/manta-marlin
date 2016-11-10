@@ -5,35 +5,37 @@
  */
 
 /*
- * Copyright (c) 2014, Joyent, Inc.
+ * Copyright (c) 2016, Joyent, Inc.
  */
 
 /*
- * lib/worker/worker.js: job worker implementation
+ * lib/worker/worker.js: job supervisor implementation
  */
 
 /*
- * Each Marlin deployment includes a fleet of job workers that are responsible
+ * Each Marlin deployment includes a fleet of job supervisors (formerly called
+ * "workers", and still referred to as such in the code) that are responsible
  * for managing the distributed execution of Marlin jobs.  The core of each
- * worker is a loop that looks for new and abandoned jobs, divides each job into
- * chunks called tasks, assigns these tasks to individual compute nodes,
+ * supervisor is a loop that looks for new and abandoned jobs, divides each job
+ * into chunks called tasks, assigns these tasks to individual compute nodes,
  * monitors each node's progress, and collects the results.  While individual
- * workers are not resource-intensive, a fleet is used to support very large
+ * supervisors are not resource-intensive, a fleet is used to support very large
  * numbers of jobs concurrently and to provide increased availability in the
  * face of failures and partitions.
  *
  * Jobs and tasks are represented as records within Moray instances, which are
  * themselves highly available.  At any given time, a job is assigned to at most
- * one worker, and this assignment is stored in the job's record in Moray.
- * Workers do not maintain any state which cannot be reconstructed from the
- * state stored in Moray.  This makes it possible for workers to pick up jobs
- * abandoned by other workers which have failed or become partitioned from the
- * Moray ring.  In order to detect such failures, workers must update job
- * records on a regular basis (even if there's no substantial state change) so
- * that failure to update the job record indicates that a worker has failed.
+ * one supervisor, and this assignment is stored in the job's record in Moray.
+ * Supervisors do not maintain any state which cannot be reconstructed from the
+ * state stored in Moray.  This makes it possible for supervisors to pick up
+ * jobs abandoned by other supervisors which have failed or become partitioned
+ * from the Moray ring.  In order to detect such failures, supervisors must
+ * update job records on a regular basis (even if there's no substantial state
+ * change) so that failure to update the job record indicates that a supervisor
+ * has failed.
  *
- * All communication among the workers, compute nodes, and the web tier (through
- * which jobs are submitted and monitored) goes through Moray.
+ * All communication among the supervisors, compute nodes, and the web tier
+ * (through which jobs are submitted and monitored) goes through Moray.
  *
  * Jobs run through the following states:
  *
@@ -67,14 +69,14 @@
  *     login, and authentication token), and various metadata about the job
  *     (time created and the like).
  *
- * (2) Job assignment: some time very shortly later, one of several job workers
- *     finds the job and does an etag-conditional PUT to set "worker" to the
- *     worker's uuid.  Many workers may attempt this, but only one may succeed.
- *     The others forget about the job.
+ * (2) Job assignment: some time very shortly later, one of several job
+ *     supervisors finds the job and does an etag-conditional PUT to set
+ *     "worker" to the supervisor's uuid.  Many supervisors may attempt this,
+ *     but only one may succeed.  The others forget about the job.
  *
  * (3) Job input submission: the user submits inputs for the job via muskie.
  *     For each input, muskie creates a "jobinput" record that includes the
- *     object's name.  The worker runs through the pipeline described under
+ *     object's name.  The supervisor runs through the pipeline described under
  *     "Dispatch pipeline" below, which results in either an error or a task
  *     assigned to a particular agent.
  *
@@ -90,26 +92,26 @@
  *     Otherwise, a separate "error" object is included in the same transaction
  *     as the task update, and the task's result = "fail".
  *
- * (6) Task commit: the worker sees the task has been updated with state =
- *     "done".  If the task failed, then the worker updates the task *and* all
- *     taskoutput records with "committed" and "propagated" to true, but "valid"
- *     = false.  If the task completed successfully, the worker writes a
- *     transaction that sets "committed" and "valid" to true on the task *and*
- *     all the taskoutput records.  Note that in both cases, the taskoutput
- *     updates are a server-side mass update, since there could be an
+ * (6) Task commit: the supervisor sees the task has been updated with state =
+ *     "done".  If the task failed, then the supervisor updates the task *and*
+ *     all taskoutput records with "committed" and "propagated" to true, but
+ *     "valid" = false.  If the task completed successfully, the supervisor
+ *     writes a transaction that sets "committed" and "valid" to true on the
+ *     task *and* all the taskoutput records.  Note that in both cases, the
+ *     taskoutput updates are a server-side mass update, since there could be an
  *     arbitrarily large number of them.
  *
  * (7) Task propagation: for each "taskoutput" record committed but not marked
  *     propagated in (4f), all of step (4) is repeated, except that in (4b), the
- *     worker sets propagated = true on the "taskoutput" record (instead of a
- *     "jobinput" record).
+ *     supervisor sets propagated = true on the "taskoutput" record (instead of
+ *     a "jobinput" record).
  *
  * (8) Ending job input: some time later, the user indicates to muskie that the
  *     job's input stream has ended.  When this happens, muskie updates the
  *     "job" record to indicate that inputDone = true.
  *
- * (9) Job completion: When the job completes, the worker updates the job record
- *     to set state = "done".  The job is complete only when:
+ * (9) Job completion: When the job completes, the supervisor updates the job
+ *     record to set state = "done".  The job is complete only when:
  *
  *         (a) The "job" record indicates that the input stream has ended.
  *
@@ -137,9 +139,9 @@
  * TASK CANCELLATION
  *
  * Individual tasks may be cancelled, either because of a job cancellation or
- * because the worker decides to time out an agent.  In that case, the task's
- * record is updated to set cancelled = true, and the agent immediately forgets
- * about the task.
+ * because the supervisor decides to time out an agent.  In that case, the
+ * task's record is updated to set cancelled = true, and the agent immediately
+ * forgets about the task.
  *
  *
  * REDUCE TASKS
@@ -159,14 +161,14 @@
  *     execution will continue (blocking if necessary) until the task's
  *     inputDone is true and all inputs have been read.
  *
- * (2) Instead of dispatching a "task" for each input object, the worker
+ * (2) Instead of dispatching a "task" for each input object, the supervisor
  *     dispatches a "taskinput" record.  When the agent sees it, instead of
  *     setting state = "accepted", it sets read = true.
  *
- * (3) The worker and agent must coordinate to keep track of when the input for
- *     each reducer is complete.  This condition is exactly equivalent to the
- *     "job done" condition described in (9) above, except it must only be true
- *     for phases 0 ... i - 1, where i = the reducer's phase.
+ * (3) The supervisor and agent must coordinate to keep track of when the input
+ *     for each reducer is complete.  This condition is exactly equivalent to
+ *     the "job done" condition described in (9) above, except it must only be
+ *     true for phases 0 ... i - 1, where i = the reducer's phase.
  *
  * The detailed list of queries used for polling can be found in
  * agent/lib/agent/queries.js and jobsupervisor/lib/worker/queries.js.
@@ -208,13 +210,13 @@ require('../errors');
 
 /* Public interface */
 exports.mwConfSchema = mwConfSchema;
-exports.mwWorker = Worker;
+exports.mwSupervisor = Worker;
 
 /*
  * Maintains state for a single job.  The logic for this class lives in the
  * worker class.  Arguments include:
  *
- *    conf	worker configuration
+ *    conf	supervisor (worker) configuration
  *
  *    log	bunyan-style logger
  *
@@ -252,10 +254,11 @@ function JobState(args)
 	this.j_last_input = undefined;
 
 	/*
-	 * We only poll for job inputs with our own workerid.  Once the workerid
-	 * has been assigned, muskie will fill it in for new job inputs, but we
-	 * must periodically mark it for existing inputs in case muskie wrote
-	 * (or is writing) some inputs before the workerid was assigned.
+	 * We only poll for job inputs with our own jobsupervisor id.  Once the
+	 * jobsupervisor id has been assigned, muskie will fill it in for new
+	 * job inputs, but we must periodically mark it for existing inputs in
+	 * case muskie wrote (or is writing) some inputs before the
+	 * jobsupervisor id was assigned.
 	 */
 	this.j_mark_inputs = new Throttler(tunables['timeMarkInputs']);
 	this.j_mark_pending = false;
@@ -357,15 +360,15 @@ function AgentState(record)
 }
 
 /*
- * Worker health management: workers are also responsible for monitoring the
- * health of other workers and taking over for them when they disappear.
+ * Supervisor health management: supervisors are also responsible for monitoring
+ * the health of other supervisors and taking over for them when they disappear.
  */
-function WorkerState(record)
+function SupervisorState(record)
 {
-	this.ws_last = Date.now();
-	this.ws_record = record;
-	this.ws_operating = [];
-	this.ws_timedout = false;
+	this.ss_last = Date.now();
+	this.ss_record = record;
+	this.ss_operating = [];
+	this.ss_timedout = false;
 }
 
 function JobCacheState()
@@ -2259,7 +2262,7 @@ Worker.prototype.taskRecordCleanupFini = function (record, barrier, job,
 
 Worker.prototype.onRecordDomain = function (record, barrier)
 {
-	var domainid, oldrecord, oldoperator, newoperator, ws, i;
+	var domainid, oldrecord, oldoperator, newoperator, ss, i;
 
 	/*
 	 * Update the reverse mapping of worker -> domains operated based on the
@@ -2273,17 +2276,17 @@ Worker.prototype.onRecordDomain = function (record, barrier)
 		oldoperator = oldrecord['value']['operatedBy'];
 		if (oldoperator !== newoperator &&
 		    this.w_allworkers.hasOwnProperty(oldoperator)) {
-			ws = this.w_allworkers[oldoperator];
-			i = ws.ws_operating.indexOf(domainid);
+			ss = this.w_allworkers[oldoperator];
+			i = ss.ss_operating.indexOf(domainid);
 			if (i != -1)
-				ws.ws_operating.splice(i, 1);
+				ss.ss_operating.splice(i, 1);
 		}
 	}
 
 	if (this.w_allworkers.hasOwnProperty(newoperator)) {
-		ws = this.w_allworkers[newoperator];
-		if (ws.ws_operating.indexOf(domainid) == -1)
-			ws.ws_operating.push(domainid);
+		ss = this.w_allworkers[newoperator];
+		if (ss.ss_operating.indexOf(domainid) == -1)
+			ss.ss_operating.push(domainid);
 	}
 
 	this.w_alldomains[domainid] = record;
@@ -2326,7 +2329,7 @@ Worker.prototype.onRecordHealth = function (record, barrier)
 
 Worker.prototype.onWorkerHealth = function (record, barrier)
 {
-	var instance, ws, oldrec, now;
+	var instance, ss, oldrec, now;
 
 	instance = record['value']['instance'];
 	if (instance == this.w_uuid)
@@ -2334,22 +2337,22 @@ Worker.prototype.onWorkerHealth = function (record, barrier)
 
 	if (!this.w_allworkers.hasOwnProperty(instance)) {
 		this.w_log.info('worker "%s": discovered', instance);
-		this.w_allworkers[instance] = new WorkerState(record);
+		this.w_allworkers[instance] = new SupervisorState(record);
 		return;
 	}
 
-	ws = this.w_allworkers[instance];
-	oldrec = ws.ws_record;
+	ss = this.w_allworkers[instance];
+	oldrec = ss.ss_record;
 	now = Date.now();
 	if (oldrec['_mtime'] != record['_mtime']) {
 		/* This worker is alive, since the health record was updated. */
-		if (ws.ws_timedout) {
+		if (ss.ss_timedout) {
 			this.w_log.info('worker "%s": came back', instance);
-			ws.ws_timedout = false;
+			ss.ws_timedout = false;
 		}
-		ws.ws_last = now;
-		ws.ws_record = record;
-	} else if (now - ws.ws_last >
+		ss.ss_last = now;
+		ss.ss_record = record;
+	} else if (now - ss.ss_last >
 	    this.w_conf['tunables']['timeWorkerAbandon']) {
 		/*
 		 * It's been too long since this health record has been updated.
@@ -2359,15 +2362,15 @@ Worker.prototype.onWorkerHealth = function (record, barrier)
 		 * load.  We use the barrier to avoid queueing multiple attempts
 		 * to takeover the same domain.
 		 */
-		if (!ws.ws_timedout) {
+		if (!ss.ws_timedout) {
 			this.w_log.info('worker "%s": timed out', instance);
 			this.w_dtrace.fire('worker-timeout',
 			    function () { return ([ instance ]); });
-			ws.ws_timedout = true;
+			ss.ws_timedout = true;
 		}
 
-		if (ws.ws_operating.length > 0)
-			this.domainTakeover(mod_jsprim.randElt(ws.ws_operating),
+		if (ss.ss_operating.length > 0)
+			this.domainTakeover(mod_jsprim.randElt(ss.ss_operating),
 			    barrier, instance);
 	}
 };

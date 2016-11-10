@@ -5,7 +5,7 @@
 #
 
 #
-# Copyright (c) 2014, Joyent, Inc.
+# Copyright (c) 2016, Joyent, Inc.
 #
 
 #
@@ -366,8 +366,8 @@ CLEAN_FILES		+= $(MG_PROTO) \
 
 #
 # "release" target creates two tarballs: the first to be used as an input for
-# the jobworker zone, the second to be installed in each system's global zone
-# via apm.
+# the jobsupervisor zone, the second to be installed in each system's global
+# zone via apm.
 #
 .PHONY: release
 release: $(PROTO_TARBALL) $(AGENT_TARBALL) $(AGENT_MANIFEST)

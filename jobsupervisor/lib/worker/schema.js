@@ -5,11 +5,11 @@
  */
 
 /*
- * Copyright (c) 2014, Joyent, Inc.
+ * Copyright (c) 2016, Joyent, Inc.
  */
 
 /*
- * lib/worker/schema.js: worker configuration schema
+ * lib/worker/schema.js: supervisor configuration schema
  */
 
 var mod_schema = require('../schema');

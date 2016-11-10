@@ -7,7 +7,7 @@
  */
 
 /*
- * Copyright (c) 2015, Joyent, Inc.
+ * Copyright (c) 2016, Joyent, Inc.
  */
 
 /*
@@ -69,7 +69,7 @@ var msUsage = [
     'BASIC JOB INSPECTION',
     '',
     '       mrjob list     [-H] [-o field1[,field2...]] [-c] [-s state]',
-    '                      [-t sec] [-u user] [-w worker]',
+    '                      [-t sec] [-u user] [-w supervisor]',
     '       mrjob get      [-ipt] [-l limit] jobid',
     '       mrjob where    jobid',
     '',
@@ -110,7 +110,7 @@ var msHelp = [
     'SUBCOMMANDS',
     '',
     '   list [-H] [-o field1[,field2...]] [-c] [-s state] [-t sec] [-u user]',
-    '        [-T] [-w worker]',
+    '        [-T] [-w supervisor]',
     '',
     '       Lists jobs.  The default output mode is a human-readable, unstable',
     '       output format.  With -H, the output is a simple table with no ',
@@ -125,7 +125,8 @@ var msHelp = [
     '                           "all" may be used to select all jobs.',
     '           -t sec          only jobs completed in last "sec" seconds',
     '           -u user         only jobs owned by "user"',
-    '           -w worker       only jobs currently run by worker "worker"',
+    '           -w supervisor   only jobs currently run by supervisor ' +
+	'"supervisor"',
     '           -T              only non-transient jobs',
     '',
     '   get [-ipt] [-l limit] jobid',
