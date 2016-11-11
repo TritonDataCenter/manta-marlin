@@ -31,7 +31,14 @@
 	},
 
 	"tunables": {
+		"cueballDefaultTimeout": 500,
+		"cueballDefaultMaxTimeout": 30000,
+		"cueballDefaultRetries": 5,
+		"cueballDefaultDelay": 50,
+		"cueballDefaultMaxDelay": 60000,
 		"httpMaxSockets": 512,
+		"httpSpareSockets": 16,
+		"httpTcpKeepAliveDelay": 15000,
 		"maxPendingOutputsPerTask": 25,
 		"maxPendingPuts": 25,
 		"timeHeartbeat": 3000,

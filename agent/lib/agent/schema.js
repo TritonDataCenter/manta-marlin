@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2014, Joyent, Inc.
+ * Copyright (c) 2016, Joyent, Inc.
  */
 
 /*
@@ -14,6 +14,12 @@
 
 var mod_schema = require('../schema');
 
+/*
+ * Properties that have been around since early versions of the agent are
+ * required.  Properties added since then are optional so that it's easier for
+ * administrators to upgrade and rollback agents without having to muck with
+ * configuration files in the common cases.
+ */
 module.exports = {
     'type': 'object',
     'properties': {
@@ -54,8 +60,17 @@ module.exports = {
 		    'items': mod_schema.sStringRequiredNonEmpty,
 		    'minItems': 1
 		},
-		'triggerInterval': mod_schema.sIntervalRequired,
-		'graceInterval':   mod_schema.sIntervalRequired
+
+		/*
+		 * These two properties are no longer used, but they're still
+		 * allowed in the configuration file so that the file itself can
+		 * be backwards-compatible.  (They don't need to be here in the
+		 * schema, but it's easier to keep this schema in sync with the
+		 * template, and affords us a place to document this fact, which
+		 * we cannot do in the JSON file.)
+		 */
+		'triggerInterval': mod_schema.sInterval,
+		'graceInterval':   mod_schema.sInterval
 	    }
 	},
 
@@ -76,7 +91,14 @@ module.exports = {
 	    'type': 'object',
 	    'required': true,
 	    'properties': {
+		'cueballDefaultTimeout': mod_schema.sNonNegativeInteger,
+		'cueballDefaultMaxTimeout': mod_schema.sNonNegativeInteger,
+		'cueballDefaultRetries': mod_schema.sNonNegativeInteger,
+		'cueballDefaultDelay': mod_schema.sNonNegativeInteger,
+		'cueballDefaultMaxDelay': mod_schema.sNonNegativeInteger,
 		'httpMaxSockets': mod_schema.sNonNegativeInteger,
+		'httpSpareSockets': mod_schema.sNonNegativeInteger,
+		'httpTcpKeepAliveDelay': mod_schema.sNonNegativeInteger,
 		'maxPendingOutputsPerTask': mod_schema.sIntervalRequired,
 		'maxPendingPuts': mod_schema.sIntervalRequired,
 		'timeHeartbeat': mod_schema.sIntervalRequired,

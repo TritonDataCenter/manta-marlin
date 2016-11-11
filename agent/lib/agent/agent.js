@@ -193,6 +193,7 @@ var mod_url = require('url');
 var mod_uuid = require('node-uuid');
 
 var mod_bunyan = require('bunyan');
+var mod_cueball = require('cueball');
 var mod_extsprintf = require('extsprintf');
 var mod_getopt = require('posix-getopt');
 var mod_jsprim = require('jsprim');
@@ -210,7 +211,6 @@ var sprintf = mod_extsprintf.sprintf;
 var statvfs = require('statvfs');
 var VError = mod_verror.VError;
 
-var mod_adnscache = require('./adnscache');
 var mod_bus = require('../bus');
 var mod_libmanta = require('libmanta');
 var mod_mautil = require('../util');
@@ -249,6 +249,16 @@ var maZoneLogRoot 		= '/var/smartdc/marlin/log/zones';
 
 var maMorayMaxRecords 		= 1000;		/* max results per request */
 var maRequestTimeout 		= 300000;	/* local long poll timeout */
+
+/*
+ * Cueball agent default configuration (for communicating with Manta front
+ * door).  Most of these values may be overridden in the configuration file.
+ */
+var maUpstreamSpareConnsDefault		= 16;
+var maUpstreamMaxConnsDefault		= 512;
+var maUpstreamTcpKeepAliveDelayDefault	= 15000;
+
+var maUpstreamSrvMaxTimeout		= 5000;
 
 var maLogStreams = [ {
     'stream': process.stdout,
@@ -394,7 +404,7 @@ function usage(errmsg)
 function mAgent(filename)
 {
 	var agent = this;
-	var url;
+	var url, tunables, defaults, srv;
 
 	this.ma_log = new mod_bunyan({
 	    'name': maServerName,
@@ -409,21 +419,71 @@ function mAgent(filename)
 	 * Configuration
 	 */
 	this.ma_conf = mod_mautil.readConf(this.ma_log, maConfSchema, filename);
-	this.ma_log.info('configuration', this.ma_conf);
+	tunables = this.ma_conf['tunables'];
+	defaults = {
+	    'timeout': 500,
+	    'maxTimeout': 30000,
+	    'delay': 50,
+	    'retries': 5,
+	    'maxDelay': 60000
+	};
+
+	[
+	    { 'tunable': 'cueballDefaultTimeout',    'param': 'timeout'    },
+	    { 'tunable': 'cueballDefaultMaxTimeout', 'param': 'maxTimeout' },
+	    { 'tunable': 'cueballDefaultRetries',    'param': 'retries'    },
+	    { 'tunable': 'cueballDefaultDelay',      'param': 'delay'      },
+	    { 'tunable': 'cueballDefaultMaxDelay',   'param': 'maxDelay'   }
+	].forEach(function (p) {
+		if (tunables[p.tunable] !== undefined &&
+		    tunables[p.tunable] !== null) {
+			defaults[p.param] = tunables[p.tunable];
+		}
+	});
+
+	/*
+	 * We specify an aggressive set of values for "dns_srv" because some
+	 * deployments (e.g., us-east Manta) don't support them yet and we don't
+	 * want to be waiting for a long time after startup to fetch these
+	 * results.
+	 */
+	srv = mod_jsprim.deepCopy(defaults);
+	srv.retries = 0;
+	srv.maxTimeout = maUpstreamSrvMaxTimeout;
+	if (srv.timeout > srv.maxTimeout) {
+		srv.timeout = srv.maxTimeout;
+	}
+	this.ma_cueball_recovery = {
+	    'default': defaults,
+	    'dns_srv': srv
+	};
+
+	this.ma_http_nmaxconns = tunables['httpMaxSockets'] ||
+	    maUpstreamMaxConnsDefault;
+	this.ma_http_nspares = tunables['httpSpareSockets'] ||
+	    maUpstreamSpareConnsDefault;
+	this.ma_http_keepalive_delay = tunables['httpTcpKeepAliveDelay'] ||
+	    maUpstreamTcpKeepAliveDelayDefault;
+	this.ma_log.info({
+	    'config': this.ma_conf,
+	    'http_nmaxconns': this.ma_http_nmaxconns,
+	    'http_nspares': this.ma_http_nspares,
+	    'http_keepalive_delay': this.ma_http_keepalive_delay,
+	    'cueball_recovery': this.ma_cueball_recovery
+	}, 'configuration');
 
 	this.ma_hostname = mod_os.hostname();
 	this.ma_dcname = '';
 	this.ma_server_uuid = this.ma_conf['instanceUuid'];
 	this.ma_manta_compute_id = this.ma_conf['mantaComputeId'];
 	this.ma_buckets = this.ma_conf['buckets'];
-	this.ma_liveness_interval =
-		this.ma_conf['tunables']['zoneLivenessCheck'];
+	this.ma_liveness_interval = tunables['zoneLivenessCheck'];
 	this.ma_bucketnames = {};
 	mod_jsprim.forEachKey(this.ma_buckets, function (name, bucket) {
 		agent.ma_bucketnames[bucket] = name;
 	});
-	this.ma_zone_idle_min = this.ma_conf['tunables']['timeZoneIdleMin'];
-	this.ma_zone_idle_max = this.ma_conf['tunables']['timeZoneIdleMax'];
+	this.ma_zone_idle_min = tunables['timeZoneIdleMin'];
+	this.ma_zone_idle_max = tunables['timeZoneIdleMax'];
 	mod_assert.ok(this.ma_zone_idle_max >= this.ma_zone_idle_min,
 	    'timeZoneIdleMax cannot be less than timeZoneIdleMin');
 
@@ -436,32 +496,32 @@ function mAgent(filename)
 		agent.ma_kstat_readers[name] = new mod_kstat.Reader(filter);
 	});
 
-	mod_http.globalAgent.maxSockets =
-	    this.ma_conf['tunables']['httpMaxSockets'] || 512;
-
 	/*
 	 * Helper objects
 	 */
 	this.ma_logthrottle = new mod_mautil.EventThrottler(60 * 1000);
 	this.ma_task_checkpoint = new mod_mautil.Throttler(
-	    this.ma_conf['tunables']['timeTasksCheckpoint']);
+	    tunables['timeTasksCheckpoint']);
 	this.ma_task_checkpoint_freq = new mod_mautil.Throttler(5000);
 	this.ma_dtrace = mod_provider.createProvider(maProviderDefinition);
 
 	/*
-	 * Availability of Manta services relies on locating them via DNS as
-	 * they're used.  Since this agent runs in the global zone of SDC
-	 * compute nodes where DNS is not available, we do our own DNS lookups.
+	 * We use cueball to manage a connection pool to the Manta frontend
+	 * loadbalancers so that we can proxy user HTTP requests back to Manta.
+	 * We could in principle use the system resolver, but it does not
+	 * generally tolerate nameserver failure very well, and the system is
+	 * generally not configured with Manta's nameservers anyway.
 	 */
-	this.ma_dns_waiters = [];	/* queue of streams waiting on DNS */
-	this.ma_dns_cache = new mod_adnscache.AsyncDnsCache({
-	    'log': this.ma_log.child({ 'component': 'DnsCache' }),
-	    'nameServers': this.ma_conf['dns']['nameservers'].slice(0),
-	    'triggerInterval': this.ma_conf['dns']['triggerInterval'],
-	    'graceInterval': this.ma_conf['dns']['graceInterval'],
-	    'onResolve': this.onDnsResolve.bind(this)
+	this.ma_http_agent = new mod_cueball.HttpAgent({
+	    'recovery': this.ma_cueball_recovery,
+	    'resolvers': this.ma_conf['dns']['nameservers'].slice(0),
+	    'log': this.ma_log.child({ 'component': 'CueballAgent' }),
+	    'spares': this.ma_http_nspares,
+	    'maximum': this.ma_http_nmaxconns,
+	    'initialDomains': [ this.ma_manta_host ],
+	    'tcpKeepAliveInitialDelay': this.ma_http_keepalive_delay
 	});
-	this.ma_dns_cache.add(this.ma_manta_host);
+	this.ma_cueball_kang = mod_cueball.poolMonitor.toKangOptions();
 
 	this.ma_bus = new mod_bus.createBus(this.ma_conf, {
 	    'log': this.ma_log.child({ 'component': 'MorayBus' })
@@ -521,8 +581,7 @@ function mAgent(filename)
 
 	this.ma_requests = {};		/* pending HTTP requests, by req_id */
 	this.ma_init_barrier = mod_vasync.barrier();
-	this.ma_heartbeat = new mod_mautil.Throttler(
-	    this.ma_conf['tunables']['timeHeartbeat']);
+	this.ma_heartbeat = new mod_mautil.Throttler(tunables['timeHeartbeat']);
 
 	/*
 	 * See the block comment above for information on tasks, jobs, task
@@ -542,7 +601,7 @@ function mAgent(filename)
 	 * pool is allocated to zones whose tasks request it (by specifying the
 	 * "memory" property on the job phase).
 	 */
-	var pct = this.ma_conf['tunables']['zoneMemorySlopPercent'] / 100;
+	var pct = tunables['zoneMemorySlopPercent'] / 100;
 	this.ma_slopmem = Math.floor(pct * mod_os.totalmem() / 1024 / 1024);
 	this.ma_slopmem_used = 0;
 
@@ -796,7 +855,6 @@ mAgent.prototype.tick = function ()
 	this.ma_tick_start = new Date();
 	timestamp = this.ma_tick_start.getTime();
 
-	this.ma_dns_cache.update();
 	this.ma_bus.poll(timestamp);
 	this.ma_logthrottle.flush(timestamp);
 
@@ -1069,19 +1127,6 @@ mAgent.prototype.checkTaskCount = function ()
 /*
  * Event handlers
  */
-
-mAgent.prototype.onDnsResolve = function ()
-{
-	if (this.ma_dns_waiters.length === 0)
-		return;
-
-	this.ma_log.info('unblocking %d streams waiting on DNS',
-	    this.ma_dns_waiters.length);
-
-	var waiters = this.ma_dns_waiters;
-	this.ma_dns_waiters = [];
-	waiters.forEach(function (callback) { callback(); });
-};
 
 mAgent.prototype.onRecord = function (record, barrier)
 {
@@ -2567,7 +2612,6 @@ mAgent.prototype.schedDispatch = function (group, zone)
 
 var maTaskStreamStagesDispatch = [
 	maTaskStreamSetProperties,
-	maTaskStreamWaitDns,
 	maTaskStreamLoadAssets,
 	maTaskStreamDispatch
 ];
@@ -2595,27 +2639,6 @@ function maTaskStreamSetProperties(arg, callback)
 		callback();
 	else
 		mod_agent_zone.maZoneSet(zone, options, callback);
-}
-
-/*
- * Waits until we have valid IPs for any DNS names we need in order to process
- * the task.  We need these in order to fetch assets, to fetch remote input
- * files, and to save output.
- */
-function maTaskStreamWaitDns(arg, callback)
-{
-	var agent = arg.agent;
-
-	if (agent.ma_dns_cache.lookupv4(agent.ma_manta_host)) {
-		callback();
-		return;
-	}
-
-	agent.ma_log.warn('delaying stream dispatch because host "%s" has ' +
-	    'not been resolved', agent.ma_manta_host);
-	agent.ma_dns_waiters.push(function () {
-		maTaskStreamWaitDns(arg, callback);
-	});
 }
 
 /*
@@ -2684,8 +2707,8 @@ function maTaskStreamLoadAsset(agent, stream, asset, callback)
 
 		output.on('open', function onAssetOpen() {
 			var request = mod_http.get({
-			    'host': agent.ma_dns_cache.lookupv4(
-				agent.ma_manta_host),
+			    'agent': agent.ma_http_agent,
+			    'host': agent.ma_manta_host,
 			    'port': agent.ma_manta_port,
 			    'path': uripath,
 			    'headers': {
@@ -4161,8 +4184,8 @@ function maTaskApiManta(request, response, next)
 			'headers': {
 			    'authorization': sprintf('Token %s', group.g_token)
 			},
-			'host': agent.ma_dns_cache.lookupv4(
-			    agent.ma_manta_host),
+			'agent': agent.ma_http_agent,
+			'host': agent.ma_manta_host,
 			'port': agent.ma_manta_port
 		    }
 		};
@@ -4552,19 +4575,25 @@ maTaskStream.prototype.streamState = function (agent)
 
 /*
  * Kang (introspection) entry points
+ *
+ * Kang really needs a way to compose multiple kang-providing components, but in
+ * the meantime, we do this ourselves.
  */
+
+var maKangTypesAgent = [
+    'agent', 'job', 'request', 'taskgroup', 'taskstream', 'zone', 'zonepool'
+];
 
 function maKangListTypes()
 {
-	return ([
-	    'agent',
-	    'job',
-	    'request',
-	    'taskgroup',
-	    'taskstream',
-	    'zone',
-	    'zonepool'
-	].concat(maAgent.ma_bus.kangListTypes()));
+	var bus_types, cueball_types;
+	bus_types = maAgent.ma_bus.kangListTypes().map(function (n) {
+		return ('bus_' + n);
+	});
+	cueball_types = maAgent.ma_cueball_kang.list_types().map(function (n) {
+		return ('cueball_' + n);
+	});
+	return (maKangTypesAgent.concat(bus_types).concat(cueball_types));
 }
 
 function maKangSchema(type)
@@ -4643,7 +4672,16 @@ function maKangSchema(type)
 	if (type == 'zonepool')
 		return ({ 'summaryFields': [] });
 
-	return (maAgent.ma_bus.kangSchema(type));
+	if (mod_jsprim.startsWith(type, 'bus_')) {
+		return (maAgent.ma_bus.kangSchema(type.substr('bus_'.length)));
+	}
+
+	/*
+	 * Cueball does not currently provide a schema (which is fine, because
+	 * this isn't really used anyway).
+	 */
+	mod_assert.ok(mod_jsprim.startsWith(type, 'cueball_'));
+	return ({ 'summaryFields': [] });
 }
 
 function maKangListObjects(type)
@@ -4680,7 +4718,14 @@ function maKangListObjects(type)
 	if (type == 'zonepool')
 		return (Object.keys(agent.ma_zonepools));
 
-	return (maAgent.ma_bus.kangListObjects(type));
+	if (mod_jsprim.startsWith(type, 'bus_')) {
+		return (maAgent.ma_bus.kangListObjects(
+		    type.substr('bus_'.length)));
+	}
+
+	mod_assert.ok(mod_jsprim.startsWith(type, 'cueball_'));
+	return (maAgent.ma_cueball_kang.list_objects(
+	    type.substr('cueball_'.length)));
 }
 
 function maKangGetObject(type, id)
@@ -4732,12 +4777,27 @@ function maKangGetObject(type, id)
 	if (type == 'zonepool')
 		return (agent.ma_zonepools[id].kangState());
 
-	return (agent.ma_bus.kangGetObject(type, id));
+	if (mod_jsprim.startsWith(type, 'bus_')) {
+		return (maAgent.ma_bus.kangGetObject(
+		    type.substr('bus_'.length), id));
+	}
+
+	mod_assert.ok(mod_jsprim.startsWith(type, 'cueball_'));
+	return (maAgent.ma_cueball_kang.get(
+	    type.substr('cueball_'.length), id));
 }
 
 function maKangStats()
 {
-	return (maAgent.ma_counters);
+	var rv, cueball_stats;
+
+	rv = mod_jsprim.deepCopy(maAgent.ma_counters);
+	cueball_stats = maAgent.ma_cueball_kang.stats();
+	mod_jsprim.forEachKey(cueball_stats, function (k, v) {
+		rv[k] = v;
+	});
+
+	return (rv);
 }
 
 main();

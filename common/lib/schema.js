@@ -100,6 +100,11 @@ var sTcpPortRequired = {
 	'maximum': 65535
 };
 
+var sInterval = {
+	'type': 'integer',
+	'minimum': 0
+};
+
 var sIntervalRequired = {
 	'required': true,
 	'type': 'integer',
@@ -904,6 +909,7 @@ exports.sBktConfigs = sBktConfigs;
 exports.sJobStates = sJobStates;
 exports.sMaxReducers = sMaxReducers;
 
+exports.sInterval = sInterval;
 exports.sIntervalRequired = sIntervalRequired;
 exports.sNonNegativeInteger = sNonNegativeInteger;
 exports.sNonNegativeIntegerRequired = sNonNegativeIntegerRequired;
