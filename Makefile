@@ -296,8 +296,8 @@ $(PROTO_BOOT_ROOT)/setup.sh:
 # define a target that re-invokes "make" again after node_modules has been
 # installed.
 #
-USER_TOOLS_MANTA = mfind mget mjob mln mlogin mls mmd5 mmkdir mput mrm mrmdir \
-    msign muntar
+USER_TOOLS_MANTA = mchattr mchmod mfind mget minfo mjob mln mlogin mls mmd5 \
+    mmkdir mput mrm mrmdir msign muntar
 USER_TOOLS_MCB = maggr mcat mpipe msplit mtee
 PROTO_USER_TOOLS_ROOT = $(PROTO_MARLIN_ROOT)/ubin
 
