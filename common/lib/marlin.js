@@ -174,8 +174,9 @@ function createFinish(conf, moray, callback, filename, err, contents)
 			    name, bucket, config);
 			api.ma_client.putBucket(bucket,
 			    config, function (err2) {
-				if (err2 && err2['name'] ==
-				    'BucketVersionError') {
+				if (err2 &&
+				    VError.findCauseByName(err2,
+				    'BucketVersionError') !== null) {
 					log.warn(err2, 'bucket ' +
 					    'schema out of date');
 					err = null;

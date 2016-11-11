@@ -46,7 +46,7 @@
 		"strsplit": "^1.0.0",
 		"tab": "0.0.2",
 		"vasync": "^1.6.2",
-		"verror": "^1.4.0",
+		"verror": "^1.8.1",
 		"wordwrap": "0.0.2",
 		"zoneid": "0.2.0",
 		"zsock-async": "0.0.2"

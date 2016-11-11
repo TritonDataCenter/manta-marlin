@@ -84,6 +84,7 @@ var mGenericTransientErrors = {
 	/* JSSTYLED */
 	'remaining connection slots are reserved for non-replication superuser connections': true,
 	'sorry, too many clients already': true,
+	'Stream unexpectedly ended during query execution': true,
 	'the database system is starting up': true
 };
 
@@ -278,8 +279,7 @@ MorayBus.prototype.connect = function ()
 	    'port': this.mb_port,
 	    'log': this.mb_log.child({ 'component': 'moray' }),
 	    'retry': this.mb_reconnect,
-	    'dns': this.mb_dns,
-	    'unwrapErrors': true
+	    'dns': this.mb_dns
 	});
 
 	client.on('error', function (err) {
@@ -626,45 +626,60 @@ MorayBus.prototype.txnPut = function (client, txn, now)
 
 MorayBus.prototype.txnHandleError = function (txn, err)
 {
-	var err_transient = false;
-
-	switch (err.name) {
 	/*
 	 * It would be preferable if node-moray told us whether this was a
-	 * transient failure or not,  but for now we hardcode the known
-	 * retryable errors.
+	 * transient failure or not, but for now we hardcode the known retryable
+	 * errors.
+	 *
+	 * The last two are especially regrettable because these don't even have
+	 * proper error codes.  See MORAY-182 and the comment near the top of
+	 * this file.
 	 */
-	case 'ConnectionClosedError':	/* client-side */
-	case 'ConnectionTimeoutError':
-	case 'DNSError':
-	case 'NoConnectionError':
-	case 'UnsolicitedMessageError':
-	case 'ConnectTimeoutError':	/* server-side */
-	case 'NoDatabasePeersError':
-	case 'PoolShuttingDownError':
-	case 'QueryTimeoutError':
-		err_transient = true;
-		break;
+	var transientErrorNames = [
+	    'ConnectionClosedError',	/* client-side */
+	    'ConnectionTimeoutError',
+	    'DNSError',
+	    'FastProtocolError',
+	    'FastTransportError',
+	    'NoBackendsError',
+	    'NoConnectionError',
+	    'UnsolicitedMessageError',
 
-	/*
-	 * This is even more regrettable because these don't even have proper
-	 * error codes.  See MORAY-182 and the comment near the top of this
-	 * file.
-	 */
-	case 'error':
-	case 'Error':
-		err_transient = mGenericTransientErrors.hasOwnProperty(
-		    err.message);
-		break;
+	    'ConnectTimeoutError',	/* server-side */
+	    'NoDatabasePeersError',
+	    'PoolShuttingDownError',
+	    'QueryTimeoutError',
+
+	    'error',
+	    'Error'
+	];
+	var err_transient = null;
+	var err_etag;
+	var i;
+
+	for (i = 0; i < transientErrorNames.length; i++) {
+		err_transient = VError.findCauseByName(err,
+		    transientErrorNames[i]);
+		if (err_transient !== null) {
+			break;
+		}
 	}
 
-	if (err_transient) {
+	if (err_transient !== null &&
+	    (err_transient.name == 'error' ||
+	    err_transient.name == 'Error') &&
+	    !mGenericTransientErrors.hasOwnProperty(err_transient.message)) {
+		err_transient = null;
+	}
+
+	if (err_transient !== null) {
 		this.txnReportTransientError(txn, err);
 		this.txnRetry(txn);
 		return;
 	}
 
-	if (err.name != 'EtagConflictError' || !txn.tx_retry_conflict) {
+	err_etag = VError.findCauseByName(err, 'EtagConflictError');
+	if (err_etag === null || !txn.tx_retry_conflict) {
 		this.txnFini(txn, err);
 		return;
 	}
@@ -674,7 +689,8 @@ MorayBus.prototype.txnHandleError = function (txn, err)
 	 * conflicted.  This should be on "err.context", but if not, we deduce
 	 * what it must have been.
 	 */
-	if (!err.context || !err.context.bucket || !err.context.key) {
+	if (!err_etag.context || !err_etag.context.bucket ||
+	    !err_etag.context.key) {
 		this.mb_log.warn('got EtagConflict without context details',
 		    err);
 
@@ -691,18 +707,18 @@ MorayBus.prototype.txnHandleError = function (txn, err)
 			return;
 		}
 
-		if (!err.context)
-			err.context = {};
-		err.context.bucket = conditional[0]['bucket'];
-		err.context.key = conditional[0]['key'];
+		if (!err_etag.context)
+			err_etag.context = {};
+		err_etag.context.bucket = conditional[0]['bucket'];
+		err_etag.context.key = conditional[0]['key'];
 	}
 
 	var bus = this;
-	var i, rec;
+	var rec;
 
 	for (i = 0; i < txn.tx_records.length; i++) {
-		if (txn.tx_records[i]['bucket'] == err.context.bucket &&
-		    txn.tx_records[i]['key'] == err.context.key)
+		if (txn.tx_records[i]['bucket'] == err_etag.context.bucket &&
+		    txn.tx_records[i]['key'] == err_etag.context.key)
 			break;
 	}
 
@@ -861,7 +877,9 @@ MorayBus.prototype.initBucketsConnected = function (buckets, callback)
 	    'func': function putBucket(bucket, subcallback) {
 		bus.mb_log.info('putBucket "%s"', bucket);
 		client.putBucket(bucket, configs[bucket], function (err) {
-			if (err && err['name'] == 'BucketVersionError') {
+			if (err &&
+			    VError.findCauseByName(err,
+			    'BucketVersionError') !== null) {
 				bus.mb_log.warn(err,
 				    'bucket schema out of date');
 				err = null;
