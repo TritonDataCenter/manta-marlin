@@ -39,7 +39,7 @@ bits to build on OS X.  To use these tools:
 
 or just:
 
-    $ npm install git+ssh://git@github.com:joyent/manta-marlin.git
+    $ npm install git+https://github.com/joyent/manta-marlin.git
 
 At this point, you'll have several tools available inside the "sbin" directory:
 
