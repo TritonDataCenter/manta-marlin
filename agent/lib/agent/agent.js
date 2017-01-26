@@ -404,7 +404,7 @@ function usage(errmsg)
 function mAgent(filename)
 {
 	var agent = this;
-	var url, tunables, defaults, srv;
+	var url, tunables, defaults, srv, buscfg;
 
 	this.ma_log = new mod_bunyan({
 	    'name': maServerName,
@@ -523,7 +523,29 @@ function mAgent(filename)
 	});
 	this.ma_cueball_kang = mod_cueball.poolMonitor.toKangOptions();
 
-	this.ma_bus = new mod_bus.createBus(this.ma_conf, {
+	/*
+	 * Generally, the goal is to make our actual configuration file closely
+	 * match what we pass to Moray clients so that operators can easily
+	 * adjust it.  See the way the jobsupervisor (and other Moray v3
+	 * consumers) pass through their moray configuration straight to a Moray
+	 * client.  However, without SAPI management for agent configuration
+	 * files, in order to avoid a marlin-agent/config-file flag day, we have
+	 * to translate an older form of the configuration into what we need
+	 * today.  This means it's currently not possible to configure the
+	 * Marlin agent to use Moray without at least trying SRV records.
+	 */
+	url = mod_url.parse(this.ma_conf['moray']['url']);
+	buscfg = {
+	    'tunables': this.ma_conf['tunables'],
+	    'morayConfig': {
+	        'srvDomain': url['hostname'],
+		'cueballOptions': {
+		    'resolvers': this.ma_conf['dns']['nameservers'].slice(0),
+		    'defaultPort': parseInt(url['port'], 10) || 2020
+		}
+	    }
+	};
+	this.ma_bus = new mod_bus.createBus(buscfg, {
 	    'log': this.ma_log.child({ 'component': 'MorayBus' })
 	});
 

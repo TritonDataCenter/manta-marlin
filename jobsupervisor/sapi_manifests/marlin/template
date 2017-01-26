@@ -8,18 +8,19 @@
 	},
 	"moray": {
 		"index": {
-			"host": "{{ELECTRIC_MORAY}}",
-			"port": 2020,
-			"retry": {
-				"maxTimeout": 30000,
-				"retries": 120
+			"morayOptions": {
+				"srvDomain": "{{ELECTRIC_MORAY}}",
+				"cueballOptions": {
+					"resolvers": [ "nameservice.{{DOMAIN_NAME}}" ]
+				}
 			}
 		},
 		"storage": {
-			"url": "tcp://{{MARLIN_MORAY_SHARD}}:2020/",
-			"reconnect": {
-				"maxTimeout": 30000,
-				"retries": 120
+			"morayOptions": {
+				"srvDomain": "{{MARLIN_MORAY_SHARD}}",
+				"cueballOptions": {
+					"resolvers": [ "nameservice.{{DOMAIN_NAME}}" ]
+				}
 			}
 		}
 	},

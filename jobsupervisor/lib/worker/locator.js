@@ -82,8 +82,8 @@ exports.createLocator = createLocator;
  *
  *	moray.index: electric moray configuration
  *
- * The locator will use the electric moray instance specified by
- * moray.index.{host,port} to find objects.
+ * The locator will use the electric moray instance specified by moray.index to
+ * find objects.
  */
 function createLocator(conf, args)
 {

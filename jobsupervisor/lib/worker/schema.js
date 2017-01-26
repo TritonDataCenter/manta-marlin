@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2016, Joyent, Inc.
+ * Copyright (c) 2017, Joyent, Inc.
  */
 
 /*
@@ -33,34 +33,11 @@ module.exports = {
 	    'properties': {
 		'index': {
 		    'required': true,
-		    'type': 'object',
-		    'properties': {
-			'host': mod_schema.sStringRequiredNonEmpty,
-			'port': mod_schema.sTcpPortRequired,
-			'retry': {
-			    'required': true,
-			    'type': 'object',
-			    'properties': {
-				'maxTimeout': mod_schema.sIntervalRequired,
-				'retries': mod_schema.sIntervalRequired
-			    }
-			}
-		    }
+		    'type': 'object'
 		},
 		'storage': {
 		    'required': true,
-		    'type': 'object',
-		    'properties': {
-			'url': mod_schema.sStringRequiredNonEmpty,
-			'reconnect': {
-			    'required': true,
-			    'type': 'object',
-			    'properties': {
-				'maxTimeout': mod_schema.sIntervalRequired,
-				'retries': mod_schema.sIntervalRequired
-			    }
-			}
-		    }
+		    'type': 'object'
 		}
 	    }
 	},

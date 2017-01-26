@@ -214,6 +214,8 @@ function MarlinApi(args)
 	mod_events.EventEmitter();
 
 	var conf = args['conf'];
+	var morayargs, url;
+
 	mod_assert.equal(typeof (conf['moray']), 'object');
 	mod_assert.equal(typeof (conf['buckets']), 'object');
 	mod_assert.ok(conf['buckets'].hasOwnProperty('job'));
@@ -223,18 +225,40 @@ function MarlinApi(args)
 	mod_assert.ok(conf['buckets'].hasOwnProperty('taskoutput'));
 	mod_assert.ok(Array.isArray(conf['images']));
 
-	var url = mod_url.parse(conf['moray']['url']);
-
 	this.ma_log = args['log'];
 
-	this.ma_client = mod_moray.createClient({
-	    'host': url['hostname'],
-	    'port': parseInt(url['port'], 10),
+	/*
+	 * After Moray v3, consumers are generally supposed to take
+	 * configuration directly from a config file and pass them through to
+	 * the client constructor.  However, Moray v3 was a major version bump.
+	 * This module has no way to implement that because muskie depends on
+	 * the latest commit on master.  As a result, we have to accept the
+	 * configuration that muskie used to provide, but we translate that to
+	 * the new-style configuration as best we can.  (We cannot support
+	 * bootstrap resolvers this way because the old configuration did not
+	 * include that.)  This is similar to what we do in the Marlin agent.
+	 *
+	 * If "url" was not specified in the moray options, we assume this is a
+	 * new-style configuration and we pass it right through.
+	 */
+	morayargs = {
 	    'log': args['log'].child({'component': 'moray'}),
-	    'retry': conf['moray']['retry'],
 	    'unwrapErrors': true
-	});
+	};
 
+	if (conf['moray']['url']) {
+		url = mod_url.parse(conf['moray']['url']);
+		morayargs['srvDomain'] = url['hostname'];
+		morayargs['cueballOptions'] = {
+		    'defaultPort': parseInt(url['port'], 10) || 2020
+		};
+	} else {
+		mod_jsprim.forEachKey(conf['moray'], function (k, v) {
+			morayargs[k] = v;
+		});
+	}
+
+	this.ma_client = mod_moray.createClient(morayargs);
 	this.ma_client.on('close', this.emit.bind(this, 'close'));
 	this.ma_client.on('connect', this.emit.bind(this, 'connect'));
 	this.ma_client.on('error', this.emit.bind(this, 'error'));
