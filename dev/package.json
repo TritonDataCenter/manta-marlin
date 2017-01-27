@@ -33,7 +33,7 @@
 		"manta-compute-bin": "git+https://github.com/joyent/manta-compute-bin.git#master",
 		"memorystream": "0.2.0",
 		"mkdirp": "0.3.1",
-		"moray": "^2.0.0",
+		"moray": "3.0.0",
 		"node-uuid": "1.4.0",
 		"panic": "0.2.1",
 		"posix-getopt": "^1.0.0",

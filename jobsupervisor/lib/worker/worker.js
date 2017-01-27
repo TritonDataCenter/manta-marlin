@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2016, Joyent, Inc.
+ * Copyright (c) 2017, Joyent, Inc.
  */
 
 /*
@@ -420,7 +420,10 @@ function Worker(args)
 	/* helper objects */
 	this.w_log = args['log'];
 
-	this.w_bus = mod_bus.createBus(conf, {
+	this.w_bus = mod_bus.createBus({
+	    'morayConfig': this.w_conf['moray']['storage']['morayOptions'],
+	    'tunables': this.w_conf['tunables']
+	}, {
 	    'log': this.w_log.child({ 'component': 'MorayBus' })
 	});
 

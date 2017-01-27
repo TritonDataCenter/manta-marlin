@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2016, Joyent, Inc.
+ * Copyright (c) 2017, Joyent, Inc.
  */
 
 /*
@@ -91,35 +91,21 @@ var mGenericTransientErrors = {
 function createBus(conf, options)
 {
 	mod_assert.equal(typeof (conf), 'object');
-	mod_assert.ok(conf.hasOwnProperty('moray'));
+	mod_assert.ok(conf.hasOwnProperty('morayConfig'));
+	mod_assert.ok(conf.hasOwnProperty('tunables'));
 
 	mod_assert.equal(typeof (options), 'object');
 	mod_assert.equal(typeof (options['log']), 'object');
 
-	var morayconf, dnsconf, tunconf;
-	dnsconf = conf['dns'];
-	morayconf = conf['moray'];
-	if (morayconf['storage'])
-		morayconf = morayconf['storage'];
-	tunconf = conf['tunables'];
-
-	return (new MorayBus(morayconf, dnsconf, tunconf, options));
+	return (new MorayBus(conf['morayConfig'], conf['tunables'], options));
 }
 
-function MorayBus(morayconf, dnsconf, tunconf, options)
+function MorayBus(morayconf, tunconf, options)
 {
-	var url;
-
-	url = mod_url.parse(morayconf['url']);
-	this.mb_host = url['hostname'];
-	this.mb_port = parseInt(url['port'], 10);
-	this.mb_reconnect = morayconf['reconnect'];
-	this.mb_dns = dnsconf ?
-	    { 'resolvers': dnsconf['nameservers'].slice(0) } : undefined;
-
+	this.mb_config_moray = mod_jsprim.deepCopy(morayconf);
 	this.mb_log = options['log'];
 	this.mb_client = undefined;	/* current Moray client */
-	this.mb_connecting = false;	/* currently connecting */
+	this.mb_connecting = false;	/* a connect operation is outstanding */
 	this.mb_reported = {};		/* last report time, by error name */
 	this.mb_onconnect = [];
 
@@ -267,33 +253,17 @@ MorayBus.prototype.fence = function (id, callback)
 MorayBus.prototype.connect = function ()
 {
 	var bus = this;
-	var client;
+	var args, client;
 
 	if (this.mb_client !== undefined || this.mb_connecting)
 		return;
 
 	this.mb_connecting = true;
-
-	client = mod_moray.createClient({
-	    'host': this.mb_host,
-	    'port': this.mb_port,
-	    'log': this.mb_log.child({ 'component': 'moray' }),
-	    'retry': this.mb_reconnect,
-	    'dns': this.mb_dns
-	});
-
-	client.on('error', function (err) {
-		bus.mb_connecting = false;
-		bus.mb_log.error(err, 'moray client error');
-	});
-
-	client.on('close', function () {
-		bus.mb_log.error('moray client closed');
-	});
-
+	args = mod_jsprim.deepCopy(this.mb_config_moray);
+	args.log = this.mb_log.child({ 'component': 'moray' });
+	client = mod_moray.createClient(args);
 	client.on('connect', function () {
-		mod_assert.ok(bus.mb_client === undefined ||
-		    bus.mb_client == client);
+		mod_assert.ok(bus.mb_client === undefined);
 		bus.mb_client = client;
 		bus.mb_connecting = false;
 		bus.emit('ready');

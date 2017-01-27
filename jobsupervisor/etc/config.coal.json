@@ -10,18 +10,19 @@
 
 	"moray": {
 		"index": {
-			"host": "electric-moray.sf.joyent.us",
-			"port": 2020,
-			"retry": {
-				"maxTimeout": 30000,
-				"retries": 120
+			"morayOptions": {
+				"srvDomain": "electric-moray.sf.joyent.us",
+				"cueballOptions": {
+					"resolvers": [ "nameservice.sf.joyent.us" ]
+				}
 			}
 		},
 		"storage": {
-			"url": "tcp://1.moray.sf.joyent.us:2020",
-			"reconnect": {
-				"maxTimeout": 30000,
-				"retries": 120
+			"morayOptions": {
+				"srvDomain": "1.moray.sf.joyent.us",
+				"cueballOptions": {
+					"resolvers": [ "nameservice.sf.joyent.us" ]
+				}
 			}
 		}
 	},
