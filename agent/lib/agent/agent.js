@@ -257,6 +257,8 @@ var maRequestTimeout 		= 300000;	/* local long poll timeout */
 var maUpstreamSpareConnsDefault		= 16;
 var maUpstreamMaxConnsDefault		= 512;
 var maUpstreamTcpKeepAliveDelayDefault	= 15000;
+var maUpstreamPingPath			= '/';
+var maUpstreamPingInterval		= 60000;
 
 var maUpstreamSrvMaxTimeout		= 5000;
 
@@ -464,11 +466,17 @@ function mAgent(filename)
 	    maUpstreamSpareConnsDefault;
 	this.ma_http_keepalive_delay = tunables['httpTcpKeepAliveDelay'] ||
 	    maUpstreamTcpKeepAliveDelayDefault;
+	this.ma_http_ping_path = tunables['httpPingPath'] ||
+	    maUpstreamPingPath;
+	this.ma_http_ping_interval = tunables['httpPingInterval'] ||
+	    maUpstreamPingInterval;
 	this.ma_log.info({
 	    'config': this.ma_conf,
 	    'http_nmaxconns': this.ma_http_nmaxconns,
 	    'http_nspares': this.ma_http_nspares,
 	    'http_keepalive_delay': this.ma_http_keepalive_delay,
+	    'http_ping_path': this.ma_http_ping_path,
+	    'http_ping_interval': this.ma_http_ping_interval,
 	    'cueball_recovery': this.ma_cueball_recovery
 	}, 'configuration');
 
@@ -518,6 +526,9 @@ function mAgent(filename)
 	    'log': this.ma_log.child({ 'component': 'CueballAgent' }),
 	    'spares': this.ma_http_nspares,
 	    'maximum': this.ma_http_nmaxconns,
+	    'ping': this.ma_http_ping_path,
+	    'pingInterval': this.ma_http_ping_path ?
+	        this.ma_http_ping_interval : undefined,
 	    'initialDomains': [ this.ma_manta_host ],
 	    'tcpKeepAliveInitialDelay': this.ma_http_keepalive_delay
 	});
