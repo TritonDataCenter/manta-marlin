@@ -739,7 +739,7 @@ UfdsApplier.prototype.opFlushAccount = function opFlushAccount(op, callback)
 				return;
 			}
 
-			if (++count == 20) {
+			if (++count == 50) {
 				log.info('completed %d requests', count);
 				callback();
 			} else {
