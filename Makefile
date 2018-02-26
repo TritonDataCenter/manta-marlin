@@ -146,8 +146,13 @@ include ./dev/tools/mk/Makefile.smf.defs
 
 ifneq ($(USE_LOCAL_NODE),true)
     NODE_PREBUILT_VERSION = v0.10.48
-    NODE_PREBUILT_TAG = zone
-    NODE_PREBUILT_IMAGE = fd2cc906-8938-11e3-beab-4359c665ac99
+    # manta-marlin ships node programs that need to run both in non-global zones
+    # and in the GZ (marlin-agent). Thus, all of them use a node runtime that is
+    # capable of running in the GZ, since it's also capable of running within a
+    # zone.
+	NODE_PREBUILT_TAG = gz
+    # sdc-minimal-multiarch-lts 15.4.1
+    NODE_PREBUILT_IMAGE = 18b094b0-eb01-11e5-80c1-175dac7ddf02
 
     include ./dev/tools/mk/Makefile.node_prebuilt.defs
 else
