@@ -5,7 +5,7 @@
 #
 
 #
-# Copyright (c) 2016, Joyent, Inc.
+# Copyright (c) 2018, Joyent, Inc.
 #
 
 #
@@ -105,6 +105,7 @@ BASH_FILES	 = \
     client/sbin/mrextractjob		\
     dev/tools/catest			\
     dev/tools/endtoend.sh		\
+    dev/tools/fix_runpath.sh		\
     dev/tools/mru			\
     jobsupervisor/boot/setup.sh		\
     jobsupervisor/sbin/mrsup
@@ -146,8 +147,8 @@ include ./dev/tools/mk/Makefile.smf.defs
 
 ifneq ($(USE_LOCAL_NODE),true)
     NODE_PREBUILT_VERSION = v0.10.48
-    NODE_PREBUILT_TAG = zone
-    NODE_PREBUILT_IMAGE = fd2cc906-8938-11e3-beab-4359c665ac99
+    NODE_PREBUILT_TAG = gz
+    NODE_PREBUILT_IMAGE = 18b094b0-eb01-11e5-80c1-175dac7ddf02
 
     include ./dev/tools/mk/Makefile.node_prebuilt.defs
 else
@@ -176,6 +177,7 @@ all: deps proto
 .PHONY: deps
 deps: | $(NPM_EXEC)
 	$(NPM_ENV) $(NPM) --no-rebuild install
+	./dev/tools/fix_runpath.sh $(PWD)
 
 .PHONY: test
 test: all
@@ -341,6 +343,7 @@ proto_files: $(PROTO_FILES)
 .PHONY: proto_deps
 proto_deps: $(PROTO_FILES)
 	cd $(PROTO_MARLIN_ROOT) && $(NPM_ENV) $(NPM) --no-rebuild install
+	./dev/tools/fix_runpath.sh $(PROTO_MARLIN_ROOT)
 
 #
 # Mountain Gorilla targets
