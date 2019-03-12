@@ -1,6 +1,8 @@
+/make_stamps
 /node_modules
 /tmp
-build
+/bits
+/build
 docs/*.json
 docs/*.html
 cscope.in.out

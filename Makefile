@@ -5,7 +5,7 @@
 #
 
 #
-# Copyright (c) 2018, Joyent, Inc.
+# Copyright (c) 2019, Joyent, Inc.
 #
 
 #
@@ -77,7 +77,7 @@ endif
 #
 # Tools
 #
-BASHSTYLE	 = dev/tools/bashstyle
+BASHSTYLE	 = $(NODE_EXEC) dev/tools/bashstyle
 CATEST		 = dev/tools/catest
 CC      	 = gcc
 SMF_DTD		 = dev/tools/service_bundle.dtd.1
@@ -142,15 +142,21 @@ SMF_MANIFESTS_IN = \
 #
 NPM_ENV		 = MAKE_OVERRIDES="CTFCONVERT=/bin/true CTFMERGE=/bin/true"
 
-include ./dev/tools/mk/Makefile.defs
-include ./dev/tools/mk/Makefile.smf.defs
+ENGBLD_USE_BUILDIMAGE	= true
+ENGBLD_REQUIRE		:= $(shell git submodule update --init deps/eng)
+include ./deps/eng/tools/mk/Makefile.defs
+TOP ?= $(error Unable to access eng.git submodule Makefiles.)
+
+include ./deps/eng/tools/mk/Makefile.smf.defs
+include ./deps/eng/tools/mk/Makefile.deps
 
 ifneq ($(USE_LOCAL_NODE),true)
     NODE_PREBUILT_VERSION = v0.10.48
     NODE_PREBUILT_TAG = gz
-    NODE_PREBUILT_IMAGE = 18b094b0-eb01-11e5-80c1-175dac7ddf02
+    NODE_PREBUILT_IMAGE = fd2cc906-8938-11e3-beab-4359c665ac99
 
-    include ./dev/tools/mk/Makefile.node_prebuilt.defs
+    include ./deps/eng/tools/mk/Makefile.node_prebuilt.defs
+    include ./deps/eng/tools/mk/Makefile.agent_prebuilt.defs
 else
     NPM_EXEC :=
     NPM = npm
@@ -187,14 +193,6 @@ dev/test/mallocbomb/mallocbomb: dev/test/mallocbomb/mallocbomb.c
 CLEAN_FILES += dev/test/mallocbomb/mallocbomb
 
 DISTCLEAN_FILES += node_modules
-
-include ./dev/tools/mk/Makefile.deps
-include ./dev/tools/mk/Makefile.smf.targ
-include ./dev/tools/mk/Makefile.targ
-
-ifneq ($(USE_LOCAL_NODE),true)
-    include ./dev/tools/mk/Makefile.node_prebuilt.targ
-endif
 
 #
 # This rule installs the common manta scripts into the build/scripts directory.
@@ -348,24 +346,31 @@ proto_deps: $(PROTO_FILES)
 #
 # Mountain Gorilla targets
 #
-MG_NAME 		 = marlin
+NAME 		 = marlin
 MG_PROTO		 = $(PROTO_ROOT)
 MG_IMAGEROOT		 = $(PROTO_MARLIN_ROOT)
-MG_RELEASE_TARBALL	 = $(MG_NAME)-pkg-$(STAMP).tar.bz2
+MG_RELEASE_TARBALL	 = $(NAME)-pkg-$(STAMP).tar.gz
 PROTO_TARBALL 		 = $(BUILD)/$(MG_RELEASE_TARBALL)
-BITS_PROTO_TARBALL	 = $(BITS_DIR)/$(MG_NAME)/$(MG_RELEASE_TARBALL)
+BITS_PROTO_TARBALL	 = $(ENGBLD_BITS_DIR)/$(NAME)/$(MG_RELEASE_TARBALL)
 
-MG_AGENT_TARBALL	 = $(MG_NAME)-$(STAMP).tar.gz
-MG_AGENT_MANIFEST	 = $(MG_NAME)-$(STAMP).manifest
+MG_AGENT_TARBALL	 = $(NAME)-$(STAMP).tar.gz
+MG_AGENT_MANIFEST	 = $(NAME)-$(STAMP).manifest
 AGENT_TARBALL	 	 = $(BUILD)/$(MG_AGENT_TARBALL)
 AGENT_MANIFEST	 	 = $(BUILD)/$(MG_AGENT_MANIFEST)
-BITS_AGENT_TARBALL	 = $(BITS_DIR)/$(MG_NAME)/$(MG_AGENT_TARBALL)
-BITS_AGENT_MANIFEST	 = $(BITS_DIR)/$(MG_NAME)/$(MG_AGENT_MANIFEST)
+BITS_AGENT_TARBALL	 = $(ENGBLD_BITS_DIR)/$(NAME)/$(MG_AGENT_TARBALL)
+BITS_AGENT_MANIFEST	 = $(ENGBLD_BITS_DIR)/$(NAME)/$(MG_AGENT_MANIFEST)
 
 CLEAN_FILES		+= $(MG_PROTO) \
-			   $(BUILD)/$(MG_NAME)-pkg-*.tar.bz2 \
-			   $(BUILD)/$(MG_NAME)-*.tar.gz \
-			   $(BUILD)/$(MG_NAME)-*.manifest
+			   $(BUILD)/$(NAME)-*.tar.gz \
+			   $(BUILD)/$(NAME)-*.manifest
+
+
+BASE_IMAGE_UUID = fd2cc906-8938-11e3-beab-4359c665ac99
+BUILDIMAGE_NAME = manta-jobsupervisor
+BUILDIMAGE_DESC	= Manta jobsupervisor
+BUILDIMAGE_PKG	= $(PWD)/$(PROTO_TARBALL)
+BUILDIMAGE_PKGSRC = zookeeper-client-3.4.3
+AGENTS		= amon config registrar
 
 #
 # "release" target creates two tarballs: the first to be used as an input for
@@ -376,15 +381,15 @@ CLEAN_FILES		+= $(MG_PROTO) \
 release: $(PROTO_TARBALL) $(AGENT_TARBALL) $(AGENT_MANIFEST)
 
 $(PROTO_TARBALL): proto
-	$(TAR) -C $(MG_PROTO) -cjf $@ root site
+	$(TAR) -C $(MG_PROTO) -I pigz -cf $@ root site
 
 $(AGENT_TARBALL): proto
-	uuid -v4 > $(MG_PROTO)/root/opt/smartdc/$(MG_NAME)/image_uuid
-	$(TAR) -C $(MG_PROTO)/root/opt/smartdc -czf $@ $(MG_NAME)
+	uuid -v4 > $(MG_PROTO)/root/opt/smartdc/$(NAME)/image_uuid
+	$(TAR) -C $(MG_PROTO)/root/opt/smartdc -I pigz -cf $@ $(NAME)
 
 $(AGENT_MANIFEST): $(AGENT_TARBALL)
 	cat agent/manifest.tmpl | sed \
-		-e "s/UUID/$$(cat $(MG_PROTO)/root/opt/smartdc/$(MG_NAME)/image_uuid)/" \
+		-e "s/UUID/$$(cat $(MG_PROTO)/root/opt/smartdc/$(NAME)/image_uuid)/" \
 		-e "s/VERSION/$$(json version < package.json)/" \
 		-e "s/BUILDSTAMP/$(STAMP)/" \
 		-e "s/SIZE/$$(stat --printf="%s" $(AGENT_TARBALL))/" \
@@ -393,7 +398,7 @@ $(AGENT_MANIFEST): $(AGENT_TARBALL)
 		> $@
 
 #
-# "publish" target copies the release tarball into BITS_DIR.
+# "publish" target copies the release tarball into ENGBLD_BITS_DIR.
 #
 .PHONY: publish
 publish: check-bitsdir $(BITS_PROTO_TARBALL) $(BITS_AGENT_TARBALL) \
@@ -401,8 +406,8 @@ publish: check-bitsdir $(BITS_PROTO_TARBALL) $(BITS_AGENT_TARBALL) \
 
 .PHONY: check-bitsdir
 check-bitsdir:
-	@if [[ -z "$(BITS_DIR)" ]]; then \
-		echo "error: 'BITS_DIR' must be set for 'publish' target"; \
+	@if [[ -z "$(ENGBLD_BITS_DIR)" ]]; then \
+		echo "error: 'ENGBLD_BITS_DIR' must be set for 'publish' target"; \
 		exit 1; \
 	fi
 
@@ -417,3 +422,13 @@ $(BITS_AGENT_MANIFEST): $(AGENT_MANIFEST) | $(dir $(BITS_PROTO_TARBALL))
 
 $(dir $(BITS_PROTO_TARBALL)):
 	mkdir -p $@
+
+check:: $(NODE_EXEC)
+
+include ./deps/eng/tools/mk/Makefile.smf.targ
+include ./deps/eng/tools/mk/Makefile.targ
+
+ifneq ($(USE_LOCAL_NODE),true)
+	include ./deps/eng/tools/mk/Makefile.node_prebuilt.targ
+	include ./deps/eng/tools/mk/Makefile.agent_prebuilt.targ
+endif
