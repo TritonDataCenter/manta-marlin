@@ -6,7 +6,7 @@
 #
 
 #
-# Copyright (c) 2014, Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 #
 
 #
@@ -123,7 +123,8 @@ USAGE
 #
 function abspath
 {
-	local dir=$(dirname $1) base=$(basename $1)
+	local dir
+	dir=$(dirname $1) base=$(basename $1)
 
 	if [[ $base = ".." ]]; then
 		cd "$dir"/.. > /dev/null || fail "abspath '$1': failed to chdir"
@@ -200,14 +201,21 @@ function emit_pass
 function execute_test
 {
 	[[ $# -eq 1 ]] || fail "Missing test to execute"
-	local test_path=$1
-	local test_name=$(basename $1)
-	local test_dir=$(dirname $1)
-	local test_label=$(echo $test_path | sed -e s#^$SRC/##)
-	local test_odir="$cat_outdir/test.$cat_nrun"
-	local ext=${test_name##*.}
+	local test_path
+	local test_name
+	local test_dir
+	local test_label
+	local test_odir
+	local ext
 	local faildir
 	local EXEC
+
+	test_path=$1
+	test_name=$(basename $1)
+	test_dir=$(dirname $1)
+	test_label=$(echo $test_path | sed -e s#^$SRC/##)
+	test_odir="$cat_outdir/test.$cat_nrun"
+	ext=${test_name##*.}
 
 	echo "Executing test $test_label ... \c "
 	mkdir "$test_odir" >/dev/null || fail "failed to create test directory"

@@ -6,7 +6,7 @@
 #
 
 #
-# Copyright (c) 2014, Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 #
 
 #
@@ -40,7 +40,7 @@ Options:
          -b    list only busy zones (those running tasks)
          -d    list only disabled zones (requiring operator intervention)
 	 -r    list only ready zones
-	 
+
     -z ZONENAME    Report the state of the named zone
 
     -x             List disabled zones with detailed reasons why

@@ -6,7 +6,7 @@
 #
 
 #
-# Copyright (c) 2014, Joyent, Inc.
+# Copyright 2019, Joyent, Inc.
 #
 
 #
@@ -29,5 +29,5 @@ if [[ "$state" == "online" || "$state" == "maintenance" ]]; then
 fi
 
 svcadm disable -s marlin-agent
-svccfg delete marlin-agent 
+svccfg delete marlin-agent
 rm -f $npm_config_smfdir/marlin-agent.xml

@@ -5,7 +5,7 @@
 #
 
 #
-# Copyright (c) 2019, Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 #
 
 #
@@ -77,10 +77,8 @@ endif
 #
 # Tools
 #
-BASHSTYLE	 = $(NODE_EXEC) dev/tools/bashstyle
 CATEST		 = dev/tools/catest
 CC      	 = gcc
-SMF_DTD		 = dev/tools/service_bundle.dtd.1
 
 #
 # Files
@@ -125,7 +123,6 @@ JS_FILES	+= \
     client/sbin/mrerrorsummary	\
     client/sbin/mrjob		\
     client/sbin/mrmeter 	\
-    dev/tools/bashstyle		\
     dev/tools/mrpound		\
     jobsupervisor/sbin/mlocate
 

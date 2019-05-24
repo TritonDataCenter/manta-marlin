@@ -49,7 +49,7 @@ function tasktimes
 	s="$s; this.done  = Date.parse(this.value.timeDone) || 0"
 	s="$s; this.started = Date.parse(this.value.timeStarted) || 0"
 	s="$s; this.committed = Date.parse(this.value.timeCommitted) || 0"
-	
+
 	json -ga -e "$s"	\
 	    value.taskId 	\
 	    value.mantaComputeId 	\

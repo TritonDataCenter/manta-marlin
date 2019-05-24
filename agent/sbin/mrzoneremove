@@ -6,7 +6,7 @@
 #
 
 #
-# Copyright (c) 2014, Joyent, Inc.
+# Copyright 2019, Joyent, Inc.
 #
 
 #
@@ -33,7 +33,7 @@ function zone_wait_state
 	local endstate=$2
 
 	while true; do
-		state="$(curlagent /zones | json -a zonename state | 
+		state="$(curlagent /zones | json -a zonename state |
 		    nawk "\$1 == \"$zonename\" { print \$2 }")"
 		[[ "$state" == "$endstate" ]] && break
 		sleep 1

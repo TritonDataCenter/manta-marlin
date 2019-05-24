@@ -6,7 +6,7 @@
 #
 
 #
-# Copyright (c) 2014, Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 #
 
 #
@@ -101,7 +101,7 @@ function unpack_interval
 	local nowts unit
 
 	nowts=$(date_resolve)
-	
+
 	if [[ $1 == "yesterday" ]]; then
 		er_enddate=$(date_extract $nowts)
 		er_startdate=$(date_add $er_enddate -86400)
@@ -164,7 +164,7 @@ function normalize_interval
 # enum_objects START END: enumerate the moray objects required to analyze errors
 # over the period [START, END).  It's not currently supported to operate over
 # more than one database dump, so this only ever enumerates the dumps for a
-# specific hour. 
+# specific hour.
 #
 function enum_objects
 {

@@ -6,7 +6,7 @@
 #
 
 #
-# Copyright (c) 2014, Joyent, Inc.
+# Copyright 2019 Joyent, Inc.
 #
 
 #
@@ -114,7 +114,7 @@ else
 	[[ $# != 2 ]] && usage
 	jr_t1=$(node -pe "Date.parse('$1');")		# start time
 	jr_t2=$(node -pe "Date.parse('$2');")		# end time
-	
+
 	[[ $jr_t1 == "NaN" ]] && fail "start time not valid"
 	[[ $jr_t2 == "NaN" ]] && fail "end time not valid"
 	[[ $jr_t1 -ge $jr_t2 ]] && fail "start time is after end time"

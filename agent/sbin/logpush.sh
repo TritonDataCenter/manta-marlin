@@ -6,7 +6,7 @@
 #
 
 #
-# Copyright (c) 2014, Joyent, Inc.
+# Copyright 2019, Joyent, Inc.
 #
 
 #
@@ -307,7 +307,6 @@ while getopts ":fhnx" c "$@"; do
 	:)	usage "option requires an argument -- $OPTARG" ;;
 	*)	usage "invalid option: $OPTARG" ;;
 	esac
-	
 done
 
 if [[ $lp_optx == "true" ]]; then
