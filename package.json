@@ -17,7 +17,7 @@
 	"dependencies": {
 		"assert-plus": "0.1.2",
 		"bunyan": "0.20.0",
-		"dtrace-provider": "0.2.8",
+		"dtrace-provider": "0.8.8",
 		"extsprintf": "1.0.1",
 		"jsprim": "0.5.0",
 		"lstream": "0.0.3",
