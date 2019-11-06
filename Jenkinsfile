@@ -35,12 +35,7 @@ pipeline {
         }
         stage('build image and upload') {
             steps {
-                sh('''
-set -o errexit
-set -o pipefail
-
-export ENGBLD_BITS_UPLOAD_IMGAPI=true
-make print-BRANCH print-STAMP all release publish bits-upload''')
+                joyBuildImageAndUpload()
             }
         }
         stage('agentsshar') {
@@ -58,7 +53,16 @@ make print-BRANCH print-STAMP all release publish bits-upload''')
                 }
             }
             steps {
-                joyBuildImageAndUpload()
+                build(
+                    job:'joyent-org/sdc-agents-installer/master',
+                    wait: false,
+                    propagate: false,
+                    parameters: [
+                        [$class: 'StringParameterValue',
+                        name: 'BUILDNAME',
+                        value: env.BRANCH_NAME + ' master',
+                        ]
+                    ])
             }
         }
     }
