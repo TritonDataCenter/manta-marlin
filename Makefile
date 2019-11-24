@@ -363,7 +363,7 @@ CLEAN_FILES		+= $(MG_PROTO) \
 
 
 BASE_IMAGE_UUID = fd2cc906-8938-11e3-beab-4359c665ac99
-BUILDIMAGE_NAME = manta-jobsupervisor
+BUILDIMAGE_NAME = mantav2-jobsupervisor
 BUILDIMAGE_DESC	= Manta jobsupervisor
 BUILDIMAGE_PKG	= $(PWD)/$(PROTO_TARBALL)
 BUILDIMAGE_PKGSRC = zookeeper-client-3.4.3
