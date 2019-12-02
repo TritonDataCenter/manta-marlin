@@ -5,7 +5,7 @@
 -->
 
 <!--
-    Copyright (c) 2016, Joyent, Inc.
+    Copyright 2019 Joyent, Inc.
 -->
 
 # manta-marlin
@@ -16,6 +16,15 @@ guidelines, issues, and general documentation, visit the main
 
 Marlin is the Manta compute engine.  It comprises a service, an agent, and a set
 of client tools for executing arbitrary user jobs on objects stored in Manta.
+
+
+## Active Branches
+
+This repository is part of mantav1, the long term support maintenance version
+of Manta. Development is done on the **[`mantav1`](../../tree/mantav1/)
+branch**, the `master` branch is no longer used. See the [mantav2 overview
+document](https://github.com/joyent/manta/blob/master/docs/mantav2.md) for
+details on major Manta versions.
 
 
 # Overview
