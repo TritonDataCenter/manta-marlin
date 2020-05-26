@@ -5,7 +5,7 @@
 #
 
 #
-# Copyright 2019 Joyent, Inc.
+# Copyright 2020 Joyent, Inc.
 #
 
 #
@@ -165,6 +165,9 @@ endif
 CFLAGS		+= -Wall -Werror
 EXECS   	 = dev/test/mallocbomb/mallocbomb
 CLEANFILES	+= $(EXECS)
+
+# For mantav1, specify the branch to compare copyrights with
+ENGBLD_CHECK_COPYRIGHT_ARGS = -b mantav1
 
 #
 # The default ("all") target is used by developers to build the client package
