@@ -39,7 +39,7 @@
 		"posix-getopt": "^1.0.0",
 		"restify": "2.3.5",
 		"retry": "0.6.0",
-		"semver": "1.1.4",
+		"semver": "6.3.0",
 		"ufds": "1.2.0",
 		"spawn-async": "0.0.1",
 		"statvfs": "2.0.0",
