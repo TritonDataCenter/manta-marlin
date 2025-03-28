@@ -26,7 +26,7 @@
 		"node-uuid": "1.4.0",
 		"posix-getopt": "1.0.0",
 		"retry": "0.6.0",
-		"semver": "1.1.4",
+		"semver": "6.3.0",
 		"tab": "0.0.2",
 		"vasync": "1.6.2",
 		"verror": "^1.8.1",
