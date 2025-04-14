@@ -37,7 +37,7 @@
 		"node-uuid": "1.4.0",
 		"panic": "0.2.1",
 		"posix-getopt": "^1.0.0",
-		"restify": "2.3.5",
+		"restify": "8.4.0",
 		"retry": "0.6.0",
 		"semver": "1.1.4",
 		"ufds": "1.2.0",
